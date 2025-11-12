@@ -42,7 +42,7 @@ export interface Sale {
   paymentType: PaymentType;
 }
 
-export type View = 'dashboard' | 'pos' | 'inventory' | 'reports';
+export type View = 'dashboard' | 'pos' | 'inventory' | 'reports' | 'users';
 
 export interface InventoryAdjustment {
   productId: string;

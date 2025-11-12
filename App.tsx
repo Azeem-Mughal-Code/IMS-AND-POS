@@ -1,4 +1,4 @@
-import React, { useState, useCallback, FormEvent } from 'react';
+import React, { useState, useCallback, FormEvent, useEffect, useRef } from 'react';
 import { Product, Sale, User, UserRole, View, InventoryAdjustment } from './types';
 import useLocalStorage from './hooks/useLocalStorage';
 import { INITIAL_PRODUCTS } from './constants';
@@ -6,7 +6,8 @@ import { Dashboard } from './components/Dashboard';
 import { POS } from './components/POS';
 import { Inventory } from './components/Inventory';
 import { Reports } from './components/Reports';
-import { DashboardIcon, POSIcon, InventoryIcon, ReportsIcon, UserIcon, LogoutIcon } from './components/Icons';
+import { UserSettings } from './components/UserSettings';
+import { DashboardIcon, POSIcon, InventoryIcon, ReportsIcon, UserIcon, UsersIcon, LogoutIcon, SettingsIcon, SunIcon, MoonIcon, ComputerDesktopIcon, ChevronDownIcon } from './components/Icons';
 import { Modal } from './components/common/Modal';
 
 // AuthForm Component for Login/Signup
@@ -71,6 +72,7 @@ const AuthForm: React.FC<{
 // MainLayout Component for the authenticated app view
 const MainLayout: React.FC<{
   currentUser: User;
+  users: User[];
   onLogout: () => void;
   products: Product[];
   sales: Sale[];
@@ -82,9 +84,75 @@ const MainLayout: React.FC<{
   updateProduct: (updatedProduct: Product) => void;
   receiveStock: (productId: string, quantity: number) => void;
   adjustStock: (productId: string, newStockLevel: number, reason: string) => void;
+  updateUser: (userId: string, newUsername: string, newPassword?: string) => { success: boolean, message?: string };
+  deleteUser: (userId: string) => { success: boolean, message?: string };
+  theme: 'light' | 'dark' | 'system';
+  setTheme: (theme: 'light' | 'dark' | 'system') => void;
 }> = (props) => {
-  const { currentUser, onLogout, products, sales, inventoryAdjustments, activeView, setActiveView, ...rest } = props;
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const { currentUser, onLogout, products, sales, inventoryAdjustments, activeView, setActiveView, users, updateUser, deleteUser, theme, setTheme, ...rest } = props;
+  
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
+  const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
+  const [isMobileSettingsOpen, setIsMobileSettingsOpen] = useState(false);
+  
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+  
+  const [profileUsername, setProfileUsername] = useState(currentUser.username);
+  const [profilePassword, setProfilePassword] = useState('');
+  const [profileConfirmPassword, setProfileConfirmPassword] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
+        setIsProfileDropdownOpen(false);
+      }
+    };
+    // Only listen for outside clicks if the dropdown is open and no sub-modal is open.
+    if (isProfileDropdownOpen && !isEditProfileModalOpen && !isThemeModalOpen) {
+        document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isProfileDropdownOpen, isEditProfileModalOpen, isThemeModalOpen]);
+
+  useEffect(() => {
+    if (isEditProfileModalOpen) {
+      setProfileUsername(currentUser.username);
+      setProfilePassword('');
+      setProfileConfirmPassword('');
+      setProfileError('');
+      setProfileSuccess('');
+    }
+  }, [isEditProfileModalOpen, currentUser.username]);
+
+  const handleProfileUpdate = () => {
+    setProfileError('');
+    setProfileSuccess('');
+
+    if (profilePassword && profilePassword.length < 4) {
+      setProfileError("New password must be at least 4 characters long.");
+      return;
+    }
+
+    if (profilePassword !== profileConfirmPassword) {
+        setProfileError("Passwords do not match.");
+        return;
+    }
+    
+    const result = updateUser(currentUser.id, profileUsername, profilePassword);
+    
+    if (result.success) {
+        setProfileSuccess("Profile updated successfully!");
+        setProfilePassword('');
+        setProfileConfirmPassword('');
+    } else {
+        setProfileError(result.message || "Failed to update profile.");
+    }
+  }
 
   const renderView = () => {
     switch (activeView) {
@@ -92,6 +160,7 @@ const MainLayout: React.FC<{
       case 'pos': return <POS products={products} processSale={rest.processSale} />;
       case 'inventory': return <Inventory products={products} addProduct={rest.addProduct} updateProduct={rest.updateProduct} receiveStock={rest.receiveStock} adjustStock={rest.adjustStock} inventoryAdjustments={inventoryAdjustments} />;
       case 'reports': return <Reports sales={sales} products={products} />;
+      case 'users': return <UserSettings users={users} currentUser={currentUser} deleteUser={deleteUser} />;
       default: return <Dashboard products={products} sales={sales} />;
     }
   };
@@ -105,10 +174,38 @@ const MainLayout: React.FC<{
 
   const BottomNavItem: React.FC<{ view?: View; icon: React.ReactNode; label: string; onClick?: () => void }> = ({ view, icon, label, onClick }) => (
     <button onClick={onClick ?? (() => view && setActiveView(view))} className={`flex flex-col items-center justify-center w-full pt-2 pb-1 transition-colors ${activeView === view ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
-      {icon}
+      {React.cloneElement(icon as React.ReactElement, { className: 'h-6 w-6' })}
       <span className="text-xs font-medium">{label}</span>
     </button>
   );
+
+  const ThemeSelector: React.FC<{ theme: 'light' | 'dark' | 'system', setTheme: (theme: 'light' | 'dark' | 'system') => void }> = ({ theme, setTheme }) => {
+    const options = [
+        { value: 'light', label: 'Light', icon: <SunIcon /> },
+        { value: 'dark', label: 'Dark', icon: <MoonIcon /> },
+        { value: 'system', label: 'System', icon: <ComputerDesktopIcon /> }
+    ];
+
+    return (
+        <div className="grid grid-cols-3 gap-2 rounded-lg bg-gray-100 dark:bg-gray-700 p-1">
+            {options.map(option => (
+                <button
+                    key={option.value}
+                    onClick={() => setTheme(option.value as 'light' | 'dark' | 'system')}
+                    className={`flex flex-col items-center justify-center p-2 rounded-md text-sm font-medium transition-colors ${
+                        theme === option.value
+                            ? 'bg-white dark:bg-gray-900 text-blue-600 dark:text-blue-400 shadow'
+                            : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                >
+                    {option.icon}
+                    <span className="mt-1">{option.label}</span>
+                </button>
+            ))}
+        </div>
+    );
+};
+
 
   return (
     <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
@@ -123,24 +220,40 @@ const MainLayout: React.FC<{
               <NavItem view="pos" icon={<POSIcon />} label="Point of Sale" />
               <NavItem view="inventory" icon={<InventoryIcon />} label="Inventory" />
               <NavItem view="reports" icon={<ReportsIcon />} label="Reports" />
+              <NavItem view="users" icon={<UsersIcon />} label="Users" />
             </>
           )}
            {currentUser.role === UserRole.Cashier && (
             <NavItem view="pos" icon={<POSIcon />} label="Point of Sale" />
            )}
         </nav>
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-3">
-                <div className="p-2 bg-gray-200 dark:bg-gray-600 rounded-full"><UserIcon /></div>
-                <div>
-                    <p className="font-semibold text-sm">{currentUser.username}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{currentUser.role}</p>
-                </div>
+        <div className="p-4 border-t border-gray-200 dark:border-gray-700" ref={profileDropdownRef}>
+            <div className="relative">
+                <button onClick={() => setIsProfileDropdownOpen(p => !p)} className="flex items-center gap-3 w-full text-left p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                    <div className="p-2 bg-gray-200 dark:bg-gray-600 rounded-full"><UserIcon /></div>
+                    <div className="flex-1">
+                        <p className="font-semibold text-sm truncate">{currentUser.username}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{currentUser.role}</p>
+                    </div>
+                    <ChevronDownIcon className={`w-5 h-5 text-gray-500 transition-transform ${isProfileDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {isProfileDropdownOpen && (
+                    <div className="absolute bottom-full right-0 mb-2 w-56 bg-white dark:bg-gray-800 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 z-10">
+                        <div className="p-2">
+                            <button onClick={() => setIsEditProfileModalOpen(true)} className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
+                                <UserIcon className="h-5 w-5" /> <span>Edit Profile</span>
+                            </button>
+                            <button onClick={() => setIsThemeModalOpen(true)} className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
+                                <SettingsIcon className="h-5 w-5" /> <span>Change Theme</span>
+                            </button>
+                            <div className="my-1 h-px bg-gray-200 dark:bg-gray-700"></div>
+                            <button onClick={onLogout} className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md text-red-600 hover:bg-red-50 dark:hover:bg-gray-700 dark:hover:bg-opacity-50">
+                                <LogoutIcon className="h-5 w-5" /> <span>Logout</span>
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
-            <button onClick={onLogout} className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 rounded-md hover:bg-gray-200 dark:hover:bg-gray-500">
-                <LogoutIcon />
-                <span>Logout</span>
-            </button>
         </div>
       </aside>
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0">{renderView()}</main>
@@ -152,25 +265,58 @@ const MainLayout: React.FC<{
             <BottomNavItem view="pos" icon={<POSIcon />} label="POS" />
             <BottomNavItem view="inventory" icon={<InventoryIcon />} label="Inventory" />
             <BottomNavItem view="reports" icon={<ReportsIcon />} label="Reports" />
+            <BottomNavItem view="users" icon={<UsersIcon />} label="Users" />
           </>
         )}
         {currentUser.role === UserRole.Cashier && <BottomNavItem view="pos" icon={<POSIcon />} label="Point of Sale" />}
-        <BottomNavItem icon={<UserIcon />} label="Profile" onClick={() => setIsSettingsModalOpen(true)} />
+        <BottomNavItem icon={<SettingsIcon />} label="Settings" onClick={() => setIsMobileSettingsOpen(true)} />
       </nav>
       
-      <Modal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} title="User Profile">
-        <div className="p-4 flex flex-col items-center space-y-4">
-            <div className="p-3 bg-gray-200 dark:bg-gray-600 rounded-full"><UserIcon /></div>
-            <div className="text-center">
-                <p className="font-semibold text-lg">{currentUser.username}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{currentUser.role}</p>
+      <Modal isOpen={isMobileSettingsOpen} onClose={() => setIsMobileSettingsOpen(false)} title="Settings" size="sm">
+          <div className="space-y-2">
+              <button onClick={() => setIsEditProfileModalOpen(true)} className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+                  <UserIcon className="h-6 w-6" /> <span>Edit Profile</span>
+              </button>
+              <button onClick={() => setIsThemeModalOpen(true)} className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+                  <SettingsIcon className="h-6 w-6" /> <span>Change Theme</span>
+              </button>
+              <div className="my-2 h-px bg-gray-200 dark:bg-gray-600"></div>
+              <button onClick={onLogout} className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-gray-700 dark:hover:bg-opacity-50">
+                  <LogoutIcon className="h-6 w-6" /> <span>Logout</span>
+              </button>
+          </div>
+      </Modal>
+
+      <Modal isOpen={isEditProfileModalOpen} onClose={() => setIsEditProfileModalOpen(false)} title="Edit Profile" size="md">
+         <div className="space-y-4">
+            <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
+                <input type="text" value={profileUsername} onChange={e => setProfileUsername(e.target.value)} required className="mt-1 block w-full px-3 py-2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
             </div>
-            <button onClick={() => { onLogout(); setIsSettingsModalOpen(false); }} className="w-full max-w-xs mt-4 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600">
-                <LogoutIcon />
-                <span>Logout</span>
-            </button>
+            <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">New Password (optional)</label>
+                <input type="password" value={profilePassword} onChange={e => setProfilePassword(e.target.value)} placeholder="Leave blank to keep current" className="mt-1 block w-full px-3 py-2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Confirm New Password</label>
+                <input type="password" value={profileConfirmPassword} onChange={e => setProfileConfirmPassword(e.target.value)} className="mt-1 block w-full px-3 py-2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
+            </div>
+            {profileError && <p className="text-red-500 text-sm text-center mt-2">{profileError}</p>}
+            {profileSuccess && <p className="text-green-500 text-sm text-center mt-2">{profileSuccess}</p>}
+         </div>
+        <div className="flex justify-end items-center pt-6 mt-6 border-t border-gray-200 dark:border-gray-700 gap-2">
+            <button type="button" onClick={() => setIsEditProfileModalOpen(false)} className="w-full sm:w-auto px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Close</button>
+            <button type="button" onClick={handleProfileUpdate} className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Save Changes</button>
         </div>
       </Modal>
+
+      <Modal isOpen={isThemeModalOpen} onClose={() => setIsThemeModalOpen(false)} title="Change Theme" size="sm">
+        <ThemeSelector theme={theme} setTheme={setTheme} />
+        <div className="flex justify-end pt-6 mt-2">
+            <button type="button" onClick={() => setIsThemeModalOpen(false)} className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Done</button>
+        </div>
+      </Modal>
+
     </div>
   );
 };
@@ -181,10 +327,42 @@ const App: React.FC = () => {
   const [products, setProducts] = useLocalStorage<Product[]>('ims-products', INITIAL_PRODUCTS);
   const [sales, setSales] = useLocalStorage<Sale[]>('ims-sales', []);
   const [inventoryAdjustments, setInventoryAdjustments] = useLocalStorage<InventoryAdjustment[]>('ims-adjustments', []);
-  const [activeView, setActiveView] = useState<View>('dashboard');
-
-  const [users, setUsers] = useLocalStorage<User[]>('ims-users', [{ id: 'user_admin_01', username: 'admin', password: 'password', role: UserRole.Admin }]);
+  
+  const [users, setUsers] = useLocalStorage<User[]>('ims-users', []);
   const [currentUser, setCurrentUser] = useLocalStorage<User | null>('ims-currentUser', null);
+  
+  const [activeView, setActiveView] = useState<View>(currentUser?.role === UserRole.Cashier ? 'pos' : 'dashboard');
+  const [theme, setTheme] = useLocalStorage<'light' | 'dark' | 'system'>('ims-theme', 'system');
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    
+    const applyTheme = () => {
+      if (theme === 'dark' || (theme === 'system' && mediaQuery.matches)) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+
+    applyTheme();
+    
+    mediaQuery.addEventListener('change', applyTheme);
+    return () => mediaQuery.removeEventListener('change', applyTheme);
+  }, [theme]);
+
+  useEffect(() => {
+    // Ensures the admin user always exists.
+    setUsers(prevUsers => {
+      const adminExists = prevUsers.some(u => u.username === 'admin');
+      if (adminExists) return prevUsers;
+      const existingNonAdminUsers = prevUsers.filter(u => u.username !== 'admin');
+      return [
+        { id: 'user_admin_01', username: 'admin', password: 'password', role: UserRole.Admin },
+        ...existingNonAdminUsers,
+      ];
+    });
+  }, [setUsers]);
 
   const login = (username: string, pass: string): boolean => {
     const user = users.find(u => u.username === username && u.password === pass);
@@ -203,7 +381,6 @@ const App: React.FC = () => {
     const newUser: User = {
       id: `user_${Date.now()}`,
       username,
-      // FIX: Correctly assign the 'pass' parameter to the 'password' property.
       password: pass,
       role: UserRole.Cashier // Default role for new users
     };
@@ -214,6 +391,44 @@ const App: React.FC = () => {
   };
   
   const logout = () => setCurrentUser(null);
+
+  const updateUser = (userId: string, newUsername: string, newPassword?: string): { success: boolean, message?: string } => {
+    if (users.some(u => u.username === newUsername && u.id !== userId)) {
+      return { success: false, message: 'Username is already taken.' };
+    }
+    
+    let updatedUser: User | null = null;
+    const updatedUsers = users.map(user => {
+      if (user.id === userId) {
+        updatedUser = {
+          ...user,
+          username: newUsername,
+          password: newPassword && newPassword.length > 0 ? newPassword : user.password,
+        };
+        return updatedUser;
+      }
+      return user;
+    });
+    
+    setUsers(updatedUsers);
+    if (currentUser?.id === userId && updatedUser) {
+      setCurrentUser(updatedUser);
+    }
+    
+    return { success: true };
+  };
+
+  const deleteUser = (userId: string): { success: boolean, message?: string } => {
+    if (currentUser?.id === userId) {
+      return { success: false, message: "You cannot delete your own account." };
+    }
+    const userToDelete = users.find(u => u.id === userId);
+    if (userToDelete?.role === UserRole.Admin) {
+      return { success: false, message: "Admin accounts cannot be deleted." };
+    }
+    setUsers(prevUsers => prevUsers.filter(u => u.id !== userId));
+    return { success: true };
+  };
 
   const addProduct = useCallback((product: Omit<Product, 'id'>) => {
     setProducts(prev => [...prev, { ...product, id: `prod_${Date.now()}` }]);
@@ -269,6 +484,7 @@ const App: React.FC = () => {
   return (
     <MainLayout
       currentUser={currentUser}
+      users={users}
       onLogout={logout}
       products={products}
       sales={sales}
@@ -280,6 +496,10 @@ const App: React.FC = () => {
       updateProduct={updateProduct}
       receiveStock={receiveStock}
       adjustStock={adjustStock}
+      updateUser={updateUser}
+      deleteUser={deleteUser}
+      theme={theme}
+      setTheme={setTheme}
     />
   );
 };

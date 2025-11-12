@@ -151,15 +151,15 @@ export const POS: React.FC<POSProps> = ({ products, processSale }) => {
               {cart.map(item => (
                 <tr key={item.id}>
                   <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{item.name}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 text-gray-800 dark:text-gray-200">
                     <div className="flex items-center justify-center gap-2">
                       <button onClick={() => updateQuantity(item.id, -1)} className="p-1 rounded-full bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500"><MinusIcon /></button>
                       <span>{item.quantity}</span>
                       <button onClick={() => updateQuantity(item.id, 1)} className="p-1 rounded-full bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500"><PlusIcon /></button>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-right">{formatCurrency(item.retailPrice)}</td>
-                  <td className="px-4 py-3 text-right font-semibold">{formatCurrency(item.retailPrice * item.quantity)}</td>
+                  <td className="px-4 py-3 text-right text-gray-800 dark:text-gray-200">{formatCurrency(item.retailPrice)}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-gray-800 dark:text-gray-200">{formatCurrency(item.retailPrice * item.quantity)}</td>
                   <td className="px-4 py-3 text-center">
                     <button onClick={() => removeFromCart(item.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button>
                   </td>
