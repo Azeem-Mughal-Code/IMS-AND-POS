@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Product, Sale } from '../types';
+import { Modal } from './common/Modal';
 
 interface ReportsProps {
   sales: Sale[];
@@ -9,6 +10,7 @@ interface ReportsProps {
 const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`;
 
 export const Reports: React.FC<ReportsProps> = ({ sales, products }) => {
+  const [viewingSale, setViewingSale] = useState<Sale | null>(null);
 
   const totalSales = useMemo(() => sales.reduce((sum, sale) => sum + sale.total, 0), [sales]);
   const totalProfit = useMemo(() => sales.reduce((sum, sale) => sum + sale.profit, 0), [sales]);
@@ -46,7 +48,11 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products }) => {
                 <tr key={s.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
                   <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{s.id.slice(-8)}</td>
                   <td className="px-6 py-4">{new Date(s.date).toLocaleString()}</td>
-                  <td className="px-6 py-4">{s.items.reduce((sum, item) => sum + item.quantity, 0)}</td>
+                  <td className="px-6 py-4">
+                    <button onClick={() => setViewingSale(s)} className="text-blue-600 dark:text-blue-400 hover:underline font-medium">
+                      {s.items.reduce((sum, item) => sum + item.quantity, 0)}
+                    </button>
+                  </td>
                   <td className="px-6 py-4">{formatCurrency(s.total)}</td>
                   <td className="px-6 py-4">{formatCurrency(s.profit)}</td>
                 </tr>
@@ -91,6 +97,34 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products }) => {
         </div>
       </div>
 
+      <Modal isOpen={!!viewingSale} onClose={() => setViewingSale(null)} title={`Sale Details - ${viewingSale?.id.slice(-8)}`} size="md">
+        {viewingSale && (
+            <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                <p><span className="font-semibold text-gray-800 dark:text-gray-200">Date:</span> {new Date(viewingSale.date).toLocaleString()}</p>
+                <div className="border-t border-b py-2 my-2 border-gray-200 dark:border-gray-600">
+                    <h4 className="font-semibold mb-2 text-gray-800 dark:text-gray-200">Items Sold</h4>
+                    {viewingSale.items.map(item => (
+                        <div key={item.id} className="flex justify-between items-center mb-1">
+                            <div>
+                                <p className="font-medium text-gray-900 dark:text-white">{item.name}</p>
+                                <p className="text-gray-500 dark:text-gray-400">{item.quantity} &times; {formatCurrency(item.retailPrice)}</p>
+                            </div>
+                            <span className="font-medium text-gray-900 dark:text-white">{formatCurrency(item.retailPrice * item.quantity)}</span>
+                        </div>
+                    ))}
+                </div>
+                 <div className="space-y-1 font-medium text-gray-800 dark:text-gray-200">
+                    <div className="flex justify-between"><span>Subtotal:</span> <span>{formatCurrency(viewingSale.subtotal)}</span></div>
+                    <div className="flex justify-between"><span>Tax:</span> <span>{formatCurrency(viewingSale.tax)}</span></div>
+                    <div className="flex justify-between text-lg font-bold text-gray-900 dark:text-white"><span>Total:</span> <span>{formatCurrency(viewingSale.total)}</span></div>
+                </div>
+                <p><span className="font-semibold text-gray-800 dark:text-gray-200">Payment:</span> {viewingSale.paymentType}</p>
+                 <div className="flex justify-end gap-2 pt-4">
+                    <button onClick={() => setViewingSale(null)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Close</button>
+                </div>
+            </div>
+        )}
+      </Modal>
     </div>
   );
 };
