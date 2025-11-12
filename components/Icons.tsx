@@ -24,6 +24,12 @@ export const ReportsIcon = () => (
   </svg>
 );
 
+export const UsersIcon = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-6 w-6"} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.282-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.282.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+    </svg>
+);
+
 export const SearchIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
     <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
@@ -51,12 +57,6 @@ export const UserIcon = ({ className }: { className?: string }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-6 w-6"} fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
     </svg>
-);
-
-export const UsersIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M15 21a6 6 0 00-9-5.197" />
-  </svg>
 );
 
 export const LogoutIcon = ({ className }: { className?: string }) => (
@@ -93,7 +93,7 @@ export const MoonIcon = () => (
 
 export const ComputerDesktopIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M15.562 3.375a2.25 2.25 0 012.25 2.25v7.5a2.25 2.25 0 01-2.25 2.25H8.438a2.25 2.25 0 01-2.25-2.25v-7.5a2.25 2.25 0 012.25-2.25h7.124zM18.75 11.25a.75.75 0 000-1.5h.375a.75.75 0 000-1.5h-.375a.75.75 0 000-1.5h.375a.75.75 0 000-1.5h-.375a.75.75 0 00-.75.75v4.5a.75.75 0 00.75.75h.375a.75.75 0 000-1.5h-.375zM19.5 17.25l-2.25-3.375a.75.75 0 00-1.28-.53l-1.803 2.405a.75.75 0 01-1.218.04L9.348 12.63a.75.75 0 00-1.12.24l-2.25 3.375a.75.75 0 00.618 1.133h14.204a.75.75 0 00.618-1.133z" />
+    <path d="M15.562 3.375a2.25 2.25 0 012.25 2.25v7.5a2.25 2.25 0 01-2.25 2.25H8.438a2.25 2.25 0 01-2.25-2.25v-7.5a2.25 2.25 0 012.25-2.25h7.124zM18.75 11.25a.75.75 0 000-1.5h.375a.75.75 0 000-1.5h-.375a.75.75 0 000-1.5h.375a.75.75 0 000-1.5h-.375a.75.75 0 00-.75.75v4.5a.75.75 0 00.75.75h.375a.75.75 0 000-1.5h-.375z" />
     <path d="M4.5 3.375a.75.75 0 00-.75.75v12a.75.75 0 00.75.75h15a.75.75 0 00.75-.75v-12a.75.75 0 00-.75-.75h-15z" />
   </svg>
 );

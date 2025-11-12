@@ -6,10 +6,13 @@ import { TAX_RATE } from '../constants';
 
 interface POSProps {
   products: Product[];
-  processSale: (sale: Omit<Sale, 'id' | 'date'>) => void;
+  processSale: (sale: Omit<Sale, 'id' | 'date'>) => Sale;
 }
 
-const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`;
+const formatCurrency = (amount: number) => {
+  const value = amount.toFixed(2);
+  return amount < 0 ? `-${formatCurrency(-amount)}` : `$${value}`;
+}
 
 export const POS: React.FC<POSProps> = ({ products, processSale }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -17,6 +20,7 @@ export const POS: React.FC<POSProps> = ({ products, processSale }) => {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [lastSale, setLastSale] = useState<Sale | null>(null);
+  const [mode, setMode] = useState<'Sale' | 'Return'>('Sale');
 
   const filteredProducts = useMemo(() => {
     if (!searchTerm) return [];
@@ -30,14 +34,16 @@ export const POS: React.FC<POSProps> = ({ products, processSale }) => {
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item.id === product.id);
       if (existingItem) {
-        if (existingItem.quantity < product.stock) {
-          return prevCart.map(item =>
-            item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-          );
+        const canAdd = mode === 'Return' || existingItem.quantity < product.stock;
+        if (canAdd) {
+            return prevCart.map(item =>
+                item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+            );
         }
         return prevCart;
       }
-      if (product.stock > 0) {
+      const canAdd = mode === 'Return' || product.stock > 0;
+      if (canAdd) {
         return [...prevCart, { ...product, quantity: 1 }];
       }
       return prevCart;
@@ -50,7 +56,8 @@ export const POS: React.FC<POSProps> = ({ products, processSale }) => {
       return prevCart.map(item => {
         if (item.id === productId) {
           const newQuantity = item.quantity + change;
-          if (newQuantity > 0 && newQuantity <= item.stock) {
+          const canUpdate = mode === 'Return' || (newQuantity > 0 && newQuantity <= item.stock);
+          if (canUpdate) {
             return { ...item, quantity: newQuantity };
           }
         }
@@ -67,30 +74,31 @@ export const POS: React.FC<POSProps> = ({ products, processSale }) => {
     const subtotal = cart.reduce((sum, item) => sum + item.retailPrice * item.quantity, 0);
     const tax = subtotal * TAX_RATE;
     const total = subtotal + tax;
+    
+    if (mode === 'Return') {
+        return { subtotal: -subtotal, tax: -tax, total: -total };
+    }
     return { subtotal, tax, total };
-  }, [cart]);
+  }, [cart, mode]);
 
   const handleCompleteSale = (paymentType: PaymentType) => {
     const cogs = cart.reduce((sum, item) => sum + item.costPrice * item.quantity, 0);
+    const signedCogs = mode === 'Return' ? -cogs : cogs;
+    
     const sale: Omit<Sale, 'id' | 'date'> = {
       items: cart,
       subtotal: totals.subtotal,
       tax: totals.tax,
       total: totals.total,
-      cogs: cogs,
-      profit: totals.total - cogs,
+      cogs: signedCogs,
+      profit: totals.total - signedCogs,
       paymentType,
-    };
-    processSale(sale);
-    
-    // Create a full Sale object to show on receipt
-    const fullSale: Sale = {
-        ...sale,
-        id: `sale_${Date.now()}`,
-        date: new Date().toISOString()
+      type: mode,
     };
     
-    setLastSale(fullSale);
+    const newSale = processSale(sale);
+    
+    setLastSale(newSale);
     setCart([]);
     setIsPaymentModalOpen(false);
     setIsReceiptModalOpen(true);
@@ -105,6 +113,20 @@ export const POS: React.FC<POSProps> = ({ products, processSale }) => {
     <div className="flex flex-col md:flex-row h-full bg-gray-100 dark:bg-gray-900">
       {/* Left side: Product Search & Cart */}
       <div className="w-full md:w-3/5 p-4 flex flex-col">
+        <div className="flex mb-4 rounded-lg bg-gray-200 dark:bg-gray-700 p-1">
+            <button 
+                onClick={() => { setMode('Sale'); setCart([]); }}
+                className={`w-1/2 py-2 text-sm font-semibold rounded-md transition-colors ${mode === 'Sale' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow' : 'text-gray-600 dark:text-gray-300'}`}
+            >
+                Sale
+            </button>
+            <button 
+                onClick={() => { setMode('Return'); setCart([]); }}
+                className={`w-1/2 py-2 text-sm font-semibold rounded-md transition-colors ${mode === 'Return' ? 'bg-white dark:bg-gray-800 text-orange-600 dark:text-orange-400 shadow' : 'text-gray-600 dark:text-gray-300'}`}
+            >
+                Return
+            </button>
+        </div>
         <div className="relative mb-4">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <SearchIcon />
@@ -178,7 +200,7 @@ export const POS: React.FC<POSProps> = ({ products, processSale }) => {
       {/* Right side: Totals & Payment */}
       <div className="w-full md:w-2/5 p-4 flex flex-col">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 flex-grow flex flex-col">
-          <h2 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">Order Summary</h2>
+          <h2 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">{mode === 'Sale' ? 'Order Summary' : 'Return Summary'}</h2>
           <div className="space-y-3 text-lg flex-grow">
             <div className="flex justify-between">
               <span className="text-gray-600 dark:text-gray-300">Subtotal</span>
@@ -190,15 +212,15 @@ export const POS: React.FC<POSProps> = ({ products, processSale }) => {
             </div>
              <div className="flex justify-between text-2xl font-bold pt-4 border-t border-gray-200 dark:border-gray-600">
               <span className="text-gray-800 dark:text-white">Total</span>
-              <span className="text-blue-600 dark:text-blue-400">{formatCurrency(totals.total)}</span>
+              <span className={`${mode === 'Sale' ? 'text-blue-600 dark:text-blue-400' : 'text-orange-600 dark:text-orange-400'}`}>{formatCurrency(totals.total)}</span>
             </div>
           </div>
           <button
             onClick={() => setIsPaymentModalOpen(true)}
             disabled={cart.length === 0}
-            className="w-full bg-green-500 text-white font-bold py-4 rounded-lg text-xl hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+            className={`w-full text-white font-bold py-4 rounded-lg text-xl disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors ${mode === 'Sale' ? 'bg-green-500 hover:bg-green-600' : 'bg-orange-500 hover:bg-orange-600'}`}
           >
-            PAY
+            {mode === 'Sale' ? 'PAY' : 'REFUND'}
           </button>
         </div>
       </div>
@@ -214,8 +236,9 @@ export const POS: React.FC<POSProps> = ({ products, processSale }) => {
         </div>
       </Modal>
 
-      <Modal isOpen={isReceiptModalOpen} onClose={startNewSale} title={`Receipt - ${lastSale?.id}`}>
+      <Modal isOpen={isReceiptModalOpen} onClose={startNewSale} title={`${lastSale?.type} Receipt - ${lastSale?.id.slice(-8)}`}>
         {lastSale && (
+          <div className="printable-area">
             <div className="space-y-4 text-sm">
                 <p>Date: {new Date(lastSale.date).toLocaleString()}</p>
                 <div className="border-t border-b py-2 border-gray-200 dark:border-gray-600">
@@ -232,11 +255,12 @@ export const POS: React.FC<POSProps> = ({ products, processSale }) => {
                     <div className="flex justify-between text-lg font-bold"><span>Total:</span> <span>{formatCurrency(lastSale.total)}</span></div>
                 </div>
                 <p>Payment: {lastSale.paymentType}</p>
-                 <div className="flex justify-end gap-2 pt-4">
+                 <div className="flex justify-end gap-2 pt-4 no-print">
                     <button onClick={() => window.print()} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Print</button>
-                    <button onClick={startNewSale} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">New Sale</button>
+                    <button onClick={startNewSale} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">New Transaction</button>
                 </div>
             </div>
+          </div>
         )}
       </Modal>
     </div>

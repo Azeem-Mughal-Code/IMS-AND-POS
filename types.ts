@@ -40,6 +40,7 @@ export interface Sale {
   cogs: number;
   profit: number;
   paymentType: PaymentType;
+  type: 'Sale' | 'Return';
 }
 
 export type View = 'dashboard' | 'pos' | 'inventory' | 'reports' | 'users';

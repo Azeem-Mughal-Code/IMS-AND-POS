@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Product, InventoryAdjustment } from '../types';
+import { Product, InventoryAdjustment, User, UserRole } from '../types';
 import { Modal } from './common/Modal';
 
 interface InventoryProps {
@@ -9,6 +9,7 @@ interface InventoryProps {
   receiveStock: (productId: string, quantity: number) => void;
   adjustStock: (productId: string, quantity: number, reason: string) => void;
   inventoryAdjustments: InventoryAdjustment[];
+  currentUser: User;
 }
 
 const ProductForm: React.FC<{ product?: Product, onSubmit: (p: any) => void, onCancel: () => void }> = ({ product, onSubmit, onCancel }) => {
@@ -97,7 +98,7 @@ const StockActionForm: React.FC<{ title: string, onSubmit: (quantity: number, re
     );
 };
 
-export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, updateProduct, receiveStock, adjustStock, inventoryAdjustments }) => {
+export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, updateProduct, receiveStock, adjustStock, inventoryAdjustments, currentUser }) => {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
   
@@ -164,10 +165,12 @@ export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, upda
     <div className="p-6">
       <div className="flex flex-col items-start gap-4 md:flex-row md:justify-between md:items-center mb-6">
         <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Inventory Management</h1>
-        <button onClick={handleOpenAddModal} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" /></svg>
-            Add Product
-        </button>
+        {currentUser.role === UserRole.Admin && (
+          <button onClick={handleOpenAddModal} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" /></svg>
+              Add Product
+          </button>
+        )}
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-x-auto">
@@ -191,9 +194,13 @@ export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, upda
                 <td className="px-6 py-4">${p.costPrice.toFixed(2)}</td>
                 <td className={`px-6 py-4 font-semibold ${p.stock <= p.lowStockThreshold ? 'text-red-500' : 'text-green-500'}`}>{p.stock}</td>
                 <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                  <button onClick={() => handleOpenEditModal(p)} className="font-medium text-blue-600 dark:text-blue-500 hover:underline">Edit</button>
-                  <button onClick={() => openStockModal(p.id, 'receive')} className="font-medium text-green-600 dark:text-green-500 hover:underline">Receive</button>
-                  <button onClick={() => openStockModal(p.id, 'adjust')} className="font-medium text-yellow-600 dark:text-yellow-500 hover:underline">Adjust</button>
+                  {currentUser.role === UserRole.Admin && (
+                    <>
+                      <button onClick={() => handleOpenEditModal(p)} className="font-medium text-blue-600 dark:text-blue-500 hover:underline">Edit</button>
+                      <button onClick={() => openStockModal(p.id, 'receive')} className="font-medium text-green-600 dark:text-green-500 hover:underline">Receive</button>
+                      <button onClick={() => openStockModal(p.id, 'adjust')} className="font-medium text-yellow-600 dark:text-yellow-500 hover:underline">Adjust</button>
+                    </>
+                  )}
                   <button onClick={() => openHistoryModal(p)} className="font-medium text-gray-600 dark:text-gray-400 hover:underline">History</button>
                 </td>
               </tr>
