@@ -102,9 +102,9 @@ export const POS: React.FC<POSProps> = ({ products, processSale }) => {
   }
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] bg-gray-100 dark:bg-gray-900">
+    <div className="flex flex-col md:flex-row h-full bg-gray-100 dark:bg-gray-900">
       {/* Left side: Product Search & Cart */}
-      <div className="w-3/5 p-4 flex flex-col">
+      <div className="w-full md:w-3/5 p-4 flex flex-col">
         <div className="relative mb-4">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <SearchIcon />
@@ -176,7 +176,7 @@ export const POS: React.FC<POSProps> = ({ products, processSale }) => {
       </div>
       
       {/* Right side: Totals & Payment */}
-      <div className="w-2/5 p-4 flex flex-col">
+      <div className="w-full md:w-2/5 p-4 flex flex-col">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 flex-grow flex flex-col">
           <h2 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">Order Summary</h2>
           <div className="space-y-3 text-lg flex-grow">

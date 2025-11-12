@@ -162,7 +162,7 @@ export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, upda
 
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col items-start gap-4 md:flex-row md:justify-between md:items-center mb-6">
         <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Inventory Management</h1>
         <button onClick={handleOpenAddModal} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" /></svg>

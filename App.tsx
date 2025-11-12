@@ -6,7 +6,8 @@ import { Dashboard } from './components/Dashboard';
 import { POS } from './components/POS';
 import { Inventory } from './components/Inventory';
 import { Reports } from './components/Reports';
-import { DashboardIcon, POSIcon, InventoryIcon, ReportsIcon } from './components/Icons';
+import { DashboardIcon, POSIcon, InventoryIcon, ReportsIcon, UserIcon } from './components/Icons';
+import { Modal } from './components/common/Modal';
 
 const App: React.FC = () => {
   const [products, setProducts] = useLocalStorage<Product[]>('ims-products', INITIAL_PRODUCTS);
@@ -14,6 +15,7 @@ const App: React.FC = () => {
   const [inventoryAdjustments, setInventoryAdjustments] = useLocalStorage<InventoryAdjustment[]>('ims-adjustments', []);
   const [userRole, setUserRole] = useState<UserRole>(UserRole.Admin);
   const [activeView, setActiveView] = useState<View>('dashboard');
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
   const addProduct = useCallback((product: Omit<Product, 'id'>) => {
     setProducts(prev => [...prev, { ...product, id: `prod_${Date.now()}` }]);
@@ -112,9 +114,24 @@ const App: React.FC = () => {
     </button>
   );
 
+  const BottomNavItem: React.FC<{ view?: View; icon: React.ReactNode; label: string; onClick?: () => void }> = ({ view, icon, label, onClick }) => (
+    <button
+      onClick={onClick ?? (() => view && setActiveView(view))}
+      className={`flex flex-col items-center justify-center w-full pt-2 pb-1 transition-colors ${
+        activeView === view
+          ? 'text-blue-600 dark:text-blue-400'
+          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+      }`}
+    >
+      {icon}
+      <span className="text-xs font-medium">{label}</span>
+    </button>
+  );
+
+
   return (
     <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-      <aside className="w-64 bg-white dark:bg-gray-800 shadow-lg flex flex-col">
+      <aside className="w-64 bg-white dark:bg-gray-800 shadow-lg flex-col hidden md:flex">
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <h1 className="text-2xl font-bold text-blue-600 dark:text-blue-400">IMS / POS</h1>
         </div>
@@ -151,9 +168,50 @@ const App: React.FC = () => {
            `}</style>
         </div>
       </aside>
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
         {renderView()}
       </main>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-around shadow-lg">
+        {userRole === UserRole.Admin && (
+          <>
+            <BottomNavItem view="dashboard" icon={<DashboardIcon />} label="Dashboard" />
+            <BottomNavItem view="pos" icon={<POSIcon />} label="POS" />
+            <BottomNavItem view="inventory" icon={<InventoryIcon />} label="Inventory" />
+            <BottomNavItem view="reports" icon={<ReportsIcon />} label="Reports" />
+          </>
+        )}
+        {userRole === UserRole.Cashier && (
+          <BottomNavItem view="pos" icon={<POSIcon />} label="Point of Sale" />
+        )}
+        <BottomNavItem icon={<UserIcon />} label={userRole} onClick={() => setIsSettingsModalOpen(true)} />
+      </nav>
+      
+      <Modal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} title="User Settings">
+        <div className="p-4 flex flex-col items-center">
+            <p className="mb-4 text-gray-700 dark:text-gray-300">Switch user role:</p>
+            <label className="flex items-center cursor-pointer">
+                <span className="mr-3 text-sm font-medium">{userRole}</span>
+                <div className="relative">
+                <input type="checkbox" id="role-toggle-modal" className="sr-only" checked={userRole === UserRole.Admin} onChange={() => {
+                    setUserRole(prev => prev === UserRole.Admin ? UserRole.Cashier : UserRole.Admin);
+                    setActiveView(userRole === UserRole.Admin ? 'pos' : 'dashboard');
+                    setIsSettingsModalOpen(false);
+                }} />
+                <div className="block bg-gray-600 w-14 h-8 rounded-full"></div>
+                <div className="dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition"></div>
+                </div>
+            </label>
+            <style>{`
+                #role-toggle-modal:checked ~ .dot {
+                transform: translateX(100%);
+                background-color: #48bb78;
+                }
+            `}</style>
+        </div>
+      </Modal>
+
     </div>
   );
 };
