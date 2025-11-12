@@ -1,0 +1,5 @@
+{
+  "name": "React IMS & POS System",
+  "description": "A comprehensive Inventory Management and Point of Sale system built with React, TypeScript, and Tailwind CSS. It features real-time stock tracking, sales processing, product management, and reporting dashboards, all within a sleek, modern interface.",
+  "requestFramePermissions": []
+}
