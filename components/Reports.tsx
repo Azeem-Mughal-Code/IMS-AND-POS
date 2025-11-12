@@ -27,7 +27,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
   }, [statusMessage]);
 
   const handleRefund = () => {
-    if (!viewingSale || viewingSale.type !== 'Sale') return;
+    if (!viewingSale || viewingSale.type !== 'Sale' || viewingSale.status === 'Refunded') return;
 
     const subtotal = viewingSale.items.reduce((sum, item) => sum + item.retailPrice * item.quantity, 0);
     const tax = subtotal * TAX_RATE;
@@ -43,6 +43,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
         profit: (-total) - (-cogs),
         paymentType: viewingSale.paymentType,
         type: 'Return',
+        originalSaleId: viewingSale.id,
     };
 
     try {
@@ -183,9 +184,13 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
                     <p><span className="font-semibold text-gray-800 dark:text-gray-200">Payment:</span> {viewingSale.paymentType}</p>
                 </div>
                  <div className="flex justify-end gap-2 pt-4 no-print">
-                    {viewingSale.type === 'Sale' && (
+                    {viewingSale.type === 'Sale' ? (
+                      viewingSale.status === 'Refunded' ? (
+                        <span className="px-4 py-2 bg-gray-300 text-gray-600 dark:bg-gray-700 dark:text-gray-400 rounded-md cursor-not-allowed">Refunded</span>
+                      ) : (
                         <button onClick={handleRefund} className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600">Refund</button>
-                    )}
+                      )
+                    ) : null}
                     <button onClick={() => window.print()} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Print</button>
                     <button onClick={() => setViewingSale(null)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Close</button>
                 </div>

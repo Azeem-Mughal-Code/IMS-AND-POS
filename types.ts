@@ -41,6 +41,8 @@ export interface Sale {
   profit: number;
   paymentType: PaymentType;
   type: 'Sale' | 'Return';
+  originalSaleId?: string;
+  status?: 'Completed' | 'Refunded';
 }
 
 export type View = 'dashboard' | 'pos' | 'inventory' | 'reports' | 'users';

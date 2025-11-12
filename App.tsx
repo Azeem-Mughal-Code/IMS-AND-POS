@@ -470,7 +470,17 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
 
   const processSale = useCallback((saleData: Omit<Sale, 'id' | 'date'>): Sale => {
     const newSale: Sale = { ...saleData, id: `sale_${Date.now()}`, date: new Date().toISOString() };
-    setSales(prev => [newSale, ...prev]);
+    
+    setSales(prev => {
+        let salesWithNew = [newSale, ...prev];
+        if (newSale.type === 'Return' && newSale.originalSaleId) {
+            const saleToUpdateIndex = salesWithNew.findIndex(s => s.id === newSale.originalSaleId);
+            if (saleToUpdateIndex > -1) {
+                salesWithNew[saleToUpdateIndex] = { ...salesWithNew[saleToUpdateIndex], status: 'Refunded' };
+            }
+        }
+        return salesWithNew;
+    });
 
     const adjustments: InventoryAdjustment[] = newSale.items.map(cartItem => ({ 
         productId: cartItem.id, 
