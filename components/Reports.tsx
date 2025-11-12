@@ -27,7 +27,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
   }, [statusMessage]);
 
   const handleRefund = () => {
-    if (!viewingSale || viewingSale.type !== 'Sale' || viewingSale.status === 'Refunded') return;
+    if (!viewingSale || viewingSale.type !== 'Sale' || viewingSale.status !== 'Completed') return;
 
     const subtotal = viewingSale.items.reduce((sum, item) => sum + item.retailPrice * item.quantity, 0);
     const tax = subtotal * TAX_RATE;
@@ -58,6 +58,10 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
 
   const totalSales = useMemo(() => sales.reduce((sum, sale) => sum + sale.total, 0), [sales]);
   const totalProfit = useMemo(() => sales.reduce((sum, sale) => sum + sale.profit, 0), [sales]);
+
+  const sortedSales = useMemo(() => {
+    return [...sales].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }, [sales]);
 
   return (
     <div className="p-6 space-y-6">
@@ -94,20 +98,25 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
               <tr>
                 <th scope="col" className="px-6 py-3">ID</th>
                 <th scope="col" className="px-6 py-3">Date</th>
-                <th scope="col" className="px-6 py-3">Type</th>
+                <th scope="col" className="px-6 py-3">Type / Status</th>
                 <th scope="col" className="px-6 py-3">Items</th>
                 <th scope="col" className="px-6 py-3">Total</th>
                 {currentUser.role === UserRole.Admin && <th scope="col" className="px-6 py-3">Profit</th>}
               </tr>
             </thead>
             <tbody>
-              {sales.map(s => (
+              {sortedSales.map(s => (
                 <tr key={s.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
                   <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{s.id.slice(-8)}</td>
                   <td className="px-6 py-4">{new Date(s.date).toLocaleString()}</td>
                   <td className="px-6 py-4">
-                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${s.type === 'Return' ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'}`}>
-                        {s.type}
+                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        s.type === 'Return' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' :
+                        s.status === 'Refunded' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
+                        s.status === 'Partially Refunded' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                        'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                     }`}>
+                        {s.type === 'Sale' ? s.status : s.type}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -164,13 +173,17 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
             <div className="printable-area">
                 <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
                     <p><span className="font-semibold text-gray-800 dark:text-gray-200">Date:</span> {new Date(viewingSale.date).toLocaleString()}</p>
+                     {viewingSale.type === 'Return' && viewingSale.originalSaleId && <p><span className="font-semibold text-gray-800 dark:text-gray-200">Original Sale ID:</span> ...{viewingSale.originalSaleId.slice(-8)}</p>}
                     <div className="border-t border-b py-2 my-2 border-gray-200 dark:border-gray-600">
                         <h4 className="font-semibold mb-2 text-gray-800 dark:text-gray-200">Items</h4>
                         {viewingSale.items.map(item => (
-                            <div key={item.id} className="flex justify-between items-center mb-1">
+                            <div key={item.id} className={`flex justify-between items-center mb-1 ${item.returnedQuantity && item.returnedQuantity >= item.quantity ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
                                 <div>
                                     <p className="font-medium text-gray-900 dark:text-white">{item.name}</p>
-                                    <p className="text-gray-500 dark:text-gray-400">{item.quantity} &times; {formatCurrency(item.retailPrice)}</p>
+                                    <p className="text-sm">
+                                      {item.quantity} &times; {formatCurrency(item.retailPrice)}
+                                      {item.returnedQuantity && item.returnedQuantity > 0 && <span className="ml-2 font-semibold not-line-through text-orange-600 dark:text-orange-400">(Returned: {item.returnedQuantity})</span>}
+                                    </p>
                                 </div>
                                 <span className="font-medium text-gray-900 dark:text-white">{formatCurrency(item.retailPrice * item.quantity)}</span>
                             </div>
@@ -185,10 +198,10 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
                 </div>
                  <div className="flex justify-end gap-2 pt-4 no-print">
                     {viewingSale.type === 'Sale' ? (
-                      viewingSale.status === 'Refunded' ? (
-                        <span className="px-4 py-2 bg-gray-300 text-gray-600 dark:bg-gray-700 dark:text-gray-400 rounded-md cursor-not-allowed">Refunded</span>
+                      viewingSale.status === 'Completed' ? (
+                        <button onClick={handleRefund} className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600">Full Refund</button>
                       ) : (
-                        <button onClick={handleRefund} className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600">Refund</button>
+                        <span className="px-4 py-2 bg-gray-300 text-gray-600 dark:bg-gray-700 dark:text-gray-400 rounded-md cursor-not-allowed">{viewingSale.status}</span>
                       )
                     ) : null}
                     <button onClick={() => window.print()} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Print</button>

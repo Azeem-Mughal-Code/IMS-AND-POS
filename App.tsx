@@ -205,7 +205,7 @@ const MainLayout: React.FC<{
   const renderView = () => {
     switch (activeView) {
       case 'dashboard': return <Dashboard products={products} sales={sales} />;
-      case 'pos': return <POS products={products} processSale={rest.processSale} />;
+      case 'pos': return <POS products={products} sales={sales} processSale={rest.processSale} />;
       case 'inventory': return <Inventory products={products} addProduct={rest.addProduct} updateProduct={rest.updateProduct} receiveStock={rest.receiveStock} adjustStock={rest.adjustStock} inventoryAdjustments={inventoryAdjustments} currentUser={currentUser} />;
       case 'reports': return <Reports sales={sales} products={products} currentUser={currentUser} processSale={rest.processSale} />;
       case 'users':
@@ -469,17 +469,46 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
   }, [products, setProducts, setInventoryAdjustments]);
 
   const processSale = useCallback((saleData: Omit<Sale, 'id' | 'date'>): Sale => {
-    const newSale: Sale = { ...saleData, id: `sale_${Date.now()}`, date: new Date().toISOString() };
-    
-    setSales(prev => {
-        let salesWithNew = [newSale, ...prev];
+    const itemsWithDefaults = saleData.type === 'Sale' 
+        ? saleData.items.map(item => ({...item, returnedQuantity: 0}))
+        : saleData.items;
+
+    const newSale: Sale = {
+        ...saleData,
+        id: `sale_${Date.now()}`,
+        date: new Date().toISOString(),
+        ...(saleData.type === 'Sale' && { items: itemsWithDefaults, status: 'Completed' })
+    };
+
+    setSales(prevSales => {
+        let updatedSales = [newSale, ...prevSales];
+
         if (newSale.type === 'Return' && newSale.originalSaleId) {
-            const saleToUpdateIndex = salesWithNew.findIndex(s => s.id === newSale.originalSaleId);
-            if (saleToUpdateIndex > -1) {
-                salesWithNew[saleToUpdateIndex] = { ...salesWithNew[saleToUpdateIndex], status: 'Refunded' };
+            const originalSaleIndex = updatedSales.findIndex(s => s.id === newSale.originalSaleId);
+            if (originalSaleIndex > -1) {
+                const originalSale = { ...updatedSales[originalSaleIndex] };
+                
+                originalSale.items = originalSale.items.map(origItem => {
+                    const returnedItem = newSale.items.find(retItem => retItem.id === origItem.id);
+                    if (returnedItem) {
+                        const currentReturned = origItem.returnedQuantity || 0;
+                        return { ...origItem, returnedQuantity: currentReturned + returnedItem.quantity };
+                    }
+                    return origItem;
+                });
+
+                const allItemsReturned = originalSale.items.every(item => (item.returnedQuantity || 0) >= item.quantity);
+                
+                if (allItemsReturned) {
+                    originalSale.status = 'Refunded';
+                } else {
+                    originalSale.status = 'Partially Refunded';
+                }
+                
+                updatedSales[originalSaleIndex] = originalSale;
             }
         }
-        return salesWithNew;
+        return updatedSales;
     });
 
     const adjustments: InventoryAdjustment[] = newSale.items.map(cartItem => ({ 

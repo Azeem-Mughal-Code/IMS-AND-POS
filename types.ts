@@ -28,6 +28,7 @@ export interface Product {
 
 export interface CartItem extends Product {
   quantity: number;
+  returnedQuantity?: number;
 }
 
 export interface Sale {
@@ -42,7 +43,7 @@ export interface Sale {
   paymentType: PaymentType;
   type: 'Sale' | 'Return';
   originalSaleId?: string;
-  status?: 'Completed' | 'Refunded';
+  status?: 'Completed' | 'Partially Refunded' | 'Refunded';
 }
 
 export type View = 'dashboard' | 'pos' | 'inventory' | 'reports' | 'users';
