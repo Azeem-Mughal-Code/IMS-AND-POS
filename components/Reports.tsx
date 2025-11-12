@@ -107,7 +107,11 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
             <tbody>
               {sortedSales.map(s => (
                 <tr key={s.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                  <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{s.id.slice(-8)}</td>
+                  <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">
+                    <button onClick={() => setViewingSale(s)} className="text-blue-600 dark:text-blue-400 hover:underline font-medium">
+                      {s.id.slice(-8)}
+                    </button>
+                  </td>
                   <td className="px-6 py-4">{new Date(s.date).toLocaleString()}</td>
                   <td className="px-6 py-4">
                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
@@ -120,9 +124,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <button onClick={() => setViewingSale(s)} className="text-blue-600 dark:text-blue-400 hover:underline font-medium">
-                      {s.items.reduce((sum, item) => sum + item.quantity, 0)}
-                    </button>
+                    {s.items.reduce((sum, item) => sum + item.quantity, 0)}
                   </td>
                   <td className="px-6 py-4">{formatCurrency(s.total)}</td>
                   {currentUser.role === UserRole.Admin && <td className="px-6 py-4">{formatCurrency(s.profit)}</td>}
