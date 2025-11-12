@@ -3,6 +3,13 @@ export enum UserRole {
   Cashier = 'Cashier',
 }
 
+export interface User {
+  id: string;
+  username: string;
+  password: string; // NOTE: In a real app, this should be hashed.
+  role: UserRole;
+}
+
 export enum PaymentType {
   Cash = 'Cash',
   Card = 'Card',
@@ -24,7 +31,7 @@ export interface CartItem extends Product {
 }
 
 export interface Sale {
-  id: string;
+  id:string;
   date: string;
   items: CartItem[];
   subtotal: number;
