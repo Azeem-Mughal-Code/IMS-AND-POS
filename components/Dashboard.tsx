@@ -30,13 +30,14 @@ const getStartOfWeek = (date: Date): Date => {
   return d;
 };
 
-export const Dashboard: React.FC<{ products: Product[], sales: Sale[], currency: string }> = ({ products, sales, currency }) => {
+export const Dashboard: React.FC<{ products: Product[], sales: Sale[], currency: string, isIntegerCurrency: boolean }> = ({ products, sales, currency, isIntegerCurrency }) => {
   const [timeRange, setTimeRange] = useState<TimeRange>('weekly');
 
   const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
-    minimumFractionDigits: 2,
+    minimumFractionDigits: isIntegerCurrency ? 0 : 2,
+    maximumFractionDigits: isIntegerCurrency ? 0 : 2,
   }).format(amount);
 
   const filteredSales = useMemo(() => {

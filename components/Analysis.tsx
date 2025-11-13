@@ -34,15 +34,17 @@ interface AnalysisProps {
     viewState: AnalysisViewState;
     onViewStateUpdate: (updates: Partial<AnalysisViewState>) => void;
     currency: string;
+    isIntegerCurrency: boolean;
 }
 
-export const Analysis: React.FC<AnalysisProps> = ({ products, sales, viewState, onViewStateUpdate, currency }) => {
+export const Analysis: React.FC<AnalysisProps> = ({ products, sales, viewState, onViewStateUpdate, currency, isIntegerCurrency }) => {
     const { searchTerm, sortConfig, currentPage, itemsPerPage } = viewState;
 
     const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency,
-        minimumFractionDigits: 2,
+        minimumFractionDigits: isIntegerCurrency ? 0 : 2,
+        maximumFractionDigits: isIntegerCurrency ? 0 : 2,
     }).format(amount);
 
     const productPerformance = useMemo<PerformanceMetric[]>(() => {

@@ -16,6 +16,7 @@ interface InventoryProps {
   inventoryAdjustments: InventoryAdjustment[];
   currentUser: User;
   currency: string;
+  isIntegerCurrency: boolean;
   viewState: InventoryViewState;
   onViewStateUpdate: (updates: Partial<InventoryViewState>) => void;
 }
@@ -107,7 +108,7 @@ const StockActionForm: React.FC<{ title: string, onSubmit: (quantity: number, re
 
 type SortableProductKeys = keyof Product;
 
-export const Inventory: React.FC<InventoryProps> = ({ products, sales, addProduct, updateProduct, deleteProduct, receiveStock, adjustStock, inventoryAdjustments, currentUser, currency, viewState, onViewStateUpdate }) => {
+export const Inventory: React.FC<InventoryProps> = ({ products, sales, addProduct, updateProduct, deleteProduct, receiveStock, adjustStock, inventoryAdjustments, currentUser, currency, isIntegerCurrency, viewState, onViewStateUpdate }) => {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
   
@@ -131,7 +132,8 @@ export const Inventory: React.FC<InventoryProps> = ({ products, sales, addProduc
   const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
-    minimumFractionDigits: 2
+    minimumFractionDigits: isIntegerCurrency ? 0 : 2,
+    maximumFractionDigits: isIntegerCurrency ? 0 : 2,
   }).format(amount);
 
   const { searchTerm, stockFilter, sortConfig, currentPage, itemsPerPage } = viewState;

@@ -27,6 +27,22 @@ interface SettingsProps {
     importProducts: (newProducts: Omit<Product, 'id'>[]) => { success: boolean; message: string };
     clearSales: () => void;
     factoryReset: () => void;
+    isSplitPaymentEnabled: boolean;
+    setIsSplitPaymentEnabled: (enabled: boolean) => void;
+    isChangeDueEnabled: boolean;
+    setIsChangeDueEnabled: (enabled: boolean) => void;
+    isIntegerCurrency: boolean;
+    setIsIntegerCurrency: (enabled: boolean) => void;
+    isTaxEnabled: boolean;
+    setIsTaxEnabled: (enabled: boolean) => void;
+    taxRate: number;
+    setTaxRate: (rate: number) => void;
+    isDiscountEnabled: boolean;
+    setIsDiscountEnabled: (enabled: boolean) => void;
+    discountRate: number;
+    setDiscountRate: (rate: number) => void;
+    discountThreshold: number;
+    setDiscountThreshold: (threshold: number) => void;
 }
 
 const ThemeSelector: React.FC<{ theme: 'light' | 'dark' | 'system', setTheme: (theme: 'light' | 'dark' | 'system') => void }> = ({ theme, setTheme }) => {
@@ -56,8 +72,37 @@ const ThemeSelector: React.FC<{ theme: 'light' | 'dark' | 'system', setTheme: (t
     );
 };
 
+const ToggleSwitch: React.FC<{
+  enabled: boolean;
+  onChange: (enabled: boolean) => void;
+  label: string;
+}> = ({ enabled, onChange, label }) => {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="font-semibold text-gray-700 dark:text-gray-300">{label}</span>
+      <button
+        type="button"
+        onClick={() => onChange(!enabled)}
+        className={`${
+          enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-600'
+        } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:ring-offset-gray-800`}
+        role="switch"
+        aria-checked={enabled}
+      >
+        <span
+          aria-hidden="true"
+          className={`${
+            enabled ? 'translate-x-5' : 'translate-x-0'
+          } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+        />
+      </button>
+    </div>
+  );
+};
+
+
 // --- Data Management Component ---
-const DataManagement: React.FC<Omit<SettingsProps, 'onUsersViewUpdate' | 'usersViewState' | 'theme' | 'setTheme' | 'onLogout' | 'itemsPerPage' | 'setItemsPerPage' | 'currency' | 'setCurrency'>> = ({ currentUser, businessName, products, sales, importProducts, clearSales, factoryReset }) => {
+const DataManagement: React.FC<Omit<SettingsProps, 'onUsersViewUpdate' | 'usersViewState' | 'theme' | 'setTheme' | 'onLogout' | 'itemsPerPage' | 'setItemsPerPage' | 'currency' | 'setCurrency' | 'isSplitPaymentEnabled' | 'setIsSplitPaymentEnabled' | 'isChangeDueEnabled' | 'setIsChangeDueEnabled' | 'isIntegerCurrency' | 'setIsIntegerCurrency' | 'isTaxEnabled' | 'setIsTaxEnabled' | 'taxRate' | 'setTaxRate' | 'isDiscountEnabled' | 'setIsDiscountEnabled' | 'discountRate' | 'setDiscountRate' | 'discountThreshold' | 'setDiscountThreshold'>> = ({ currentUser, businessName, products, sales, importProducts, clearSales, factoryReset }) => {
     const [isImportModalOpen, setImportModalOpen] = useState(false);
     const [importFile, setImportFile] = useState<File | null>(null);
     const [importFeedback, setImportFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null);
@@ -345,7 +390,7 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({ title, subtitle, se
 
 
 export const Settings: React.FC<SettingsProps> = (props) => {
-    const { currentUser, updateUser, theme, setTheme, onLogout, itemsPerPage, setItemsPerPage, currency, setCurrency } = props;
+    const { currentUser, updateUser, theme, setTheme, onLogout, itemsPerPage, setItemsPerPage, currency, setCurrency, isSplitPaymentEnabled, setIsSplitPaymentEnabled, isChangeDueEnabled, setIsChangeDueEnabled, isIntegerCurrency, setIsIntegerCurrency, isTaxEnabled, setIsTaxEnabled, taxRate, setTaxRate, isDiscountEnabled, setIsDiscountEnabled, discountRate, setDiscountRate, discountThreshold, setDiscountThreshold } = props;
     const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
     
     const [profileUsername, setProfileUsername] = useState(currentUser.username);
@@ -443,6 +488,100 @@ export const Settings: React.FC<SettingsProps> = (props) => {
                                 { value: 'PKR', label: 'PKR - Pakistani Rupee' },
                             ]}
                         />
+                    </div>
+                </div>
+            </AccordionSection>
+
+            <AccordionSection
+                title="Behavior"
+                subtitle="Customize the functionality of the application."
+                sectionId="behavior"
+                expandedSection={expandedSection}
+                setExpandedSection={setExpandedSection}
+            >
+                <div className="space-y-6">
+                    <div>
+                        <ToggleSwitch
+                            enabled={isIntegerCurrency}
+                            onChange={setIsIntegerCurrency}
+                            label="Use Integer Currency"
+                        />
+                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                            Display and calculate all money values as whole numbers (e.g., for JPY).
+                        </p>
+                    </div>
+                     <div className="border-t border-gray-200 dark:border-gray-700 my-4"></div>
+                    <div>
+                        <ToggleSwitch
+                            enabled={isTaxEnabled}
+                            onChange={setIsTaxEnabled}
+                            label="Enable Sales Tax"
+                        />
+                        {isTaxEnabled && (
+                            <div className="mt-4">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tax Rate (%)</label>
+                                <input
+                                    type="number"
+                                    value={taxRate * 100}
+                                    onChange={e => setTaxRate(parseFloat(e.target.value) / 100)}
+                                    className="mt-1 block w-full sm:w-1/2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
+                                    step="0.01" min="0"
+                                />
+                            </div>
+                        )}
+                    </div>
+                    <div className="border-t border-gray-200 dark:border-gray-700 my-4"></div>
+                    <div>
+                        <ToggleSwitch
+                            enabled={isDiscountEnabled}
+                            onChange={setIsDiscountEnabled}
+                            label="Enable Automatic Discount"
+                        />
+                        {isDiscountEnabled && (
+                            <div className="mt-4 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Discount Rate (%)</label>
+                                    <input
+                                        type="number"
+                                        value={discountRate * 100}
+                                        onChange={e => setDiscountRate(parseFloat(e.target.value) / 100)}
+                                        className="mt-1 block w-full sm:w-1/2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
+                                        step="0.1" min="0"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Minimum Purchase for Discount</label>
+                                    <input
+                                        type="number"
+                                        value={discountThreshold}
+                                        onChange={e => setDiscountThreshold(parseFloat(e.target.value))}
+                                        className="mt-1 block w-full sm:w-1/2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
+                                        step="1" min="0"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                     <div className="border-t border-gray-200 dark:border-gray-700 my-4"></div>
+                    <div>
+                        <ToggleSwitch
+                            enabled={isSplitPaymentEnabled}
+                            onChange={setIsSplitPaymentEnabled}
+                            label="Enable Split Payments"
+                        />
+                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                            Allows a single sale to be paid for with multiple payment methods.
+                        </p>
+                    </div>
+                    <div>
+                        <ToggleSwitch
+                            enabled={isChangeDueEnabled}
+                            onChange={setIsChangeDueEnabled}
+                            label="Calculate Change Due"
+                        />
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                            Automatically calculate and display change due in the POS and on receipts.
+                        </p>
                     </div>
                 </div>
             </AccordionSection>

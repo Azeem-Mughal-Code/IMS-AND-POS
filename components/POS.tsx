@@ -1,17 +1,222 @@
-import React, { useState, useMemo } from 'react';
-import { Product, CartItem, PaymentType, Sale } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Product, CartItem, PaymentType, Sale, User, Payment } from '../types';
 import { SearchIcon, PlusIcon, MinusIcon, TrashIcon } from './Icons';
 import { Modal } from './common/Modal';
-import { TAX_RATE } from '../constants';
 
 interface POSProps {
   products: Product[];
   sales: Sale[];
   processSale: (sale: Omit<Sale, 'id' | 'date'>) => Sale;
   currency: string;
+  currentUser: User;
+  isSplitPaymentEnabled: boolean;
+  isChangeDueEnabled: boolean;
+  isIntegerCurrency: boolean;
+  isTaxEnabled: boolean;
+  taxRate: number;
+  isDiscountEnabled: boolean;
+  discountRate: number;
+  discountThreshold: number;
 }
 
-export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency }) => {
+const SimplePaymentModalContent: React.FC<{
+    total: number;
+    onCompleteSale: (payments: Payment[]) => void;
+    onClose: () => void;
+    currency: string;
+    isChangeDueEnabled: boolean;
+    isIntegerCurrency: boolean;
+}> = ({ total, onCompleteSale, onClose, currency, isChangeDueEnabled, isIntegerCurrency }) => {
+    // Default amount tendered to total, especially important when change is disabled.
+    const [amountTendered, setAmountTendered] = useState(total.toFixed(2));
+
+    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: isIntegerCurrency ? 0 : 2,
+      maximumFractionDigits: isIntegerCurrency ? 0 : 2,
+    }).format(amount);
+
+    const numericAmountTendered = parseFloat(amountTendered) || 0;
+    // Calculate change only if enabled, otherwise it's 0.
+    const changeDue = isChangeDueEnabled && numericAmountTendered > total ? numericAmountTendered - total : 0;
+    // Can complete if change is enabled and amount is sufficient, OR if change is disabled (exact amount).
+    const canComplete = isChangeDueEnabled ? numericAmountTendered >= total : true;
+
+    const handlePayment = (type: PaymentType) => {
+        if (!canComplete) return;
+        // Use the entered amount if change is enabled, otherwise use the exact total.
+        const paymentAmount = isChangeDueEnabled ? numericAmountTendered : total;
+        const payments: Payment[] = [{ type, amount: paymentAmount }];
+        onCompleteSale(payments);
+    };
+
+
+    return (
+        <div className="space-y-4">
+            <div className="text-center">
+                <p className="text-lg text-gray-600 dark:text-gray-300">Total Due</p>
+                <p className="text-5xl font-bold text-gray-800 dark:text-white">{formatCurrency(total)}</p>
+            </div>
+
+            <div className="pt-4 border-t">
+                 {isChangeDueEnabled && (
+                    <>
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Amount Tendered</label>
+                            <input 
+                                type="number"
+                                value={amountTendered}
+                                onChange={(e) => setAmountTendered(e.target.value)}
+                                placeholder="Amount"
+                                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
+                            />
+                        </div>
+                        
+                        <div className="flex justify-between text-xl font-semibold mb-4">
+                            <span>Change Due:</span>
+                            <span className="text-green-500">{formatCurrency(changeDue)}</span>
+                        </div>
+                    </>
+                )}
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
+                    <button onClick={() => handlePayment(PaymentType.Cash)} disabled={!canComplete} className="w-full py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 disabled:bg-blue-300">Cash</button>
+                    <button onClick={() => handlePayment(PaymentType.Card)} disabled={!canComplete} className="w-full py-2 bg-indigo-500 text-white font-semibold rounded-lg hover:bg-indigo-600 disabled:bg-indigo-300">Card</button>
+                    <button onClick={() => handlePayment(PaymentType.Other)} disabled={!canComplete} className="w-full py-2 bg-gray-500 text-white font-semibold rounded-lg hover:bg-gray-600 disabled:bg-gray-300">Other</button>
+                </div>
+            </div>
+            
+            <div className="flex justify-end gap-2 pt-4">
+                <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
+            </div>
+        </div>
+    );
+};
+
+
+const PaymentModalContent: React.FC<{
+    total: number,
+    onCompleteSale: (payments: Payment[]) => void,
+    onClose: () => void,
+    currency: string,
+    isChangeDueEnabled: boolean,
+    isIntegerCurrency: boolean
+}> = ({ total, onCompleteSale, onClose, currency, isChangeDueEnabled, isIntegerCurrency }) => {
+    const [payments, setPayments] = useState<Payment[]>([]);
+    const [currentAmount, setCurrentAmount] = useState('');
+
+    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: isIntegerCurrency ? 0 : 2,
+      maximumFractionDigits: isIntegerCurrency ? 0 : 2,
+    }).format(amount);
+
+    const totalPaid = useMemo(() => payments.reduce((sum, p) => sum + p.amount, 0), [payments]);
+    const remaining = total - totalPaid;
+    const change = isChangeDueEnabled && totalPaid > total ? totalPaid - total : 0;
+    const canComplete = totalPaid >= total;
+    
+    useEffect(() => {
+        // Set initial amount to total due
+        if (total > 0) {
+            setCurrentAmount(total.toFixed(2));
+        }
+    }, [total]);
+
+    const addPayment = (type: PaymentType) => {
+        let amount = parseFloat(currentAmount);
+        if (isNaN(amount) || amount <= 0) return;
+
+        // If change is disabled, cap amount at remaining.
+        // The check is now more robust to prevent capping on subsequent payments when change is enabled.
+        if (!isChangeDueEnabled && amount > remaining) {
+            amount = remaining;
+        }
+
+        if (amount > 0.005) { // Check for amounts bigger than half a cent
+            setPayments(prev => [...prev, { type, amount }]);
+            const newRemaining = remaining - amount;
+            setCurrentAmount(newRemaining > 0 ? newRemaining.toFixed(2) : '');
+        }
+    };
+
+    const removePayment = (index: number) => {
+        const paymentToRemove = payments[index];
+        const newPayments = payments.filter((_, i) => i !== index);
+        setPayments(newPayments);
+        const newTotalPaid = newPayments.reduce((sum, p) => sum + p.amount, 0);
+        setCurrentAmount((total - newTotalPaid).toFixed(2));
+    };
+
+    return (
+        <div className="space-y-4">
+            <div className="text-center">
+                <p className="text-lg text-gray-600 dark:text-gray-300">Total Due</p>
+                <p className="text-5xl font-bold text-gray-800 dark:text-white">{formatCurrency(total)}</p>
+            </div>
+            
+            {payments.length > 0 && (
+                <div className="space-y-2 border-t pt-4">
+                    <h3 className="font-semibold text-gray-800 dark:text-gray-200">Payments Applied:</h3>
+                    {payments.map((p, i) => (
+                        <div key={i} className="flex justify-between items-center bg-gray-100 dark:bg-gray-700 p-2 rounded-md">
+                            <span className="font-medium">{p.type}: {formatCurrency(p.amount)}</span>
+                            <button onClick={() => removePayment(i)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            <div className="pt-4 border-t">
+                 {remaining > 0 ? (
+                    <div className="flex justify-between text-xl font-semibold mb-4">
+                        <span>Remaining:</span>
+                        <span className="text-red-500">{formatCurrency(remaining)}</span>
+                    </div>
+                ) : isChangeDueEnabled ? (
+                    <div className="flex justify-between text-xl font-semibold mb-4">
+                        <span>Change Due:</span>
+                        <span className="text-green-500">{formatCurrency(change)}</span>
+                    </div>
+                ) : (
+                    <div className="flex justify-between text-xl font-semibold mb-4">
+                        <span>Remaining:</span>
+                        <span className="text-green-500">{formatCurrency(0)}</span>
+                    </div>
+                )}
+
+
+                <div className="flex items-center gap-2">
+                     <input 
+                        type="number"
+                        value={currentAmount}
+                        onChange={(e) => setCurrentAmount(e.target.value)}
+                        placeholder="Amount"
+                        className="flex-grow block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
+                     />
+                     <button onClick={() => setCurrentAmount(remaining.toFixed(2))} disabled={remaining <= 0} className="px-3 py-2 bg-gray-200 dark:bg-gray-600 rounded-md text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-500 disabled:opacity-50">
+                         Full
+                     </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
+                    <button onClick={() => addPayment(PaymentType.Cash)} className="w-full py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 disabled:bg-blue-300" disabled={remaining <= 0}>Cash</button>
+                    <button onClick={() => addPayment(PaymentType.Card)} className="w-full py-2 bg-indigo-500 text-white font-semibold rounded-lg hover:bg-indigo-600 disabled:bg-indigo-300" disabled={remaining <= 0}>Card</button>
+                    <button onClick={() => addPayment(PaymentType.Other)} className="w-full py-2 bg-gray-500 text-white font-semibold rounded-lg hover:bg-gray-600 disabled:bg-gray-300" disabled={remaining <= 0}>Other</button>
+                </div>
+            </div>
+            
+            <div className="flex justify-end gap-2 pt-4">
+                <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
+                <button type="button" onClick={() => onCompleteSale(payments)} disabled={!canComplete} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400">Complete Sale</button>
+            </div>
+        </div>
+    )
+}
+
+
+export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency, currentUser, isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -24,7 +229,8 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
   const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
-    minimumFractionDigits: 2,
+    minimumFractionDigits: isIntegerCurrency ? 0 : 2,
+    maximumFractionDigits: isIntegerCurrency ? 0 : 2,
   }).format(amount);
 
   const filteredProducts = useMemo(() => {
@@ -101,28 +307,40 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
 
   const totals = useMemo(() => {
     const subtotal = cart.reduce((sum, item) => sum + item.retailPrice * item.quantity, 0);
-    const tax = subtotal * TAX_RATE;
-    const total = subtotal + tax;
     
     if (mode === 'Return') {
-        return { subtotal: -subtotal, tax: -tax, total: -total };
+        const tax = isTaxEnabled ? subtotal * taxRate : 0;
+        const total = subtotal + tax;
+        return { subtotal: -subtotal, tax: -tax, total: -total, discount: 0 };
     }
-    return { subtotal, tax, total };
-  }, [cart, mode]);
 
-  const handleCompleteSale = (paymentType: PaymentType) => {
+    const discount = (isDiscountEnabled && subtotal >= discountThreshold)
+        ? subtotal * discountRate
+        : 0;
+
+    const taxableAmount = subtotal - discount;
+    const tax = isTaxEnabled ? taxableAmount * taxRate : 0;
+    const total = taxableAmount + tax;
+
+    return { subtotal, discount, tax, total };
+  }, [cart, mode, isTaxEnabled, taxRate, isDiscountEnabled, discountThreshold, discountRate]);
+
+  const handleCompleteSale = (payments: Payment[]) => {
     const cogs = cart.reduce((sum, item) => sum + item.costPrice * item.quantity, 0);
     const signedCogs = mode === 'Return' ? -cogs : cogs;
     
     const sale: Omit<Sale, 'id' | 'date'> = {
       items: cart,
       subtotal: totals.subtotal,
+      discount: totals.discount,
       tax: totals.tax,
       total: totals.total,
       cogs: signedCogs,
       profit: totals.total - signedCogs,
-      paymentType,
+      payments,
       type: mode,
+      salespersonId: currentUser.id,
+      salespersonName: currentUser.username,
       ...(mode === 'Return' && selectedSaleForReturn && { originalSaleId: selectedSaleForReturn.id })
     };
     
@@ -341,10 +559,18 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
               <span className="text-gray-600 dark:text-gray-300">Subtotal</span>
               <span className="font-medium text-gray-800 dark:text-white">{formatCurrency(totals.subtotal)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600 dark:text-gray-300">Tax ({ (TAX_RATE * 100).toFixed(0) }%)</span>
-              <span className="font-medium text-gray-800 dark:text-white">{formatCurrency(totals.tax)}</span>
-            </div>
+            {totals.discount > 0 && (
+              <div className="flex justify-between text-green-600 dark:text-green-400">
+                <span>Discount</span>
+                <span className="font-medium">-{formatCurrency(totals.discount)}</span>
+              </div>
+            )}
+            {isTaxEnabled && (
+                <div className="flex justify-between">
+                <span className="text-gray-600 dark:text-gray-300">Tax ({ (taxRate * 100).toFixed(2) }%)</span>
+                <span className="font-medium text-gray-800 dark:text-white">{formatCurrency(totals.tax)}</span>
+                </div>
+            )}
              <div className="flex justify-between text-2xl font-bold pt-4 border-t border-gray-200 dark:border-gray-600">
               <span className="text-gray-800 dark:text-white">Total</span>
               <span className={`${mode === 'Sale' ? 'text-blue-600 dark:text-blue-400' : 'text-orange-600 dark:text-orange-400'}`}>{formatCurrency(totals.total)}</span>
@@ -360,15 +586,26 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
         </div>
       </div>
 
-      <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Select Payment Method">
-        <div className="space-y-4">
-            <p className="text-center text-3xl font-bold text-gray-800 dark:text-white">{formatCurrency(totals.total)}</p>
-            <div className="grid grid-cols-1 gap-4">
-                <button onClick={() => handleCompleteSale(PaymentType.Cash)} className="w-full py-3 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600">Cash</button>
-                <button onClick={() => handleCompleteSale(PaymentType.Card)} className="w-full py-3 bg-indigo-500 text-white font-semibold rounded-lg hover:bg-indigo-600">Card</button>
-                <button onClick={() => handleCompleteSale(PaymentType.Other)} className="w-full py-3 bg-gray-500 text-white font-semibold rounded-lg hover:bg-gray-600">Other</button>
-            </div>
-        </div>
+      <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Payment">
+        {isSplitPaymentEnabled ? (
+            <PaymentModalContent 
+                total={Math.abs(totals.total)} 
+                onCompleteSale={handleCompleteSale}
+                onClose={() => setIsPaymentModalOpen(false)}
+                currency={currency}
+                isChangeDueEnabled={isChangeDueEnabled}
+                isIntegerCurrency={isIntegerCurrency}
+            />
+        ) : (
+            <SimplePaymentModalContent
+                total={Math.abs(totals.total)}
+                onCompleteSale={handleCompleteSale}
+                onClose={() => setIsPaymentModalOpen(false)}
+                currency={currency}
+                isChangeDueEnabled={isChangeDueEnabled}
+                isIntegerCurrency={isIntegerCurrency}
+            />
+        )}
       </Modal>
 
       <Modal isOpen={isReceiptModalOpen} onClose={startNewSale} title={`${lastSale?.type} Receipt - ${lastSale?.id.slice(-8)}`}>
@@ -376,6 +613,7 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
           <div className="printable-area">
             <div className="space-y-4 text-sm">
                 <p>Date: {new Date(lastSale.date).toLocaleString()}</p>
+                <p>Cashier: {lastSale.salespersonName}</p>
                 {lastSale.originalSaleId && <p>Original Sale: ...{lastSale.originalSaleId.slice(-8)}</p>}
                 <div className="border-t border-b py-2 border-gray-200 dark:border-gray-600">
                     {lastSale.items.map(item => (
@@ -387,10 +625,37 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
                 </div>
                  <div className="space-y-1 font-medium">
                     <div className="flex justify-between"><span>Subtotal:</span> <span>{formatCurrency(lastSale.subtotal)}</span></div>
+                    {lastSale.discount > 0 && (
+                        <div className="flex justify-between"><span>Discount:</span> <span>-{formatCurrency(lastSale.discount)}</span></div>
+                    )}
                     <div className="flex justify-between"><span>Tax:</span> <span>{formatCurrency(lastSale.tax)}</span></div>
                     <div className="flex justify-between text-lg font-bold"><span>Total:</span> <span>{formatCurrency(lastSale.total)}</span></div>
                 </div>
-                <p>Payment: {lastSale.paymentType}</p>
+                <div>
+                    <h4 className="font-semibold">Payments:</h4>
+                    {lastSale.payments.map((p, i) => (
+                        <div key={i} className="flex justify-between">
+                            <span>{p.type}:</span>
+                            <span>{formatCurrency(p.amount)}</span>
+                        </div>
+                    ))}
+                     <div className="border-t mt-2 pt-2 border-gray-200 dark:border-gray-600 font-semibold">
+                       {isChangeDueEnabled && ((): {totalPaid: number, changeDue: number} => {
+                            const totalPaid = lastSale.payments.reduce((sum, p) => sum + p.amount, 0);
+                            const changeDue = totalPaid - Math.abs(lastSale.total);
+                            return {totalPaid, changeDue};
+                        })().changeDue > 0.005 && (
+                            <div className="flex justify-between text-green-600 dark:text-green-400">
+                                <span>Change Due:</span>
+                                <span>
+                                    {formatCurrency(
+                                        lastSale.payments.reduce((sum, p) => sum + p.amount, 0) - Math.abs(lastSale.total)
+                                    )}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                </div>
                  <div className="flex justify-end gap-2 pt-4 no-print">
                     <button onClick={() => window.print()} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Print</button>
                     <button onClick={startNewSale} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">New Transaction</button>

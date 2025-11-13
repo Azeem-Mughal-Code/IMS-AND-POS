@@ -1,39 +1,46 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Product, Sale, User, UserRole, ReportsViewState } from '../types';
+import { Product, Sale, User, UserRole, ReportsViewState, PaymentType } from '../types';
 import { Modal } from './common/Modal';
 import { FilterMenu, FilterSelectItem } from './common/FilterMenu';
 import { Pagination } from './common/Pagination';
-import { TAX_RATE } from '../constants';
 import { SearchIcon, ChevronUpIcon, ChevronDownIcon } from './Icons';
 
 interface ReportsProps {
   sales: Sale[];
   products: Product[];
   currentUser: User;
-  processSale: (sale: Omit<Sale, 'id' | 'date'>) => void;
+  processSale: (sale: Omit<Sale, 'id' | 'date'>) => Sale;
   salesViewState: ReportsViewState['sales'];
   onSalesViewStateUpdate: (updates: Partial<ReportsViewState['sales']>) => void;
   productsViewState: ReportsViewState['products'];
   onProductsViewStateUpdate: (updates: Partial<ReportsViewState['products']>) => void;
+  inventoryValuationViewState: ReportsViewState['inventoryValuation'];
+  onInventoryValuationViewStateUpdate: (updates: Partial<ReportsViewState['inventoryValuation']>) => void;
   currency: string;
+  isIntegerCurrency: boolean;
+  isTaxEnabled: boolean;
+  taxRate: number;
 }
 
-type SortableSaleKeys = 'id' | 'date' | 'type' | 'total' | 'profit';
+type SortableSaleKeys = 'id' | 'date' | 'type' | 'salespersonName' | 'total' | 'profit';
 type SortableProductKeys = 'sku' | 'name' | 'stock';
+type SortableInventoryValuationKeys = 'sku' | 'name' | 'stock' | 'totalCostValue' | 'totalRetailValue' | 'potentialProfit';
 
 
-export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, processSale, salesViewState, onSalesViewStateUpdate, productsViewState, onProductsViewStateUpdate, currency }) => {
+export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, processSale, salesViewState, onSalesViewStateUpdate, productsViewState, onProductsViewStateUpdate, inventoryValuationViewState, onInventoryValuationViewStateUpdate, currency, isIntegerCurrency, isTaxEnabled, taxRate }) => {
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
-    minimumFractionDigits: 2,
+    minimumFractionDigits: isIntegerCurrency ? 0 : 2,
+    maximumFractionDigits: isIntegerCurrency ? 0 : 2,
   }).format(amount);
 
   const { searchTerm: saleSearch, typeFilter, statusFilter, sortConfig: saleSortConfig, currentPage: saleCurrentPage, itemsPerPage: saleItemsPerPage } = salesViewState;
   const { searchTerm: productSearch, stockFilter, sortConfig: productSortConfig, currentPage: productCurrentPage, itemsPerPage: productItemsPerPage } = productsViewState;
+  const { searchTerm: valuationSearch, sortConfig: valuationSortConfig, currentPage: valuationCurrentPage, itemsPerPage: valuationItemsPerPage } = inventoryValuationViewState;
 
   const salesActiveFilterCount = (typeFilter !== 'All' ? 1 : 0) + (statusFilter !== 'All' ? 1 : 0);
   const productsActiveFilterCount = stockFilter !== 'All' ? 1 : 0;
@@ -81,7 +88,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
     }
 
     const subtotal = itemsToRefund.reduce((sum, item) => sum + item.retailPrice * item.quantity, 0);
-    const tax = subtotal * TAX_RATE;
+    const tax = isTaxEnabled ? subtotal * taxRate : 0;
     const total = subtotal + tax;
     const cogs = itemsToRefund.reduce((sum, item) => sum + item.costPrice * item.quantity, 0);
 
@@ -92,9 +99,11 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
         total: -total,
         cogs: -cogs,
         profit: (-total) - (-cogs),
-        paymentType: viewingSale.paymentType,
+        payments: [{ type: viewingSale.payments[0]?.type || PaymentType.Cash, amount: -total }],
         type: 'Return',
         originalSaleId: viewingSale.id,
+        salespersonId: currentUser.id,
+        salespersonName: currentUser.username,
     };
 
     try {
@@ -125,13 +134,21 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
     }
     onProductsViewStateUpdate({ sortConfig: { key, direction } });
   };
+  
+  const requestValuationSort = (key: SortableInventoryValuationKeys) => {
+    let direction: 'ascending' | 'descending' = 'ascending';
+    if (valuationSortConfig.key === key && valuationSortConfig.direction === 'ascending') {
+        direction = 'descending';
+    }
+    onInventoryValuationViewStateUpdate({ sortConfig: { key, direction } });
+  };
 
   const filteredAndSortedSales = useMemo(() => {
     const filtered = sales
       .filter(s => {
         if(typeFilter !== 'All' && s.type !== typeFilter) return false;
         if(statusFilter !== 'All' && s.type === 'Sale' && s.status !== statusFilter) return false;
-        if(saleSearch && !s.id.toLowerCase().includes(saleSearch.toLowerCase())) return false;
+        if(saleSearch && !s.id.toLowerCase().includes(saleSearch.toLowerCase()) && !s.salespersonName.toLowerCase().includes(saleSearch.toLowerCase())) return false;
         return true;
       });
       
@@ -196,6 +213,54 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
         productCurrentPage * productItemsPerPage
     );
   }, [filteredAndSortedProducts, productCurrentPage, productItemsPerPage]);
+  
+  const { inventoryValuationData, valuationTotals } = useMemo(() => {
+    const data = products.map(p => ({
+        ...p,
+        totalCostValue: p.costPrice * p.stock,
+        totalRetailValue: p.retailPrice * p.stock,
+        potentialProfit: (p.retailPrice - p.costPrice) * p.stock
+    }));
+
+    const totals = {
+        totalCostValue: data.reduce((sum, p) => sum + p.totalCostValue, 0),
+        totalRetailValue: data.reduce((sum, p) => sum + p.totalRetailValue, 0),
+        potentialProfit: data.reduce((sum, p) => sum + p.potentialProfit, 0),
+    };
+    return { inventoryValuationData: data, valuationTotals: totals };
+  }, [products]);
+
+  const filteredAndSortedValuationData = useMemo(() => {
+    const filtered = inventoryValuationData
+        .filter(p => 
+            p.name.toLowerCase().includes(valuationSearch.toLowerCase()) ||
+            p.sku.toLowerCase().includes(valuationSearch.toLowerCase())
+        );
+
+    return filtered.sort((a, b) => {
+        const key = valuationSortConfig.key;
+        const valA = a[key as keyof typeof a];
+        const valB = b[key as keyof typeof b];
+        let comparison = 0;
+
+        if (typeof valA === 'string' && typeof valB === 'string') {
+            comparison = valA.localeCompare(valB);
+        } else if (typeof valA === 'number' && typeof valB === 'number') {
+            comparison = valA - valB;
+        }
+
+        return valuationSortConfig.direction === 'ascending' ? comparison : -comparison;
+    });
+  }, [inventoryValuationData, valuationSearch, valuationSortConfig]);
+
+  const valuationTotalItems = filteredAndSortedValuationData.length;
+  const valuationTotalPages = Math.ceil(valuationTotalItems / valuationItemsPerPage);
+  const paginatedValuationData = useMemo(() => {
+    return filteredAndSortedValuationData.slice(
+        (valuationCurrentPage - 1) * valuationItemsPerPage,
+        valuationCurrentPage * valuationItemsPerPage
+    );
+  }, [filteredAndSortedValuationData, valuationCurrentPage, valuationItemsPerPage]);
 
 
   const SortableSaleHeader: React.FC<{ children: React.ReactNode, sortKey: SortableSaleKeys }> = ({ children, sortKey }) => {
@@ -220,6 +285,20 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
                 <span className="group-hover:text-gray-900 dark:group-hover:text-white transition-colors">{children}</span>
                 {isSorted ? (
                     productSortConfig.direction === 'ascending' ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />
+                ) : <ChevronDownIcon className="h-4 w-4 text-gray-400 group-hover:text-gray-500 transition-colors" />}
+            </button>
+        </th>
+    );
+  };
+  
+  const SortableValuationHeader: React.FC<{ children: React.ReactNode, sortKey: SortableInventoryValuationKeys }> = ({ children, sortKey }) => {
+    const isSorted = valuationSortConfig.key === sortKey;
+    return (
+        <th scope="col" className="px-6 py-3">
+            <button onClick={() => requestValuationSort(sortKey)} className="flex items-center gap-1.5 group">
+                <span className="group-hover:text-gray-900 dark:group-hover:text-white transition-colors">{children}</span>
+                {isSorted ? (
+                    valuationSortConfig.direction === 'ascending' ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />
                 ) : <ChevronDownIcon className="h-4 w-4 text-gray-400 group-hover:text-gray-500 transition-colors" />}
             </button>
         </th>
@@ -261,7 +340,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><SearchIcon /></div>
                     <input
                         type="text"
-                        placeholder="Search by Receipt ID..."
+                        placeholder="Search by Receipt ID or Salesperson..."
                         value={saleSearch}
                         onChange={e => onSalesViewStateUpdate({ searchTerm: e.target.value })}
                         className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 focus:ring-blue-500 focus:border-blue-500"
@@ -290,6 +369,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
                 <SortableSaleHeader sortKey="id">ID</SortableSaleHeader>
                 <SortableSaleHeader sortKey="date">Date</SortableSaleHeader>
                 <SortableSaleHeader sortKey="type">Type / Status</SortableSaleHeader>
+                <SortableSaleHeader sortKey="salespersonName">Salesperson</SortableSaleHeader>
                 <th scope="col" className="px-6 py-3">Items</th>
                 <SortableSaleHeader sortKey="total">Total</SortableSaleHeader>
                 {currentUser.role === UserRole.Admin && <SortableSaleHeader sortKey="profit">Profit</SortableSaleHeader>}
@@ -314,6 +394,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
                         {s.type === 'Sale' ? s.status : s.type}
                     </span>
                   </td>
+                  <td className="px-6 py-4">{s.salespersonName}</td>
                   <td className="px-6 py-4">
                     {s.items.reduce((sum, item) => sum + item.quantity, 0)}
                   </td>
@@ -333,6 +414,65 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
         />
       </div>
       
+      {currentUser.role === UserRole.Admin && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
+            <div className="p-4">
+                <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-4">Inventory Valuation</h2>
+                 <div className="relative flex-grow">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><SearchIcon /></div>
+                    <input
+                        type="text"
+                        placeholder="Search by name or SKU..."
+                        value={valuationSearch}
+                        onChange={e => onInventoryValuationViewStateUpdate({ searchTerm: e.target.value })}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                </div>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                    <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0">
+                        <tr>
+                            <SortableValuationHeader sortKey="sku">SKU</SortableValuationHeader>
+                            <SortableValuationHeader sortKey="name">Name</SortableValuationHeader>
+                            <SortableValuationHeader sortKey="stock">Stock</SortableValuationHeader>
+                            <SortableValuationHeader sortKey="totalCostValue">Total Cost Value</SortableValuationHeader>
+                            <SortableValuationHeader sortKey="totalRetailValue">Total Retail Value</SortableValuationHeader>
+                            <SortableValuationHeader sortKey="potentialProfit">Potential Profit</SortableValuationHeader>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                        {paginatedValuationData.map(p => (
+                            <tr key={p.id}>
+                                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{p.sku}</td>
+                                <td className="px-6 py-4">{p.name}</td>
+                                <td className="px-6 py-4">{p.stock}</td>
+                                <td className="px-6 py-4">{formatCurrency(p.totalCostValue)}</td>
+                                <td className="px-6 py-4">{formatCurrency(p.totalRetailValue)}</td>
+                                <td className="px-6 py-4 font-semibold text-green-600 dark:text-green-400">{formatCurrency(p.potentialProfit)}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                    <tfoot className="bg-gray-50 dark:bg-gray-700">
+                        <tr className="font-semibold text-gray-900 dark:text-white">
+                            <th scope="row" colSpan={3} className="px-6 py-3 text-right">Totals</th>
+                            <td className="px-6 py-3">{formatCurrency(valuationTotals.totalCostValue)}</td>
+                            <td className="px-6 py-3">{formatCurrency(valuationTotals.totalRetailValue)}</td>
+                            <td className="px-6 py-3">{formatCurrency(valuationTotals.potentialProfit)}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+             <Pagination
+                currentPage={valuationCurrentPage}
+                totalPages={valuationTotalPages}
+                onPageChange={(page) => onInventoryValuationViewStateUpdate({ currentPage: page })}
+                itemsPerPage={valuationItemsPerPage}
+                totalItems={valuationTotalItems}
+            />
+        </div>
+      )}
+
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
         <div className="p-4">
             <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-4">Stock Levels</h2>
@@ -402,6 +542,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
             <div className="printable-area">
                 <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
                     <p><span className="font-semibold text-gray-800 dark:text-gray-200">Date:</span> {new Date(viewingSale.date).toLocaleString()}</p>
+                    <p><span className="font-semibold text-gray-800 dark:text-gray-200">Salesperson:</span> {viewingSale.salespersonName}</p>
                      {viewingSale.type === 'Return' && viewingSale.originalSaleId && <p><span className="font-semibold text-gray-800 dark:text-gray-200">Original Sale ID:</span> ...{viewingSale.originalSaleId.slice(-8)}</p>}
                     <div className="border-t border-b py-2 my-2 border-gray-200 dark:border-gray-600">
                         <h4 className="font-semibold mb-2 text-gray-800 dark:text-gray-200">Items</h4>
@@ -420,10 +561,36 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
                     </div>
                     <div className="space-y-1 font-medium text-gray-800 dark:text-gray-200">
                         <div className="flex justify-between"><span>Subtotal:</span> <span>{formatCurrency(viewingSale.subtotal)}</span></div>
+                        {viewingSale.discount > 0 && (
+                            <div className="flex justify-between"><span>Discount:</span> <span>-{formatCurrency(viewingSale.discount)}</span></div>
+                        )}
                         <div className="flex justify-between"><span>Tax:</span> <span>{formatCurrency(viewingSale.tax)}</span></div>
                         <div className="flex justify-between text-lg font-bold text-gray-900 dark:text-white"><span>Total:</span> <span>{formatCurrency(viewingSale.total)}</span></div>
                     </div>
-                    <p><span className="font-semibold text-gray-800 dark:text-gray-200">Payment:</span> {viewingSale.paymentType}</p>
+                    <div>
+                        <h4 className="font-semibold text-gray-800 dark:text-gray-200">Payments:</h4>
+                        {viewingSale.payments.map((p, i) => (
+                          <div key={i} className="flex justify-between">
+                            <span>{p.type}:</span>
+                            <span>{formatCurrency(p.amount)}</span>
+                          </div>
+                        ))}
+                        <div className="border-t mt-2 pt-2 border-gray-200 dark:border-gray-600 font-semibold">
+                            {(() => {
+                                const totalPaid = viewingSale.payments.reduce((sum, p) => sum + p.amount, 0);
+                                const changeDue = totalPaid - Math.abs(viewingSale.total);
+                                if (changeDue > 0.005) {
+                                    return (
+                                        <div className="flex justify-between text-green-600 dark:text-green-400">
+                                            <span>Change Given:</span>
+                                            <span>{formatCurrency(changeDue)}</span>
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            })()}
+                        </div>
+                    </div>
                 </div>
                  <div className="flex justify-end gap-2 pt-4 no-print">
                     {viewingSale.type === 'Sale' && (viewingSale.status === 'Completed' || viewingSale.status === 'Partially Refunded') ? (

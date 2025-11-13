@@ -31,22 +31,31 @@ export interface CartItem extends Product {
   returnedQuantity?: number;
 }
 
+// NEW: For Split Payments
+export interface Payment {
+  type: PaymentType;
+  amount: number;
+}
+
 export interface Sale {
   id:string;
   date: string;
   items: CartItem[];
   subtotal: number;
+  discount?: number;
   tax: number;
   total: number;
+  payments: Payment[]; // Replaces paymentType
   cogs: number;
   profit: number;
-  paymentType: PaymentType;
   type: 'Sale' | 'Return';
   originalSaleId?: string;
   status?: 'Completed' | 'Partially Refunded' | 'Refunded';
+  salespersonId: string; // NEW: Salesperson tracking
+  salespersonName: string; // NEW: Salesperson tracking
 }
 
-export type View = 'dashboard' | 'pos' | 'inventory' | 'reports' | 'analysis' | 'settings';
+export type View = 'dashboard' | 'pos' | 'inventory' | 'reports' | 'analysis' | 'settings' | 'procurement';
 
 export interface InventoryAdjustment {
   productId: string;
@@ -54,6 +63,38 @@ export interface InventoryAdjustment {
   quantity: number;
   reason: string;
 }
+
+// NEW: For Procurement
+export interface Supplier {
+  id: string;
+  name: string;
+  contactPerson?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+}
+
+export interface POItem {
+  productId: string;
+  name: string; // denormalized for easier display
+  sku: string; // denormalized
+  quantityOrdered: number;
+  quantityReceived: number;
+  costPrice: number; // cost at time of order
+}
+
+export interface PurchaseOrder {
+  id: string;
+  supplierId: string;
+  supplierName: string; // denormalized
+  dateCreated: string;
+  dateExpected: string;
+  status: 'Pending' | 'Partial' | 'Received';
+  items: POItem[];
+  notes?: string;
+  totalCost: number;
+}
+
 
 // Generic type for sort configuration
 export type SortConfig<T extends string> = { key: T; direction: 'ascending' | 'descending' };
@@ -68,8 +109,10 @@ export interface InventoryViewState {
     itemsPerPage: number;
 }
 
-type SaleSortKeys = 'id' | 'date' | 'type' | 'total' | 'profit';
+type SaleSortKeys = 'id' | 'date' | 'type' | 'salespersonName' | 'total' | 'profit';
 type ProductReportSortKeys = 'sku' | 'name' | 'stock';
+type InventoryValuationSortKeys = 'sku' | 'name' | 'stock' | 'totalCostValue' | 'totalRetailValue' | 'potentialProfit';
+
 export interface ReportsViewState {
     sales: {
         searchTerm: string;
@@ -83,6 +126,12 @@ export interface ReportsViewState {
         searchTerm: string;
         stockFilter: string;
         sortConfig: SortConfig<ProductReportSortKeys>;
+        currentPage: number;
+        itemsPerPage: number;
+    };
+    inventoryValuation: {
+        searchTerm: string;
+        sortConfig: SortConfig<InventoryValuationSortKeys>;
         currentPage: number;
         itemsPerPage: number;
     };
@@ -102,4 +151,24 @@ export interface AnalysisViewState {
     sortConfig: SortConfig<AnalysisSortKeys>;
     currentPage: number;
     itemsPerPage: number;
+}
+
+type SupplierSortKeys = 'name' | 'contactPerson' | 'email';
+export interface SuppliersViewState {
+    searchTerm: string;
+    sortConfig: SortConfig<SupplierSortKeys>;
+    currentPage: number;
+    itemsPerPage: number;
+}
+type POSortKeys = 'id' | 'supplierName' | 'dateCreated' | 'status' | 'totalCost';
+export interface POViewState {
+    searchTerm: string;
+    statusFilter: string;
+    sortConfig: SortConfig<POSortKeys>;
+    currentPage: number;
+    itemsPerPage: number;
+}
+export interface ProcurementViewState {
+    suppliers: SuppliersViewState;
+    purchaseOrders: POViewState;
 }
