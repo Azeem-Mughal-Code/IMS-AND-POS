@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { User, UserRole, View, UsersViewState, Product, Sale } from '../types';
 import { UserSettings } from './UserSettings';
 import { Modal } from './common/Modal';
-import { SunIcon, MoonIcon, ComputerDesktopIcon, LogoutIcon, ExportIcon, ImportIcon, DangerIcon } from './Icons';
+import { SunIcon, MoonIcon, ComputerDesktopIcon, LogoutIcon, ExportIcon, ImportIcon, DangerIcon, ChevronDownIcon } from './Icons';
 
 interface SettingsProps {
     currentUser: User;
@@ -200,11 +200,8 @@ const DataManagement: React.FC<Omit<SettingsProps, 'onUsersViewUpdate' | 'usersV
 
     return (
         <>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-1">Data Management</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Export, import, or reset your business data.</p>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+            <div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Export */}
                     <div>
                         <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Export Data</h3>
@@ -301,9 +298,49 @@ const DataManagement: React.FC<Omit<SettingsProps, 'onUsersViewUpdate' | 'usersV
     );
 };
 
+interface AccordionSectionProps {
+    title: string;
+    subtitle: string;
+    sectionId: string;
+    expandedSection: string | null;
+    setExpandedSection: (id: string | null) => void;
+    children: React.ReactNode;
+}
+
+const AccordionSection: React.FC<AccordionSectionProps> = ({ title, subtitle, sectionId, expandedSection, setExpandedSection, children }) => {
+    const isExpanded = expandedSection === sectionId;
+
+    return (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden transition-all duration-300">
+            <button
+                onClick={() => setExpandedSection(isExpanded ? null : sectionId)}
+                className="w-full flex justify-between items-center p-6 text-left"
+                aria-expanded={isExpanded}
+                aria-controls={`section-content-${sectionId}`}
+            >
+                <div>
+                    <h2 className="text-xl font-bold text-gray-800 dark:text-white">{title}</h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{subtitle}</p>
+                </div>
+                <ChevronDownIcon className={`w-6 h-6 text-gray-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+            </button>
+            <div
+                id={`section-content-${sectionId}`}
+                className={`transition-all duration-300 ease-in-out grid ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}
+            >
+                <div className="overflow-hidden">
+                    <div className="p-6 border-t border-gray-200 dark:border-gray-700">
+                        {children}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 export const Settings: React.FC<SettingsProps> = (props) => {
-    const { currentUser, updateUser, theme, setTheme, users, addUser, deleteUser, usersViewState, onUsersViewUpdate, onLogout } = props;
+    const { currentUser, updateUser, theme, setTheme, onLogout } = props;
     const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
     
     const [profileUsername, setProfileUsername] = useState(currentUser.username);
@@ -311,6 +348,8 @@ export const Settings: React.FC<SettingsProps> = (props) => {
     const [profileConfirmPassword, setProfileConfirmPassword] = useState('');
     const [profileError, setProfileError] = useState('');
     const [profileSuccess, setProfileSuccess] = useState('');
+
+    const [expandedSection, setExpandedSection] = useState<string | null>('profile');
 
     useEffect(() => {
         if (isEditProfileModalOpen) {
@@ -349,44 +388,70 @@ export const Settings: React.FC<SettingsProps> = (props) => {
     };
 
     return (
-        <div className="p-6 space-y-8">
-            <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Settings</h1>
+        <div className="p-6 space-y-4">
+            <h1 className="text-3xl font-bold text-gray-800 dark:text-white px-2">Settings</h1>
 
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                     <div>
-                        <h2 className="text-xl font-bold text-gray-800 dark:text-white">My Profile</h2>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{currentUser.username} &middot; <span className="font-semibold">{currentUser.role}</span></p>
-                    </div>
-                    <button onClick={() => setIsEditProfileModalOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium w-full sm:w-auto">
-                        Edit Profile
-                    </button>
-                </div>
-            </div>
+            <AccordionSection
+                title="My Profile"
+                subtitle={`${currentUser.username} · ${currentUser.role}`}
+                sectionId="profile"
+                expandedSection={expandedSection}
+                setExpandedSection={setExpandedSection}
+            >
+                 <button onClick={() => setIsEditProfileModalOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium w-full sm:w-auto">
+                    Edit Profile
+                </button>
+            </AccordionSection>
 
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-4">Appearance</h2>
+             <AccordionSection
+                title="Appearance"
+                subtitle="Customize the look and feel of the application."
+                sectionId="appearance"
+                expandedSection={expandedSection}
+                setExpandedSection={setExpandedSection}
+            >
                 <ThemeSelector theme={theme} setTheme={setTheme} />
-            </div>
+            </AccordionSection>
             
             {currentUser.role === UserRole.Admin && (
                 <>
-                    <UserSettings 
-                        users={users}
-                        currentUser={currentUser}
-                        addUser={addUser}
-                        updateUser={updateUser}
-                        deleteUser={deleteUser}
-                        viewState={usersViewState}
-                        onViewStateUpdate={onUsersViewUpdate}
-                    />
-                    <DataManagement {...props} />
+                    <AccordionSection
+                        title="User Management"
+                        subtitle="Add, edit, or remove cashier accounts."
+                        sectionId="users"
+                        expandedSection={expandedSection}
+                        setExpandedSection={setExpandedSection}
+                    >
+                        <UserSettings 
+                            users={props.users}
+                            currentUser={props.currentUser}
+                            addUser={props.addUser}
+                            updateUser={props.updateUser}
+                            deleteUser={props.deleteUser}
+                            viewState={props.usersViewState}
+                            onViewStateUpdate={props.onUsersViewUpdate}
+                        />
+                    </AccordionSection>
+
+                    <AccordionSection
+                        title="Data Management"
+                        subtitle="Export, import, or reset your business data."
+                        sectionId="data"
+                        expandedSection={expandedSection}
+                        setExpandedSection={setExpandedSection}
+                    >
+                         <DataManagement {...props} />
+                    </AccordionSection>
                 </>
             )}
 
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                <h2 className="text-xl font-bold text-gray-800 dark:text-white">Account Actions</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-4">Manage your current session.</p>
+            <AccordionSection
+                title="Account Actions"
+                subtitle="Manage your current session."
+                sectionId="actions"
+                expandedSection={expandedSection}
+                setExpandedSection={setExpandedSection}
+            >
                  <button 
                     onClick={onLogout} 
                     className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-medium transition-colors"
@@ -394,7 +459,7 @@ export const Settings: React.FC<SettingsProps> = (props) => {
                     <LogoutIcon className="h-5 w-5" />
                     <span>Logout</span>
                 </button>
-            </div>
+            </AccordionSection>
 
             <Modal isOpen={isEditProfileModalOpen} onClose={() => setIsEditProfileModalOpen(false)} title="Edit Profile" size="md">
                 <div className="space-y-4">

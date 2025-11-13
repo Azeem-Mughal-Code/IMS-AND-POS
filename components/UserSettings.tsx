@@ -182,12 +182,8 @@ export const UserSettings: React.FC<UserSettingsProps> = ({ users, currentUser, 
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-            <h2 className="text-xl font-bold text-gray-800 dark:text-white">User Management</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Add, edit, or remove cashier accounts.</p>
-        </div>
+    <div>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <button onClick={openAddModal} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2 w-full sm:w-auto justify-center">
             <PlusIcon />
             Add User
@@ -195,12 +191,12 @@ export const UserSettings: React.FC<UserSettingsProps> = ({ users, currentUser, 
       </div>
 
       {feedback && (
-        <div className={`m-4 px-4 py-3 rounded-md text-sm ${feedback.type === 'success' ? 'bg-green-100 dark:bg-green-900 border border-green-200 dark:border-green-700 text-green-800 dark:text-green-200' : 'bg-red-100 dark:bg-red-900 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-200'}`} role="alert">
+        <div className={`my-4 px-4 py-3 rounded-md text-sm ${feedback.type === 'success' ? 'bg-green-100 dark:bg-green-900 border border-green-200 dark:border-green-700 text-green-800 dark:text-green-200' : 'bg-red-100 dark:bg-red-900 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-200'}`} role="alert">
           {feedback.text}
         </div>
       )}
 
-      <div className="p-4">
+      <div className="mt-4">
             <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
                     <SearchIcon />
@@ -214,7 +210,7 @@ export const UserSettings: React.FC<UserSettingsProps> = ({ users, currentUser, 
                 />
             </div>
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto mt-4">
           <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
             <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0">
               <tr>
