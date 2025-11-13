@@ -1,6 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Product, InventoryAdjustment, User, UserRole } from '../types';
 import { Modal } from './common/Modal';
+import { FilterDropdown } from './common/FilterDropdown';
+import { Pagination } from './common/Pagination';
+import { SearchIcon, ChevronUpIcon, ChevronDownIcon } from './Icons';
 
 interface InventoryProps {
   products: Product[];
@@ -68,7 +71,6 @@ const ProductForm: React.FC<{ product?: Product, onSubmit: (p: any) => void, onC
     )
 }
 
-
 const StockActionForm: React.FC<{ title: string, onSubmit: (quantity: number, reason: string) => void, onCancel: () => void, requiresReason?: boolean }> = ({ title, onSubmit, onCancel, requiresReason=false }) => {
     const [quantity, setQuantity] = useState(0);
     const [reason, setReason] = useState('');
@@ -98,6 +100,8 @@ const StockActionForm: React.FC<{ title: string, onSubmit: (quantity: number, re
     );
 };
 
+type SortableProductKeys = keyof Product;
+
 export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, updateProduct, receiveStock, adjustStock, inventoryAdjustments, currentUser }) => {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
@@ -108,6 +112,62 @@ export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, upda
 
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [viewingHistoryFor, setViewingHistoryFor] = useState<Product | null>(null);
+  
+  const [searchTerm, setSearchTerm] = useState('');
+  const [stockFilter, setStockFilter] = useState('All');
+  const [sortConfig, setSortConfig] = useState<{ key: SortableProductKeys, direction: 'ascending' | 'descending' }>({ key: 'name', direction: 'ascending' });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, stockFilter, itemsPerPage]);
+
+  const requestSort = (key: SortableProductKeys) => {
+    let direction: 'ascending' | 'descending' = 'ascending';
+    if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+        direction = 'descending';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const filteredAndSortedProducts = useMemo(() => {
+    const filtered = products
+        .filter(p => {
+            if (stockFilter === 'In Stock') return p.stock > p.lowStockThreshold;
+            if (stockFilter === 'Low Stock') return p.stock > 0 && p.stock <= p.lowStockThreshold;
+            if (stockFilter === 'Out of Stock') return p.stock <= 0;
+            return true;
+        })
+        .filter(p => 
+            p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            p.sku.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    
+    return filtered.sort((a, b) => {
+        const valA = a[sortConfig.key];
+        const valB = b[sortConfig.key];
+        let comparison = 0;
+
+        if (typeof valA === 'string' && typeof valB === 'string') {
+            comparison = valA.localeCompare(valB);
+        } else if (typeof valA === 'number' && typeof valB === 'number') {
+            comparison = valA - valB;
+        }
+
+        return sortConfig.direction === 'ascending' ? comparison : -comparison;
+    });
+
+}, [products, searchTerm, stockFilter, sortConfig]);
+
+  const totalItems = filteredAndSortedProducts.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const paginatedProducts = useMemo(() => {
+    return filteredAndSortedProducts.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+  }, [filteredAndSortedProducts, currentPage, itemsPerPage]);
 
 
   const handleOpenAddModal = () => {
@@ -161,6 +221,20 @@ export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, upda
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [viewingHistoryFor, inventoryAdjustments]);
 
+  const SortableHeader: React.FC<{ children: React.ReactNode, sortKey: SortableProductKeys }> = ({ children, sortKey }) => {
+    const isSorted = sortConfig.key === sortKey;
+    return (
+        <th scope="col" className="px-6 py-3">
+            <button onClick={() => requestSort(sortKey)} className="flex items-center gap-1.5 group">
+                <span className="group-hover:text-gray-900 dark:group-hover:text-white transition-colors">{children}</span>
+                {isSorted ? (
+                    sortConfig.direction === 'ascending' ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />
+                ) : <ChevronDownIcon className="h-4 w-4 text-gray-400 group-hover:text-gray-500 transition-colors" />}
+            </button>
+        </th>
+    );
+  };
+
   return (
     <div className="p-6">
       <div className="flex flex-col items-start gap-4 md:flex-row md:justify-between md:items-center mb-6">
@@ -172,41 +246,78 @@ export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, upda
           </button>
         )}
       </div>
-
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-x-auto">
-        <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-          <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
-            <tr>
-              <th scope="col" className="px-6 py-3">SKU</th>
-              <th scope="col" className="px-6 py-3">Name</th>
-              <th scope="col" className="px-6 py-3">Retail Price</th>
-              <th scope="col" className="px-6 py-3">Cost Price</th>
-              <th scope="col" className="px-6 py-3">Stock</th>
-              <th scope="col" className="px-6 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.map(p => (
-              <tr key={p.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{p.sku}</td>
-                <td className="px-6 py-4">{p.name}</td>
-                <td className="px-6 py-4">${p.retailPrice.toFixed(2)}</td>
-                <td className="px-6 py-4">${p.costPrice.toFixed(2)}</td>
-                <td className={`px-6 py-4 font-semibold ${p.stock <= p.lowStockThreshold ? 'text-red-500' : 'text-green-500'}`}>{p.stock}</td>
-                <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                  {currentUser.role === UserRole.Admin && (
-                    <>
-                      <button onClick={() => handleOpenEditModal(p)} className="font-medium text-blue-600 dark:text-blue-500 hover:underline">Edit</button>
-                      <button onClick={() => openStockModal(p.id, 'receive')} className="font-medium text-green-600 dark:text-green-500 hover:underline">Receive</button>
-                      <button onClick={() => openStockModal(p.id, 'adjust')} className="font-medium text-yellow-600 dark:text-yellow-500 hover:underline">Adjust</button>
-                    </>
-                  )}
-                  <button onClick={() => openHistoryModal(p)} className="font-medium text-gray-600 dark:text-gray-400 hover:underline">History</button>
-                </td>
+        
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
+        <div className="p-4">
+            <div className="flex flex-col md:flex-row gap-4">
+                <div className="relative flex-grow">
+                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                        <SearchIcon />
+                    </div>
+                    <input
+                        type="text"
+                        placeholder="Search by name or SKU..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                </div>
+                <FilterDropdown
+                    label="Stock Status"
+                    options={[
+                        { value: 'All', label: 'All Stock Status' },
+                        { value: 'In Stock', label: 'In Stock' },
+                        { value: 'Low Stock', label: 'Low Stock' },
+                        { value: 'Out of Stock', label: 'Out of Stock' },
+                    ]}
+                    value={stockFilter}
+                    onChange={(value) => setStockFilter(value)}
+                />
+            </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+            <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0">
+              <tr>
+                <SortableHeader sortKey="sku">SKU</SortableHeader>
+                <SortableHeader sortKey="name">Name</SortableHeader>
+                <SortableHeader sortKey="retailPrice">Retail Price</SortableHeader>
+                <SortableHeader sortKey="costPrice">Cost Price</SortableHeader>
+                <SortableHeader sortKey="stock">Stock</SortableHeader>
+                <th scope="col" className="px-6 py-3 text-right">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {paginatedProducts.map(p => (
+                <tr key={p.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                  <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{p.sku}</td>
+                  <td className="px-6 py-4">{p.name}</td>
+                  <td className="px-6 py-4">${p.retailPrice.toFixed(2)}</td>
+                  <td className="px-6 py-4">${p.costPrice.toFixed(2)}</td>
+                  <td className={`px-6 py-4 font-semibold ${p.stock <= p.lowStockThreshold ? 'text-red-500' : 'text-green-500'}`}>{p.stock}</td>
+                  <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                    {currentUser.role === UserRole.Admin && (
+                      <>
+                        <button onClick={() => handleOpenEditModal(p)} className="font-medium text-blue-600 dark:text-blue-500 hover:underline">Edit</button>
+                        <button onClick={() => openStockModal(p.id, 'receive')} className="font-medium text-green-600 dark:text-green-500 hover:underline">Receive</button>
+                        <button onClick={() => openStockModal(p.id, 'adjust')} className="font-medium text-yellow-600 dark:text-yellow-500 hover:underline">Adjust</button>
+                      </>
+                    )}
+                    <button onClick={() => openHistoryModal(p)} className="font-medium text-gray-600 dark:text-gray-400 hover:underline">History</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Pagination
+           currentPage={currentPage}
+           totalPages={totalPages}
+           onPageChange={setCurrentPage}
+           itemsPerPage={itemsPerPage}
+           setItemsPerPage={setItemsPerPage}
+           totalItems={totalItems}
+         />
       </div>
 
       <Modal isOpen={isProductModalOpen} onClose={() => setIsProductModalOpen(false)} title={editingProduct ? 'Edit Product' : 'Add New Product'} size="lg">

@@ -82,15 +82,14 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale }) => {
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item.id === product.id);
       if (newReturnQty > 0) {
-          const itemForCart = { ...product, quantity: newReturnQty };
-          if (existingItem) {
-              return prevCart.map(item => item.id === product.id ? itemForCart : item);
-          } else {
-              return [...prevCart, itemForCart];
-          }
-      } else {
-          return prevCart.filter(item => item.id !== product.id);
+        if (existingItem) {
+          return prevCart.map(item =>
+            item.id === product.id ? { ...item, quantity: newReturnQty } : item
+          );
+        }
+        return [...prevCart, { ...product, quantity: newReturnQty }];
       }
+      return prevCart.filter(item => item.id !== product.id);
     });
   };
 

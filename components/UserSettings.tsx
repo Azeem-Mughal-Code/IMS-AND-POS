@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { User, UserRole } from '../types';
 import { Modal } from './common/Modal';
-import { TrashIcon, PlusIcon } from './Icons';
+import { Pagination } from './common/Pagination';
+import { TrashIcon, PlusIcon, SearchIcon, ChevronUpIcon, ChevronDownIcon } from './Icons';
 
 interface UserSettingsProps {
   users: User[];
@@ -45,12 +46,50 @@ const UserForm: React.FC<{
     );
 };
 
+type SortableUserKeys = 'username' | 'role';
 
 export const UserSettings: React.FC<UserSettingsProps> = ({ users, currentUser, addUser, deleteUser }) => {
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: SortableUserKeys, direction: 'ascending' | 'descending' }>({ key: 'username', direction: 'ascending' });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, itemsPerPage]);
+
+  const requestSort = (key: SortableUserKeys) => {
+    let direction: 'ascending' | 'descending' = 'ascending';
+    if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+        direction = 'descending';
+    }
+    setSortConfig({ key, direction });
+  };
+  
+  const filteredAndSortedUsers = useMemo(() => {
+    const filtered = users.filter(u => u.username.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    return filtered.sort((a, b) => {
+        const valA = a[sortConfig.key];
+        const valB = b[sortConfig.key];
+        const comparison = valA.localeCompare(valB);
+        return sortConfig.direction === 'ascending' ? comparison : -comparison;
+    });
+
+  }, [users, searchTerm, sortConfig]);
+
+  const totalItems = filteredAndSortedUsers.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const paginatedUsers = useMemo(() => {
+    return filteredAndSortedUsers.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+  }, [filteredAndSortedUsers, currentPage, itemsPerPage]);
 
   const handleAddUser = (username: string, pass: string, role: UserRole) => {
     setError('');
@@ -97,6 +136,20 @@ export const UserSettings: React.FC<UserSettingsProps> = ({ users, currentUser, 
       setIsAddUserModalOpen(true);
   }
 
+  const SortableHeader: React.FC<{ children: React.ReactNode, sortKey: SortableUserKeys }> = ({ children, sortKey }) => {
+    const isSorted = sortConfig.key === sortKey;
+    return (
+        <th scope="col" className="px-6 py-3">
+            <button onClick={() => requestSort(sortKey)} className="flex items-center gap-1.5 group">
+                <span className="group-hover:text-gray-900 dark:group-hover:text-white transition-colors">{children}</span>
+                {isSorted ? (
+                    sortConfig.direction === 'ascending' ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />
+                ) : <ChevronDownIcon className="h-4 w-4 text-gray-400 group-hover:text-gray-500 transition-colors" />}
+            </button>
+        </th>
+    );
+  };
+
   return (
     <div className="p-6">
       <div className="flex flex-col items-start gap-4 md:flex-row md:justify-between md:items-center mb-6">
@@ -118,34 +171,58 @@ export const UserSettings: React.FC<UserSettingsProps> = ({ users, currentUser, 
         </div>
       )}
 
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-x-auto">
-        <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-          <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
-            <tr>
-              <th scope="col" className="px-6 py-3">Username</th>
-              <th scope="col" className="px-6 py-3">Role</th>
-              <th scope="col" className="px-6 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map(user => (
-              <tr key={user.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{user.username} {user.id === currentUser.id && '(You)'}</td>
-                <td className="px-6 py-4">{user.role}</td>
-                <td className="px-6 py-4 text-right">
-                  <button
-                    onClick={() => handleDeleteClick(user)}
-                    disabled={user.id === currentUser.id || user.role === UserRole.Admin}
-                    className="text-red-500 hover:text-red-700 p-1 disabled:text-gray-400 disabled:cursor-not-allowed"
-                    aria-label={`Delete user ${user.username}`}
-                  >
-                    <TrashIcon />
-                  </button>
-                </td>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
+        <div className="p-4">
+            <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                    <SearchIcon />
+                </div>
+                <input
+                    type="text"
+                    placeholder="Search by username..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 focus:ring-blue-500 focus:border-blue-500"
+                />
+            </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+            <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0">
+              <tr>
+                <SortableHeader sortKey="username">Username</SortableHeader>
+                <SortableHeader sortKey="role">Role</SortableHeader>
+                <th scope="col" className="px-6 py-3 text-right">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {paginatedUsers.map(user => (
+                <tr key={user.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                  <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{user.username} {user.id === currentUser.id && '(You)'}</td>
+                  <td className="px-6 py-4">{user.role}</td>
+                  <td className="px-6 py-4 text-right">
+                    <button
+                      onClick={() => handleDeleteClick(user)}
+                      disabled={user.id === currentUser.id || user.role === UserRole.Admin}
+                      className="text-red-500 hover:text-red-700 p-1 disabled:text-gray-400 disabled:cursor-not-allowed"
+                      aria-label={`Delete user ${user.username}`}
+                    >
+                      <TrashIcon />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+            itemsPerPage={itemsPerPage}
+            setItemsPerPage={setItemsPerPage}
+            totalItems={totalItems}
+        />
       </div>
 
       <Modal isOpen={isAddUserModalOpen} onClose={() => setIsAddUserModalOpen(false)} title="Add New User" size="sm">
