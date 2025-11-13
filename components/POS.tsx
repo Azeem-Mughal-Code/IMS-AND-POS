@@ -8,14 +8,10 @@ interface POSProps {
   products: Product[];
   sales: Sale[];
   processSale: (sale: Omit<Sale, 'id' | 'date'>) => Sale;
+  currency: string;
 }
 
-const formatCurrency = (amount: number) => {
-  const value = Math.abs(amount).toFixed(2);
-  return amount < 0 ? `-$${value}` : `$${value}`;
-}
-
-export const POS: React.FC<POSProps> = ({ products, sales, processSale }) => {
+export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -24,6 +20,12 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale }) => {
   const [mode, setMode] = useState<'Sale' | 'Return'>('Sale');
   const [selectedSaleForReturn, setSelectedSaleForReturn] = useState<Sale | null>(null);
   const [returnSearchTerm, setReturnSearchTerm] = useState('');
+
+  const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+  }).format(amount);
 
   const filteredProducts = useMemo(() => {
     if (!searchTerm) return [];

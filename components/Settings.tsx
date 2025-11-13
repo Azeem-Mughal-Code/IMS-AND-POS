@@ -3,6 +3,7 @@ import { User, UserRole, View, UsersViewState, Product, Sale } from '../types';
 import { UserSettings } from './UserSettings';
 import { Modal } from './common/Modal';
 import { SunIcon, MoonIcon, ComputerDesktopIcon, LogoutIcon, ExportIcon, ImportIcon, DangerIcon, ChevronDownIcon } from './Icons';
+import { Dropdown } from './common/Dropdown';
 
 interface SettingsProps {
     currentUser: User;
@@ -13,6 +14,10 @@ interface SettingsProps {
     deleteUser: (userId: string) => { success: boolean; message?: string };
     theme: 'light' | 'dark' | 'system';
     setTheme: (theme: 'light' | 'dark' | 'system') => void;
+    itemsPerPage: number;
+    setItemsPerPage: (size: number) => void;
+    currency: string;
+    setCurrency: (currency: string) => void;
     onLogout: () => void;
     usersViewState: UsersViewState;
     onUsersViewUpdate: (updates: Partial<UsersViewState>) => void;
@@ -52,7 +57,7 @@ const ThemeSelector: React.FC<{ theme: 'light' | 'dark' | 'system', setTheme: (t
 };
 
 // --- Data Management Component ---
-const DataManagement: React.FC<Omit<SettingsProps, 'onUsersViewUpdate' | 'usersViewState' | 'theme' | 'setTheme' | 'onLogout'>> = ({ currentUser, businessName, products, sales, importProducts, clearSales, factoryReset }) => {
+const DataManagement: React.FC<Omit<SettingsProps, 'onUsersViewUpdate' | 'usersViewState' | 'theme' | 'setTheme' | 'onLogout' | 'itemsPerPage' | 'setItemsPerPage' | 'currency' | 'setCurrency'>> = ({ currentUser, businessName, products, sales, importProducts, clearSales, factoryReset }) => {
     const [isImportModalOpen, setImportModalOpen] = useState(false);
     const [importFile, setImportFile] = useState<File | null>(null);
     const [importFeedback, setImportFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null);
@@ -311,7 +316,7 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({ title, subtitle, se
     const isExpanded = expandedSection === sectionId;
 
     return (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden transition-all duration-300">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md transition-all duration-300">
             <button
                 onClick={() => setExpandedSection(isExpanded ? null : sectionId)}
                 className="w-full flex justify-between items-center p-6 text-left"
@@ -340,7 +345,7 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({ title, subtitle, se
 
 
 export const Settings: React.FC<SettingsProps> = (props) => {
-    const { currentUser, updateUser, theme, setTheme, onLogout } = props;
+    const { currentUser, updateUser, theme, setTheme, onLogout, itemsPerPage, setItemsPerPage, currency, setCurrency } = props;
     const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
     
     const [profileUsername, setProfileUsername] = useState(currentUser.username);
@@ -410,7 +415,36 @@ export const Settings: React.FC<SettingsProps> = (props) => {
                 expandedSection={expandedSection}
                 setExpandedSection={setExpandedSection}
             >
-                <ThemeSelector theme={theme} setTheme={setTheme} />
+                <div className="space-y-6">
+                    <div>
+                        <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Theme</h3>
+                        <ThemeSelector theme={theme} setTheme={setTheme} />
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Rows Per Page</h3>
+                         <Dropdown
+                            value={itemsPerPage}
+                            onChange={setItemsPerPage}
+                            options={[
+                                { value: 5, label: '5' },
+                                { value: 10, label: '10' },
+                                { value: 20, label: '20' },
+                                { value: 50, label: '50' },
+                            ]}
+                        />
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Currency</h3>
+                        <Dropdown
+                            value={currency}
+                            onChange={setCurrency}
+                            options={[
+                                { value: 'USD', label: 'USD - United States Dollar' },
+                                { value: 'PKR', label: 'PKR - Pakistani Rupee' },
+                            ]}
+                        />
+                    </div>
+                </div>
             </AccordionSection>
             
             {currentUser.role === UserRole.Admin && (

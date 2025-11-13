@@ -6,7 +6,6 @@ interface PaginationProps {
   totalPages: number;
   onPageChange: (page: number) => void;
   itemsPerPage: number;
-  setItemsPerPage: (size: number) => void;
   totalItems: number;
 }
 
@@ -15,7 +14,6 @@ export const Pagination: React.FC<PaginationProps> = ({
   totalPages,
   onPageChange,
   itemsPerPage,
-  setItemsPerPage,
   totalItems,
 }) => {
   const startItem = totalItems > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0;
@@ -24,19 +22,9 @@ export const Pagination: React.FC<PaginationProps> = ({
   return (
     <div className="flex flex-col md:flex-row items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
       <div className="flex items-center gap-2 mb-2 md:mb-0">
-        <span className="text-sm text-gray-700 dark:text-gray-400">Rows per page:</span>
-        <select
-          value={itemsPerPage}
-          onChange={(e) => setItemsPerPage(Number(e.target.value))}
-          className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-200 text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block p-1.5"
-        >
-          {[5, 10, 20, 50].map(size => (
-            <option key={size} value={size}>{size}</option>
-          ))}
-        </select>
         {totalItems > 0 &&
             <span className="text-sm text-gray-500 dark:text-gray-400 hidden sm:block">
-            | Showing {startItem}-{endItem} of {totalItems}
+            Showing {startItem}-{endItem} of {totalItems}
             </span>
         }
       </div>

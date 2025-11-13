@@ -15,20 +15,22 @@ interface ReportsProps {
   onSalesViewStateUpdate: (updates: Partial<ReportsViewState['sales']>) => void;
   productsViewState: ReportsViewState['products'];
   onProductsViewStateUpdate: (updates: Partial<ReportsViewState['products']>) => void;
-}
-
-const formatCurrency = (amount: number) => {
-    const value = Math.abs(amount).toFixed(2);
-    return amount < 0 ? `-$${value}`: `$${value}`;
+  currency: string;
 }
 
 type SortableSaleKeys = 'id' | 'date' | 'type' | 'total' | 'profit';
 type SortableProductKeys = 'sku' | 'name' | 'stock';
 
 
-export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, processSale, salesViewState, onSalesViewStateUpdate, productsViewState, onProductsViewStateUpdate }) => {
+export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, processSale, salesViewState, onSalesViewStateUpdate, productsViewState, onProductsViewStateUpdate, currency }) => {
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+  }).format(amount);
 
   const { searchTerm: saleSearch, typeFilter, statusFilter, sortConfig: saleSortConfig, currentPage: saleCurrentPage, itemsPerPage: saleItemsPerPage } = salesViewState;
   const { searchTerm: productSearch, stockFilter, sortConfig: productSortConfig, currentPage: productCurrentPage, itemsPerPage: productItemsPerPage } = productsViewState;
@@ -327,7 +329,6 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
             totalPages={saleTotalPages}
             onPageChange={(page) => onSalesViewStateUpdate({ currentPage: page })}
             itemsPerPage={saleItemsPerPage}
-            setItemsPerPage={(size) => onSalesViewStateUpdate({ itemsPerPage: size })}
             totalItems={saleTotalItems}
         />
       </div>
@@ -392,7 +393,6 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
             totalPages={productTotalPages}
             onPageChange={(page) => onProductsViewStateUpdate({ currentPage: page })}
             itemsPerPage={productItemsPerPage}
-            setItemsPerPage={(size) => onProductsViewStateUpdate({ itemsPerPage: size })}
             totalItems={productTotalItems}
         />
       </div>

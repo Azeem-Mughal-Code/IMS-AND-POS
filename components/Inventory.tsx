@@ -15,6 +15,7 @@ interface InventoryProps {
   adjustStock: (productId: string, quantity: number, reason: string) => void;
   inventoryAdjustments: InventoryAdjustment[];
   currentUser: User;
+  currency: string;
   viewState: InventoryViewState;
   onViewStateUpdate: (updates: Partial<InventoryViewState>) => void;
 }
@@ -106,7 +107,7 @@ const StockActionForm: React.FC<{ title: string, onSubmit: (quantity: number, re
 
 type SortableProductKeys = keyof Product;
 
-export const Inventory: React.FC<InventoryProps> = ({ products, sales, addProduct, updateProduct, deleteProduct, receiveStock, adjustStock, inventoryAdjustments, currentUser, viewState, onViewStateUpdate }) => {
+export const Inventory: React.FC<InventoryProps> = ({ products, sales, addProduct, updateProduct, deleteProduct, receiveStock, adjustStock, inventoryAdjustments, currentUser, currency, viewState, onViewStateUpdate }) => {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
   
@@ -127,6 +128,12 @@ export const Inventory: React.FC<InventoryProps> = ({ products, sales, addProduc
     }
   }, [feedback]);
   
+  const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2
+  }).format(amount);
+
   const { searchTerm, stockFilter, sortConfig, currentPage, itemsPerPage } = viewState;
   const activeFilterCount = stockFilter !== 'All' ? 1 : 0;
 
@@ -332,8 +339,8 @@ export const Inventory: React.FC<InventoryProps> = ({ products, sales, addProduc
                 <tr key={p.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
                   <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{p.sku}</td>
                   <td className="px-6 py-4">{p.name}</td>
-                  <td className="px-6 py-4">${p.retailPrice.toFixed(2)}</td>
-                  <td className="px-6 py-4">${p.costPrice.toFixed(2)}</td>
+                  <td className="px-6 py-4">{formatCurrency(p.retailPrice)}</td>
+                  <td className="px-6 py-4">{formatCurrency(p.costPrice)}</td>
                   <td className={`px-6 py-4 font-semibold ${p.stock <= p.lowStockThreshold ? 'text-red-500' : 'text-green-500'}`}>{p.stock}</td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end items-center gap-1 sm:gap-2">
@@ -368,7 +375,6 @@ export const Inventory: React.FC<InventoryProps> = ({ products, sales, addProduc
            totalPages={totalPages}
            onPageChange={(page) => onViewStateUpdate({ currentPage: page })}
            itemsPerPage={itemsPerPage}
-           setItemsPerPage={(size) => onViewStateUpdate({ itemsPerPage: size })}
            totalItems={totalItems}
          />
       </div>

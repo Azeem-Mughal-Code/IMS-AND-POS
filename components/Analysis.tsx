@@ -3,7 +3,7 @@ import { Product, Sale, AnalysisViewState } from '../types';
 import { SearchIcon, ChevronDownIcon, ChevronUpIcon } from './Icons';
 import { Pagination } from './common/Pagination';
 
-const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`;
+const formatCurrencyDefault = (amount: number) => `$${amount.toFixed(2)}`;
 
 type PerformanceMetric = {
     product: Product;
@@ -33,10 +33,17 @@ interface AnalysisProps {
     sales: Sale[];
     viewState: AnalysisViewState;
     onViewStateUpdate: (updates: Partial<AnalysisViewState>) => void;
+    currency: string;
 }
 
-export const Analysis: React.FC<AnalysisProps> = ({ products, sales, viewState, onViewStateUpdate }) => {
+export const Analysis: React.FC<AnalysisProps> = ({ products, sales, viewState, onViewStateUpdate, currency }) => {
     const { searchTerm, sortConfig, currentPage, itemsPerPage } = viewState;
+
+    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency,
+        minimumFractionDigits: 2,
+    }).format(amount);
 
     const productPerformance = useMemo<PerformanceMetric[]>(() => {
         const metrics: { [key: string]: Omit<PerformanceMetric, 'product'> } = {};
@@ -207,7 +214,6 @@ export const Analysis: React.FC<AnalysisProps> = ({ products, sales, viewState, 
                     totalPages={totalPages}
                     onPageChange={(page) => onViewStateUpdate({ currentPage: page })}
                     itemsPerPage={itemsPerPage}
-                    setItemsPerPage={(size) => onViewStateUpdate({ itemsPerPage: size })}
                     totalItems={totalItems}
                 />
             </div>

@@ -252,7 +252,6 @@ export const UserSettings: React.FC<UserSettingsProps> = ({ users, currentUser, 
             totalPages={totalPages}
             onPageChange={(page) => onViewStateUpdate({ currentPage: page })}
             itemsPerPage={itemsPerPage}
-            setItemsPerPage={(size) => onViewStateUpdate({ itemsPerPage: size, currentPage: 1 })}
             totalItems={totalItems}
         />
 

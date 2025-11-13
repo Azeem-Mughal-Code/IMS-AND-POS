@@ -151,12 +151,16 @@ interface MainLayoutProps {
   importProducts: (newProducts: Omit<Product, 'id'>[]) => { success: boolean, message: string };
   clearSales: () => void;
   factoryReset: () => void;
+  itemsPerPage: number;
+  setItemsPerPage: (size: number) => void;
+  currency: string;
+  setCurrency: (currency: string) => void;
 }
 
 // MainLayout Component for the authenticated app view
 const MainLayout: React.FC<MainLayoutProps> = (props) => {
   const { currentUser, businessName, onLogout, products, sales, inventoryAdjustments, users, activeView, setActiveView,
-      inventoryViewState, onInventoryViewUpdate, reportsViewState, onReportsSalesViewUpdate, onReportsProductsViewUpdate, analysisViewState, onAnalysisViewUpdate } = props;
+      inventoryViewState, onInventoryViewUpdate, reportsViewState, onReportsSalesViewUpdate, onReportsProductsViewUpdate, analysisViewState, onAnalysisViewUpdate, currency } = props;
   
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   
@@ -179,13 +183,13 @@ const MainLayout: React.FC<MainLayoutProps> = (props) => {
 
   const renderView = () => {
     switch (activeView) {
-      case 'dashboard': return <Dashboard products={products} sales={sales} />;
-      case 'pos': return <POS products={products} sales={sales} processSale={props.processSale} />;
-      case 'inventory': return <Inventory products={products} sales={sales} addProduct={props.addProduct} updateProduct={props.updateProduct} receiveStock={props.receiveStock} adjustStock={props.adjustStock} deleteProduct={props.deleteProduct} inventoryAdjustments={inventoryAdjustments} currentUser={currentUser} viewState={inventoryViewState} onViewStateUpdate={onInventoryViewUpdate} />;
-      case 'reports': return <Reports sales={sales} products={products} currentUser={currentUser} processSale={props.processSale} salesViewState={reportsViewState.sales} onSalesViewStateUpdate={onReportsSalesViewUpdate} productsViewState={reportsViewState.products} onProductsViewStateUpdate={onReportsProductsViewUpdate} />;
-      case 'analysis': return <Analysis products={products} sales={sales} viewState={analysisViewState} onViewStateUpdate={onAnalysisViewUpdate} />;
+      case 'dashboard': return <Dashboard products={products} sales={sales} currency={currency} />;
+      case 'pos': return <POS products={products} sales={sales} processSale={props.processSale} currency={currency} />;
+      case 'inventory': return <Inventory products={products} sales={sales} addProduct={props.addProduct} updateProduct={props.updateProduct} receiveStock={props.receiveStock} adjustStock={props.adjustStock} deleteProduct={props.deleteProduct} inventoryAdjustments={inventoryAdjustments} currentUser={currentUser} viewState={inventoryViewState} onViewStateUpdate={onInventoryViewUpdate} currency={currency} />;
+      case 'reports': return <Reports sales={sales} products={products} currentUser={currentUser} processSale={props.processSale} salesViewState={reportsViewState.sales} onSalesViewStateUpdate={onReportsSalesViewUpdate} productsViewState={reportsViewState.products} onProductsViewStateUpdate={onReportsProductsViewUpdate} currency={currency} />;
+      case 'analysis': return <Analysis products={products} sales={sales} viewState={analysisViewState} onViewStateUpdate={onAnalysisViewUpdate} currency={currency} />;
       case 'settings': return <Settings {...props} />;
-      default: return <Dashboard products={products} sales={sales} />;
+      default: return <Dashboard products={products} sales={sales} currency={currency} />;
     }
   };
 
@@ -265,6 +269,9 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
   const [users, setUsers] = useLocalStorage<User[]>(`${ls_prefix}-users`, []);
   const [currentUser, setCurrentUser] = useLocalStorage<User | null>(`${ls_prefix}-currentUser`, null);
   
+  const [itemsPerPage, setItemsPerPage] = useLocalStorage<number>(`${ls_prefix}-itemsPerPage`, 10);
+  const [currency, setCurrency] = useLocalStorage<string>(`${ls_prefix}-currency`, 'USD');
+
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [theme, setTheme] = useLocalStorage<'light' | 'dark' | 'system'>('ims-theme', 'system');
   
@@ -372,6 +379,17 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
         return newState;
     });
   }, []);
+
+  useEffect(() => {
+    setInventoryViewState(prev => ({ ...prev, itemsPerPage, currentPage: 1 }));
+    setReportsViewState(prev => ({
+      ...prev,
+      sales: { ...prev.sales, itemsPerPage, currentPage: 1 },
+      products: { ...prev.products, itemsPerPage, currentPage: 1 },
+    }));
+    setUsersViewState(prev => ({ ...prev, itemsPerPage, currentPage: 1 }));
+    setAnalysisViewState(prev => ({ ...prev, itemsPerPage, currentPage: 1 }));
+  }, [itemsPerPage]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -637,6 +655,10 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
       importProducts={importProducts}
       clearSales={clearSales}
       factoryReset={factoryReset}
+      itemsPerPage={itemsPerPage}
+      setItemsPerPage={setItemsPerPage}
+      currency={currency}
+      setCurrency={setCurrency}
     />
   );
 };

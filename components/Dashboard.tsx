@@ -3,8 +3,6 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { Card } from './common/Card';
 import { Product, Sale } from '../types';
 
-const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`;
-
 type TimeRange = 'today' | 'weekly' | 'monthly' | 'yearly' | 'all';
 
 const TimeRangeButton: React.FC<{
@@ -32,8 +30,14 @@ const getStartOfWeek = (date: Date): Date => {
   return d;
 };
 
-export const Dashboard: React.FC<{ products: Product[], sales: Sale[] }> = ({ products, sales }) => {
+export const Dashboard: React.FC<{ products: Product[], sales: Sale[], currency: string }> = ({ products, sales, currency }) => {
   const [timeRange, setTimeRange] = useState<TimeRange>('weekly');
+
+  const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+  }).format(amount);
 
   const filteredSales = useMemo(() => {
     const now = new Date();
