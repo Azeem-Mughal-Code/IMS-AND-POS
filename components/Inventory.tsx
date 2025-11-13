@@ -1,18 +1,22 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Product, InventoryAdjustment, User, UserRole } from '../types';
+import { Product, InventoryAdjustment, User, UserRole, InventoryViewState, Sale } from '../types';
 import { Modal } from './common/Modal';
-import { FilterDropdown } from './common/FilterDropdown';
+import { FilterMenu, FilterSelectItem } from './common/FilterMenu';
 import { Pagination } from './common/Pagination';
-import { SearchIcon, ChevronUpIcon, ChevronDownIcon } from './Icons';
+import { SearchIcon, ChevronUpIcon, ChevronDownIcon, PencilIcon, ReceiveIcon, AdjustIcon, HistoryIcon, TrashIcon } from './Icons';
 
 interface InventoryProps {
   products: Product[];
+  sales: Sale[];
   addProduct: (product: Omit<Product, 'id'>) => void;
   updateProduct: (product: Product) => void;
+  deleteProduct: (productId: string) => { success: boolean; message?: string };
   receiveStock: (productId: string, quantity: number) => void;
   adjustStock: (productId: string, quantity: number, reason: string) => void;
   inventoryAdjustments: InventoryAdjustment[];
   currentUser: User;
+  viewState: InventoryViewState;
+  onViewStateUpdate: (updates: Partial<InventoryViewState>) => void;
 }
 
 const ProductForm: React.FC<{ product?: Product, onSubmit: (p: any) => void, onCancel: () => void }> = ({ product, onSubmit, onCancel }) => {
@@ -102,7 +106,7 @@ const StockActionForm: React.FC<{ title: string, onSubmit: (quantity: number, re
 
 type SortableProductKeys = keyof Product;
 
-export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, updateProduct, receiveStock, adjustStock, inventoryAdjustments, currentUser }) => {
+export const Inventory: React.FC<InventoryProps> = ({ products, sales, addProduct, updateProduct, deleteProduct, receiveStock, adjustStock, inventoryAdjustments, currentUser, viewState, onViewStateUpdate }) => {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
   
@@ -112,23 +116,33 @@ export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, upda
 
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [viewingHistoryFor, setViewingHistoryFor] = useState<Product | null>(null);
-  
-  const [searchTerm, setSearchTerm] = useState('');
-  const [stockFilter, setStockFilter] = useState('All');
-  const [sortConfig, setSortConfig] = useState<{ key: SortableProductKeys, direction: 'ascending' | 'descending' }>({ key: 'name', direction: 'ascending' });
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, stockFilter, itemsPerPage]);
+    if (feedback) {
+      const timer = setTimeout(() => setFeedback(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [feedback]);
+  
+  const { searchTerm, stockFilter, sortConfig, currentPage, itemsPerPage } = viewState;
+  const activeFilterCount = stockFilter !== 'All' ? 1 : 0;
+
+  const stockFilterOptions = [
+    { value: 'All', label: 'All Stock Status' },
+    { value: 'In Stock', label: 'In Stock' },
+    { value: 'Low Stock', label: 'Low Stock' },
+    { value: 'Out of Stock', label: 'Out of Stock' },
+  ];
 
   const requestSort = (key: SortableProductKeys) => {
     let direction: 'ascending' | 'descending' = 'ascending';
     if (sortConfig.key === key && sortConfig.direction === 'ascending') {
         direction = 'descending';
     }
-    setSortConfig({ key, direction });
+    onViewStateUpdate({ sortConfig: { key, direction } });
   };
 
   const filteredAndSortedProducts = useMemo(() => {
@@ -214,6 +228,29 @@ export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, upda
     setIsHistoryModalOpen(true);
   };
 
+  const handleDeleteClick = (product: Product) => {
+    setFeedback(null);
+    const hasSalesHistory = sales.some(sale => sale.items.some(item => item.id === product.id));
+    if (hasSalesHistory) {
+        setFeedback({type: 'error', text: 'Cannot delete product with sales history. Consider setting stock to zero.'});
+    } else {
+        setProductToDelete(product);
+    }
+  };
+
+  const confirmDelete = () => {
+    if (productToDelete) {
+      const result = deleteProduct(productToDelete.id);
+      if (result.success) {
+        setFeedback({type: 'success', text: 'Product deleted successfully.'});
+      } else {
+        setFeedback({type: 'error', text: result.message || 'Failed to delete product.'});
+      }
+      setProductToDelete(null);
+    }
+  };
+
+
   const productHistory = useMemo(() => {
     if (!viewingHistoryFor) return [];
     return inventoryAdjustments
@@ -246,10 +283,16 @@ export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, upda
           </button>
         )}
       </div>
-        
+      
+      {feedback && (
+        <div className={`mb-4 px-4 py-3 rounded-md text-sm ${feedback.type === 'success' ? 'bg-green-100 dark:bg-green-900 border border-green-200 dark:border-green-700 text-green-800 dark:text-green-200' : 'bg-red-100 dark:bg-red-900 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-200'}`} role="alert">
+          {feedback.text}
+        </div>
+      )}
+
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
         <div className="p-4">
-            <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex items-center gap-4">
                 <div className="relative flex-grow">
                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
                         <SearchIcon />
@@ -258,21 +301,18 @@ export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, upda
                         type="text"
                         placeholder="Search by name or SKU..."
                         value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
+                        onChange={e => onViewStateUpdate({ searchTerm: e.target.value })}
                         className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 focus:ring-blue-500 focus:border-blue-500"
                     />
                 </div>
-                <FilterDropdown
-                    label="Stock Status"
-                    options={[
-                        { value: 'All', label: 'All Stock Status' },
-                        { value: 'In Stock', label: 'In Stock' },
-                        { value: 'Low Stock', label: 'Low Stock' },
-                        { value: 'Out of Stock', label: 'Out of Stock' },
-                    ]}
-                    value={stockFilter}
-                    onChange={(value) => setStockFilter(value)}
-                />
+                <FilterMenu activeFilterCount={activeFilterCount}>
+                    <FilterSelectItem
+                        label="Stock Status"
+                        value={stockFilter}
+                        onChange={(value) => onViewStateUpdate({ stockFilter: value })}
+                        options={stockFilterOptions}
+                    />
+                </FilterMenu>
             </div>
         </div>
         <div className="overflow-x-auto">
@@ -295,15 +335,28 @@ export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, upda
                   <td className="px-6 py-4">${p.retailPrice.toFixed(2)}</td>
                   <td className="px-6 py-4">${p.costPrice.toFixed(2)}</td>
                   <td className={`px-6 py-4 font-semibold ${p.stock <= p.lowStockThreshold ? 'text-red-500' : 'text-green-500'}`}>{p.stock}</td>
-                  <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                    {currentUser.role === UserRole.Admin && (
-                      <>
-                        <button onClick={() => handleOpenEditModal(p)} className="font-medium text-blue-600 dark:text-blue-500 hover:underline">Edit</button>
-                        <button onClick={() => openStockModal(p.id, 'receive')} className="font-medium text-green-600 dark:text-green-500 hover:underline">Receive</button>
-                        <button onClick={() => openStockModal(p.id, 'adjust')} className="font-medium text-yellow-600 dark:text-yellow-500 hover:underline">Adjust</button>
-                      </>
-                    )}
-                    <button onClick={() => openHistoryModal(p)} className="font-medium text-gray-600 dark:text-gray-400 hover:underline">History</button>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex justify-end items-center gap-1 sm:gap-2">
+                        <button onClick={() => openHistoryModal(p)} title="View History" className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                            <HistoryIcon />
+                        </button>
+                        {currentUser.role === UserRole.Admin && (
+                        <>
+                            <button onClick={() => openStockModal(p.id, 'receive')} title="Receive Stock" className="p-2 text-gray-500 hover:text-green-600 dark:hover:text-green-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                <ReceiveIcon />
+                            </button>
+                            <button onClick={() => openStockModal(p.id, 'adjust')} title="Adjust Stock" className="p-2 text-gray-500 hover:text-yellow-600 dark:hover:text-yellow-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                <AdjustIcon />
+                            </button>
+                            <button onClick={() => handleOpenEditModal(p)} title="Edit Product" className="p-2 text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                <PencilIcon className="h-5 w-5" />
+                            </button>
+                            <button onClick={() => handleDeleteClick(p)} title="Delete Product" className="p-2 text-gray-500 hover:text-red-600 dark:hover:text-red-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                <TrashIcon />
+                            </button>
+                        </>
+                        )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -313,9 +366,9 @@ export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, upda
         <Pagination
            currentPage={currentPage}
            totalPages={totalPages}
-           onPageChange={setCurrentPage}
+           onPageChange={(page) => onViewStateUpdate({ currentPage: page })}
            itemsPerPage={itemsPerPage}
-           setItemsPerPage={setItemsPerPage}
+           setItemsPerPage={(size) => onViewStateUpdate({ itemsPerPage: size })}
            totalItems={totalItems}
          />
       </div>
@@ -361,6 +414,24 @@ export const Inventory: React.FC<InventoryProps> = ({ products, addProduct, upda
                     </tbody>
                 </table>
             </div>
+        )}
+      </Modal>
+
+       <Modal isOpen={!!productToDelete} onClose={() => setProductToDelete(null)} title="Confirm Deletion" size="sm">
+        {productToDelete && (
+          <div className="space-y-4">
+            <p className="text-gray-700 dark:text-gray-300">
+              Are you sure you want to delete the product <span className="font-bold">{productToDelete.name}</span>? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2 pt-4">
+              <button type="button" onClick={() => setProductToDelete(null)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">
+                Cancel
+              </button>
+              <button type="button" onClick={confirmDelete} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                Delete Product
+              </button>
+            </div>
+          </div>
         )}
       </Modal>
     </div>

@@ -1,46 +1,177 @@
-import React, { useMemo } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import React, { useMemo, useState } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { Card } from './common/Card';
 import { Product, Sale } from '../types';
 
-interface DashboardProps {
-  products: Product[];
-  sales: Sale[];
-}
-
 const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`;
 
-export const Dashboard: React.FC<DashboardProps> = ({ products, sales }) => {
+type TimeRange = 'today' | 'weekly' | 'monthly' | 'yearly' | 'all';
+
+const TimeRangeButton: React.FC<{
+    label: string;
+    range: TimeRange;
+    currentTimeRange: TimeRange;
+    setTimeRange: (range: TimeRange) => void;
+}> = ({ label, range, currentTimeRange, setTimeRange }) => (
+    <button
+        onClick={() => setTimeRange(range)}
+        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
+            currentTimeRange === range
+                ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow'
+                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+        }`}
+    >
+        {label}
+    </button>
+);
+
+const getStartOfWeek = (date: Date): Date => {
+  const d = new Date(date);
+  d.setDate(d.getDate() - d.getDay());
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+export const Dashboard: React.FC<{ products: Product[], sales: Sale[] }> = ({ products, sales }) => {
+  const [timeRange, setTimeRange] = useState<TimeRange>('weekly');
+
+  const filteredSales = useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    switch (timeRange) {
+        case 'today':
+            return sales.filter(sale => new Date(sale.date) >= today);
+        case 'weekly': {
+            const startOfWeek = getStartOfWeek(now);
+            return sales.filter(sale => new Date(sale.date) >= startOfWeek);
+        }
+        case 'monthly': {
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            return sales.filter(sale => new Date(sale.date) >= startOfMonth);
+        }
+        case 'yearly': {
+            const startOfYear = new Date(now.getFullYear(), 0, 1);
+            return sales.filter(sale => new Date(sale.date) >= startOfYear);
+        }
+        case 'all':
+        default:
+            return sales;
+    }
+  }, [sales, timeRange]);
+  
   const stats = useMemo(() => {
-    const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
-    const totalCogs = sales.reduce((sum, sale) => sum + sale.cogs, 0);
+    const totalSales = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
+    const totalCogs = filteredSales.reduce((sum, sale) => sum + sale.cogs, 0);
     const totalProfit = totalSales - totalCogs;
     const lowStockItems = products.filter(p => p.stock <= p.lowStockThreshold).length;
 
     return { totalSales, totalCogs, totalProfit, lowStockItems };
-  }, [sales, products]);
+  }, [filteredSales, products]);
 
-  const salesData = useMemo(() => {
-    const last7Days = [...Array(7)].map((_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      return d.toISOString().split('T')[0];
-    }).reverse();
+  const { chartData, chartTitle } = useMemo(() => {
+    const now = new Date();
+    switch (timeRange) {
+        case 'today': {
+            const data = Array(24).fill(0).map((_, i) => ({ name: `${i}:00`, Sales: 0 }));
+            filteredSales.forEach(sale => {
+                const hour = new Date(sale.date).getHours();
+                data[hour].Sales += sale.total;
+            });
+            return { chartData: data, chartTitle: 'Today' };
+        }
+        case 'weekly': {
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const startOfWeek = getStartOfWeek(now);
+            
+            const data = dayNames.map((name, i) => {
+                const d = new Date(startOfWeek);
+                d.setDate(d.getDate() + i);
+                return { 
+                    name, 
+                    Sales: 0,
+                    dateKey: d.toISOString().split('T')[0]
+                };
+            });
 
-    return last7Days.map(date => {
-      const dailySales = sales
-        .filter(sale => sale.date.startsWith(date))
-        .reduce((sum, sale) => sum + sale.total, 0);
-      return {
-        name: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        Sales: dailySales,
-      };
-    });
-  }, [sales]);
+            const salesByDay: { [key: string]: number } = {};
+            filteredSales.forEach(sale => {
+                const key = sale.date.split('T')[0];
+                if (salesByDay[key] === undefined) salesByDay[key] = 0;
+                salesByDay[key] += sale.total;
+            });
+
+            data.forEach(day => {
+                if (salesByDay[day.dateKey]) {
+                    day.Sales = salesByDay[day.dateKey];
+                }
+            });
+            return { chartData: data, chartTitle: 'This Week' };
+        }
+        case 'monthly': {
+            const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+            const data = Array.from({ length: daysInMonth }, (_, i) => ({
+                name: `${i + 1}`,
+                Sales: 0
+            }));
+            filteredSales.forEach(sale => {
+                const dayOfMonth = new Date(sale.date).getDate();
+                if(data[dayOfMonth - 1]) data[dayOfMonth - 1].Sales += sale.total;
+            });
+            return { chartData: data, chartTitle: 'This Month' };
+        }
+        case 'yearly': {
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const data = monthNames.map(m => ({ name: m, Sales: 0 }));
+            filteredSales.forEach(sale => {
+                const month = new Date(sale.date).getMonth();
+                data[month].Sales += sale.total;
+            });
+            return { chartData: data, chartTitle: 'This Year' };
+        }
+        case 'all': {
+            if (filteredSales.length === 0) {
+                return { chartData: [], chartTitle: 'All Time' };
+            }
+            const salesByMonth: { [key: string]: number } = {};
+            filteredSales.forEach(sale => {
+                const d = new Date(sale.date);
+                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                if (salesByMonth[key] === undefined) salesByMonth[key] = 0;
+                salesByMonth[key] += sale.total;
+            });
+            const data = Object.keys(salesByMonth).sort().map(key => {
+                const [year, month] = key.split('-');
+                const date = new Date(parseInt(year), parseInt(month) - 1);
+                return {
+                    name: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+                    Sales: salesByMonth[key]
+                };
+            });
+            return { chartData: data, chartTitle: 'All Time' };
+        }
+        default:
+            return { chartData: [], chartTitle: ''};
+    }
+  }, [filteredSales, timeRange]);
+  
+  const ChartComponent = timeRange === 'today' ? BarChart : LineChart;
+  const ChartElement = timeRange === 'today' ? Bar : Line;
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Dashboard</h1>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Dashboard</h1>
+        <div className="flex-shrink-0 bg-gray-200 dark:bg-gray-700 p-1 rounded-lg overflow-x-auto">
+            <div className="flex items-center space-x-1">
+                <TimeRangeButton label="Today" range="today" currentTimeRange={timeRange} setTimeRange={setTimeRange} />
+                <TimeRangeButton label="Week" range="weekly" currentTimeRange={timeRange} setTimeRange={setTimeRange} />
+                <TimeRangeButton label="Month" range="monthly" currentTimeRange={timeRange} setTimeRange={setTimeRange} />
+                <TimeRangeButton label="Year" range="yearly" currentTimeRange={timeRange} setTimeRange={setTimeRange} />
+                <TimeRangeButton label="All Time" range="all" currentTimeRange={timeRange} setTimeRange={setTimeRange} />
+            </div>
+        </div>
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card title="Total Sales" value={formatCurrency(stats.totalSales)} color="bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>} />
@@ -50,10 +181,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales }) => {
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-4">Sales Overview (Last 7 Days)</h2>
+        <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-4">Sales Overview ({chartTitle})</h2>
         <div style={{ width: '100%', height: 300 }}>
           <ResponsiveContainer>
-            <LineChart data={salesData}>
+            <ChartComponent data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#4A5568" />
               <XAxis dataKey="name" stroke="#A0AEC0" />
               <YAxis stroke="#A0AEC0" />
@@ -63,8 +194,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales }) => {
                 formatter={(value: number) => [formatCurrency(value), 'Sales']}
               />
               <Legend wrapperStyle={{ color: '#E2E8F0' }} />
-              <Line type="monotone" dataKey="Sales" stroke="#4299E1" strokeWidth={2} activeDot={{ r: 8 }} />
-            </LineChart>
+              <ChartElement 
+                type="monotone" 
+                dataKey="Sales" 
+                stroke="#4299E1" 
+                fill="#4299E1"
+                strokeWidth={2} 
+                activeDot={{ r: 8 }} 
+              />
+            </ChartComponent>
           </ResponsiveContainer>
         </div>
       </div>

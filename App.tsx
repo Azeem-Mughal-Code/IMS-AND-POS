@@ -1,13 +1,14 @@
 import React, { useState, useCallback, FormEvent, useEffect, useRef } from 'react';
-import { Product, Sale, User, UserRole, View, InventoryAdjustment } from './types';
+import { Product, Sale, User, UserRole, View, InventoryAdjustment, InventoryViewState, ReportsViewState, UsersViewState, AnalysisViewState } from './types';
 import useLocalStorage from './hooks/useLocalStorage';
 import { INITIAL_PRODUCTS } from './constants';
 import { Dashboard } from './components/Dashboard';
 import { POS } from './components/POS';
 import { Inventory } from './components/Inventory';
 import { Reports } from './components/Reports';
-import { UserSettings } from './components/UserSettings';
-import { DashboardIcon, POSIcon, InventoryIcon, ReportsIcon, UsersIcon, UserIcon, LogoutIcon, SettingsIcon, SunIcon, MoonIcon, ComputerDesktopIcon, ChevronDownIcon } from './components/Icons';
+import { Settings } from './components/Settings';
+import { Analysis } from './components/Analysis';
+import { DashboardIcon, POSIcon, InventoryIcon, ReportsIcon, UsersIcon, UserIcon, LogoutIcon, SettingsIcon, AnalysisIcon, ChevronDownIcon } from './components/Icons';
 import { Modal } from './components/common/Modal';
 
 // Component to select a business workspace
@@ -116,8 +117,8 @@ const AuthForm: React.FC<{
   );
 };
 
-// MainLayout Component for the authenticated app view
-const MainLayout: React.FC<{
+
+interface MainLayoutProps {
   currentUser: User;
   businessName: string;
   onLogout: () => void;
@@ -132,87 +133,55 @@ const MainLayout: React.FC<{
   updateProduct: (updatedProduct: Product) => void;
   receiveStock: (productId: string, quantity: number) => void;
   adjustStock: (productId: string, newStockLevel: number, reason: string) => void;
+  deleteProduct: (productId: string) => { success: boolean; message?: string };
   addUser: (username: string, pass: string, role: UserRole) => { success: boolean, message?: string };
   updateUser: (userId: string, newUsername: string, newPassword?: string) => { success: boolean, message?: string };
   deleteUser: (userId: string) => { success: boolean, message?: string };
   theme: 'light' | 'dark' | 'system';
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
-}> = (props) => {
-  const { currentUser, businessName, onLogout, products, sales, inventoryAdjustments, users, activeView, setActiveView, updateUser, theme, setTheme, ...rest } = props;
+  inventoryViewState: InventoryViewState;
+  onInventoryViewUpdate: (updates: Partial<InventoryViewState>) => void;
+  reportsViewState: ReportsViewState;
+  onReportsSalesViewUpdate: (updates: Partial<ReportsViewState['sales']>) => void;
+  onReportsProductsViewUpdate: (updates: Partial<ReportsViewState['products']>) => void;
+  usersViewState: UsersViewState;
+  onUsersViewUpdate: (updates: Partial<UsersViewState>) => void;
+  analysisViewState: AnalysisViewState;
+  onAnalysisViewUpdate: (updates: Partial<AnalysisViewState>) => void;
+}
+
+// MainLayout Component for the authenticated app view
+const MainLayout: React.FC<MainLayoutProps> = (props) => {
+  const { currentUser, businessName, onLogout, products, sales, inventoryAdjustments, users, activeView, setActiveView,
+      inventoryViewState, onInventoryViewUpdate, reportsViewState, onReportsSalesViewUpdate, onReportsProductsViewUpdate, analysisViewState, onAnalysisViewUpdate } = props;
   
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
-  const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
-  const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
-  const [isMobileSettingsOpen, setIsMobileSettingsOpen] = useState(false);
   
   const profileDropdownRef = useRef<HTMLDivElement>(null);
   
-  const [profileUsername, setProfileUsername] = useState(currentUser.username);
-  const [profilePassword, setProfilePassword] = useState('');
-  const [profileConfirmPassword, setProfileConfirmPassword] = useState('');
-  const [profileError, setProfileError] = useState('');
-  const [profileSuccess, setProfileSuccess] = useState('');
-
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
         setIsProfileDropdownOpen(false);
       }
     };
-    if (isProfileDropdownOpen && !isEditProfileModalOpen && !isThemeModalOpen) {
+    if (isProfileDropdownOpen) {
         document.addEventListener("mousedown", handleClickOutside);
     }
     return () => {
         document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isProfileDropdownOpen, isEditProfileModalOpen, isThemeModalOpen]);
+  }, [isProfileDropdownOpen]);
 
-  useEffect(() => {
-    if (isEditProfileModalOpen) {
-      setProfileUsername(currentUser.username);
-      setProfilePassword('');
-      setProfileConfirmPassword('');
-      setProfileError('');
-      setProfileSuccess('');
-    }
-  }, [isEditProfileModalOpen, currentUser.username]);
-
-  const handleProfileUpdate = () => {
-    setProfileError('');
-    setProfileSuccess('');
-
-    if (profilePassword && profilePassword.length < 4) {
-      setProfileError("New password must be at least 4 characters long.");
-      return;
-    }
-
-    if (profilePassword !== profileConfirmPassword) {
-        setProfileError("Passwords do not match.");
-        return;
-    }
-    
-    const result = updateUser(currentUser.id, profileUsername, profilePassword);
-    
-    if (result.success) {
-        setProfileSuccess("Profile updated successfully!");
-        setProfilePassword('');
-        setProfileConfirmPassword('');
-    } else {
-        setProfileError(result.message || "Failed to update profile.");
-    }
-  }
 
   const renderView = () => {
     switch (activeView) {
       case 'dashboard': return <Dashboard products={products} sales={sales} />;
-      case 'pos': return <POS products={products} sales={sales} processSale={rest.processSale} />;
-      case 'inventory': return <Inventory products={products} addProduct={rest.addProduct} updateProduct={rest.updateProduct} receiveStock={rest.receiveStock} adjustStock={rest.adjustStock} inventoryAdjustments={inventoryAdjustments} currentUser={currentUser} />;
-      case 'reports': return <Reports sales={sales} products={products} currentUser={currentUser} processSale={rest.processSale} />;
-      case 'users':
-        if (currentUser.role === UserRole.Admin) {
-            return <UserSettings users={users} currentUser={currentUser} addUser={rest.addUser} deleteUser={rest.deleteUser} />;
-        }
-        return <div className="p-6"><p>Access Denied. You must be an admin to view this page.</p></div>;
+      case 'pos': return <POS products={products} sales={sales} processSale={props.processSale} />;
+      case 'inventory': return <Inventory products={products} sales={sales} addProduct={props.addProduct} updateProduct={props.updateProduct} receiveStock={props.receiveStock} adjustStock={props.adjustStock} deleteProduct={props.deleteProduct} inventoryAdjustments={inventoryAdjustments} currentUser={currentUser} viewState={inventoryViewState} onViewStateUpdate={onInventoryViewUpdate} />;
+      case 'reports': return <Reports sales={sales} products={products} currentUser={currentUser} processSale={props.processSale} salesViewState={reportsViewState.sales} onSalesViewStateUpdate={onReportsSalesViewUpdate} productsViewState={reportsViewState.products} onProductsViewStateUpdate={onReportsProductsViewUpdate} />;
+      case 'analysis': return <Analysis products={products} sales={sales} viewState={analysisViewState} onViewStateUpdate={onAnalysisViewUpdate} />;
+      case 'settings': return <Settings {...props} />;
       default: return <Dashboard products={products} sales={sales} />;
     }
   };
@@ -224,40 +193,12 @@ const MainLayout: React.FC<{
     </button>
   );
 
-  const BottomNavItem: React.FC<{ view?: View; icon: React.ReactNode; label: string; onClick?: () => void }> = ({ view, icon, label, onClick }) => (
-    <button onClick={onClick ?? (() => view && setActiveView(view))} className={`flex flex-col items-center justify-center w-full pt-2 pb-1 transition-colors ${activeView === view ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+  const BottomNavItem: React.FC<{ view: View; icon: React.ReactNode; label: string }> = ({ view, icon, label }) => (
+    <button onClick={() => setActiveView(view)} className={`flex flex-col items-center justify-center w-full pt-2 pb-1 transition-colors ${activeView === view ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
       {React.cloneElement(icon as React.ReactElement, { className: 'h-6 w-6' })}
       <span className="text-xs font-medium">{label}</span>
     </button>
   );
-
-  const ThemeSelector: React.FC<{ theme: 'light' | 'dark' | 'system', setTheme: (theme: 'light' | 'dark' | 'system') => void }> = ({ theme, setTheme }) => {
-    const options = [
-        { value: 'light', label: 'Light', icon: <SunIcon /> },
-        { value: 'dark', label: 'Dark', icon: <MoonIcon /> },
-        { value: 'system', label: 'System', icon: <ComputerDesktopIcon /> }
-    ];
-
-    return (
-        <div className="grid grid-cols-3 gap-2 rounded-lg bg-gray-100 dark:bg-gray-700 p-1">
-            {options.map(option => (
-                <button
-                    key={option.value}
-                    onClick={() => setTheme(option.value as 'light' | 'dark' | 'system')}
-                    className={`flex flex-col items-center justify-center p-2 rounded-md text-sm font-medium transition-colors ${
-                        theme === option.value
-                            ? 'bg-white dark:bg-gray-900 text-blue-600 dark:text-blue-400 shadow'
-                            : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                    }`}
-                >
-                    {option.icon}
-                    <span className="mt-1">{option.label}</span>
-                </button>
-            ))}
-        </div>
-    );
-};
-
 
   return (
     <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
@@ -270,7 +211,7 @@ const MainLayout: React.FC<{
           <NavItem view="pos" icon={<POSIcon />} label="Point of Sale" />
           {currentUser.role === UserRole.Admin && <NavItem view="inventory" icon={<InventoryIcon />} label="Inventory" />}
           <NavItem view="reports" icon={<ReportsIcon />} label="Reports" />
-          {currentUser.role === UserRole.Admin && <NavItem view="users" icon={<UsersIcon />} label="Users" />}
+          {currentUser.role === UserRole.Admin && <NavItem view="analysis" icon={<AnalysisIcon />} label="Analysis" />}
         </nav>
         <div className="p-4 border-t border-gray-200 dark:border-gray-700" ref={profileDropdownRef}>
             <div className="relative">
@@ -285,11 +226,8 @@ const MainLayout: React.FC<{
                 {isProfileDropdownOpen && (
                     <div className="absolute bottom-full right-0 mb-2 w-56 bg-white dark:bg-gray-800 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 z-10">
                         <div className="p-2">
-                            <button onClick={() => setIsEditProfileModalOpen(true)} className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
-                                <UserIcon className="h-5 w-5" /> <span>Edit Profile</span>
-                            </button>
-                            <button onClick={() => setIsThemeModalOpen(true)} className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
-                                <SettingsIcon className="h-5 w-5" /> <span>Change Theme</span>
+                            <button onClick={() => { setActiveView('settings'); setIsProfileDropdownOpen(false); }} className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
+                                <SettingsIcon className="h-5 w-5" /> <span>Settings</span>
                             </button>
                             <div className="my-1 h-px bg-gray-200 dark:bg-gray-700"></div>
                             <button onClick={onLogout} className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md text-red-600 hover:bg-red-50 dark:hover:bg-gray-700 dark:hover:bg-opacity-50">
@@ -308,54 +246,9 @@ const MainLayout: React.FC<{
         <BottomNavItem view="pos" icon={<POSIcon />} label="POS" />
         {currentUser.role === UserRole.Admin && <BottomNavItem view="inventory" icon={<InventoryIcon />} label="Inventory" />}
         <BottomNavItem view="reports" icon={<ReportsIcon />} label="Reports" />
-        {currentUser.role === UserRole.Admin && <BottomNavItem view="users" icon={<UsersIcon />} label="Users" />}
-        <BottomNavItem icon={<SettingsIcon />} label="Settings" onClick={() => setIsMobileSettingsOpen(true)} />
+        {currentUser.role === UserRole.Admin && <BottomNavItem view="analysis" icon={<AnalysisIcon />} label="Analysis" />}
+        <BottomNavItem view="settings" icon={<SettingsIcon />} label="Settings" />
       </nav>
-      
-      <Modal isOpen={isMobileSettingsOpen} onClose={() => setIsMobileSettingsOpen(false)} title="Settings" size="sm">
-          <div className="space-y-2">
-              <button onClick={() => setIsEditProfileModalOpen(true)} className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-                  <UserIcon className="h-6 w-6" /> <span>Edit Profile</span>
-              </button>
-              <button onClick={() => setIsThemeModalOpen(true)} className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-                  <SettingsIcon className="h-6 w-6" /> <span>Change Theme</span>
-              </button>
-              <div className="my-2 h-px bg-gray-200 dark:bg-gray-600"></div>
-              <button onClick={onLogout} className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-gray-700 dark:hover:bg-opacity-50">
-                  <LogoutIcon className="h-6 w-6" /> <span>Logout</span>
-              </button>
-          </div>
-      </Modal>
-
-      <Modal isOpen={isEditProfileModalOpen} onClose={() => setIsEditProfileModalOpen(false)} title="Edit Profile" size="md">
-         <div className="space-y-4">
-            <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
-                <input type="text" value={profileUsername} onChange={e => setProfileUsername(e.target.value)} required className="mt-1 block w-full px-3 py-2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
-            </div>
-            <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">New Password (optional)</label>
-                <input type="password" value={profilePassword} onChange={e => setProfilePassword(e.target.value)} placeholder="Leave blank to keep current" className="mt-1 block w-full px-3 py-2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
-            </div>
-            <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Confirm New Password</label>
-                <input type="password" value={profileConfirmPassword} onChange={e => setProfileConfirmPassword(e.target.value)} className="mt-1 block w-full px-3 py-2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
-            </div>
-            {profileError && <p className="text-red-500 text-sm text-center mt-2">{profileError}</p>}
-            {profileSuccess && <p className="text-green-500 text-sm text-center mt-2">{profileSuccess}</p>}
-         </div>
-        <div className="flex justify-end items-center pt-6 mt-6 border-t border-gray-200 dark:border-gray-700 gap-2">
-            <button type="button" onClick={() => setIsEditProfileModalOpen(false)} className="w-full sm:w-auto px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Close</button>
-            <button type="button" onClick={handleProfileUpdate} className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Save Changes</button>
-        </div>
-      </Modal>
-
-      <Modal isOpen={isThemeModalOpen} onClose={() => setIsThemeModalOpen(false)} title="Change Theme" size="sm">
-        <ThemeSelector theme={theme} setTheme={setTheme} />
-        <div className="flex justify-end pt-6 mt-2">
-            <button type="button" onClick={() => setIsThemeModalOpen(false)} className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Done</button>
-        </div>
-      </Modal>
     </div>
   );
 };
@@ -371,6 +264,111 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
   
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [theme, setTheme] = useLocalStorage<'light' | 'dark' | 'system'>('ims-theme', 'system');
+  
+  // States for individual views
+  const [inventoryViewState, setInventoryViewState] = useState<InventoryViewState>({
+    searchTerm: '',
+    stockFilter: 'All',
+    sortConfig: { key: 'name', direction: 'ascending' },
+    currentPage: 1,
+    itemsPerPage: 10,
+  });
+
+  const [reportsViewState, setReportsViewState] = useState<ReportsViewState>({
+    sales: {
+        searchTerm: '',
+        typeFilter: 'All',
+        statusFilter: 'All',
+        sortConfig: { key: 'date', direction: 'descending' },
+        currentPage: 1,
+        itemsPerPage: 10,
+    },
+    products: {
+        searchTerm: '',
+        stockFilter: 'All',
+        sortConfig: { key: 'name', direction: 'ascending' },
+        currentPage: 1,
+        itemsPerPage: 10,
+    }
+  });
+
+  const [usersViewState, setUsersViewState] = useState<UsersViewState>({
+    searchTerm: '',
+    sortConfig: { key: 'username', direction: 'ascending' },
+    currentPage: 1,
+    itemsPerPage: 10,
+  });
+  
+  const [analysisViewState, setAnalysisViewState] = useState<AnalysisViewState>({
+    searchTerm: '',
+    sortConfig: { key: 'profit', direction: 'descending' },
+    currentPage: 1,
+    itemsPerPage: 10,
+  });
+
+  const handleInventoryViewUpdate = useCallback((updates: Partial<InventoryViewState>) => {
+    setInventoryViewState(prev => {
+        const newState = { ...prev, ...updates };
+        const filterChanged = (updates.searchTerm !== undefined && updates.searchTerm !== prev.searchTerm) ||
+                            (updates.stockFilter !== undefined && updates.stockFilter !== prev.stockFilter) ||
+                            (updates.itemsPerPage !== undefined && updates.itemsPerPage !== prev.itemsPerPage);
+        if (filterChanged) {
+            newState.currentPage = 1;
+        }
+        return newState;
+    });
+  }, []);
+  
+  const handleReportsSalesViewUpdate = useCallback((updates: Partial<ReportsViewState['sales']>) => {
+    setReportsViewState(prev => {
+        const newSalesState = { ...prev.sales, ...updates };
+        const filterChanged = (updates.searchTerm !== undefined && updates.searchTerm !== prev.sales.searchTerm) ||
+                            (updates.typeFilter !== undefined && updates.typeFilter !== prev.sales.typeFilter) ||
+                            (updates.statusFilter !== undefined && updates.statusFilter !== prev.sales.statusFilter) ||
+                            (updates.itemsPerPage !== undefined && updates.itemsPerPage !== prev.sales.itemsPerPage);
+        if (filterChanged) {
+            newSalesState.currentPage = 1;
+        }
+        return { ...prev, sales: newSalesState };
+    });
+  }, []);
+
+  const handleReportsProductsViewUpdate = useCallback((updates: Partial<ReportsViewState['products']>) => {
+    setReportsViewState(prev => {
+        const newProductsState = { ...prev.products, ...updates };
+        const filterChanged = (updates.searchTerm !== undefined && updates.searchTerm !== prev.products.searchTerm) ||
+                            (updates.stockFilter !== undefined && updates.stockFilter !== prev.products.stockFilter) ||
+                            (updates.itemsPerPage !== undefined && updates.itemsPerPage !== prev.products.itemsPerPage);
+        if (filterChanged) {
+            newProductsState.currentPage = 1;
+        }
+        return { ...prev, products: newProductsState };
+    });
+  }, []);
+
+  const handleUsersViewUpdate = useCallback((updates: Partial<UsersViewState>) => {
+    setUsersViewState(prev => {
+        const newState = { ...prev, ...updates };
+        const filterChanged = (updates.searchTerm !== undefined && updates.searchTerm !== prev.searchTerm) ||
+                            (updates.itemsPerPage !== undefined && updates.itemsPerPage !== prev.itemsPerPage);
+        if (filterChanged) {
+            newState.currentPage = 1;
+        }
+        return newState;
+    });
+  }, []);
+  
+  const handleAnalysisViewUpdate = useCallback((updates: Partial<AnalysisViewState>) => {
+    setAnalysisViewState(prev => {
+        const newState = { ...prev, ...updates };
+        const filterChanged = (updates.searchTerm !== undefined && updates.searchTerm !== prev.searchTerm) ||
+                            (updates.itemsPerPage !== undefined && updates.itemsPerPage !== prev.itemsPerPage);
+        if (filterChanged) {
+            newState.currentPage = 1;
+        }
+        return newState;
+    });
+  }, []);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -434,9 +432,19 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
   };
 
   const updateUser = (userId: string, newUsername: string, newPassword?: string): { success: boolean, message?: string } => {
+    const userToUpdate = users.find(u => u.id === userId);
+    if (!userToUpdate) return { success: false, message: 'User not found.' };
+
+    if (currentUser?.role !== UserRole.Admin) return { success: false, message: 'Permission denied.' };
+    
+    if (userToUpdate.role === UserRole.Admin && userToUpdate.id !== currentUser.id) {
+        return { success: false, message: "Admins cannot edit other admin accounts."};
+    }
+
     if (users.some(u => u.username === newUsername && u.id !== userId)) {
       return { success: false, message: 'Username is already taken.' };
     }
+
     let updatedUser: User | null = null;
     const updatedUsers = users.map(user => {
       if (user.id === userId) {
@@ -453,6 +461,15 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
   const addProduct = useCallback((product: Omit<Product, 'id'>) => setProducts(prev => [...prev, { ...product, id: `prod_${Date.now()}` }]), [setProducts]);
   const updateProduct = useCallback((updatedProduct: Product) => setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p)), [setProducts]);
 
+  const deleteProduct = useCallback((productId: string): { success: boolean, message?: string } => {
+    const productInSale = sales.some(sale => sale.items.some(item => item.id === productId));
+    if (productInSale) {
+        return { success: false, message: 'Cannot delete product with sales history. Consider setting stock to 0 instead.' };
+    }
+    setProducts(prev => prev.filter(p => p.id !== productId));
+    return { success: true };
+  }, [sales, setProducts]);
+
   const receiveStock = useCallback((productId: string, quantity: number) => {
     if (quantity <= 0) return;
     setProducts(prev => prev.map(p => p.id === productId ? { ...p, stock: p.stock + quantity } : p));
@@ -465,6 +482,7 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
     const change = newStockLevel - product.stock;
     if (change === 0) return;
     setProducts(prev => prev.map(p => p.id === productId ? { ...p, stock: newStockLevel } : p));
+    // FIX: Corrected typo from `newtoISOString` to `new Date().toISOString()`
     setInventoryAdjustments(prev => [...prev, { productId, date: new Date().toISOString(), quantity: change, reason: reason || 'Manual Adjustment' }]);
   }, [products, setProducts, setInventoryAdjustments]);
 
@@ -538,8 +556,8 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
   }
   
   const availableViews: View[] = currentUser.role === UserRole.Admin 
-    ? ['dashboard', 'pos', 'inventory', 'reports', 'users'] 
-    : ['pos', 'reports'];
+    ? ['dashboard', 'pos', 'inventory', 'reports', 'analysis', 'settings'] 
+    : ['pos', 'reports', 'settings'];
   const currentViewIsValid = availableViews.includes(activeView);
 
   return (
@@ -556,6 +574,7 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
       processSale={processSale}
       addProduct={addProduct}
       updateProduct={updateProduct}
+      deleteProduct={deleteProduct}
       receiveStock={receiveStock}
       adjustStock={adjustStock}
       addUser={addUser}
@@ -563,6 +582,15 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
       deleteUser={deleteUser}
       theme={theme}
       setTheme={setTheme}
+      inventoryViewState={inventoryViewState}
+      onInventoryViewUpdate={handleInventoryViewUpdate}
+      reportsViewState={reportsViewState}
+      onReportsSalesViewUpdate={handleReportsSalesViewUpdate}
+      onReportsProductsViewUpdate={handleReportsProductsViewUpdate}
+      usersViewState={usersViewState}
+      onUsersViewUpdate={handleUsersViewUpdate}
+      analysisViewState={analysisViewState}
+      onAnalysisViewUpdate={handleAnalysisViewUpdate}
     />
   );
 };

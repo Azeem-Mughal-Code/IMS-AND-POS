@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Product, Sale, User, UserRole } from '../types';
+import { Product, Sale, User, UserRole, ReportsViewState } from '../types';
 import { Modal } from './common/Modal';
-import { FilterDropdown } from './common/FilterDropdown';
+import { FilterMenu, FilterSelectItem } from './common/FilterMenu';
 import { Pagination } from './common/Pagination';
 import { TAX_RATE } from '../constants';
 import { SearchIcon, ChevronUpIcon, ChevronDownIcon } from './Icons';
@@ -11,6 +11,10 @@ interface ReportsProps {
   products: Product[];
   currentUser: User;
   processSale: (sale: Omit<Sale, 'id' | 'date'>) => void;
+  salesViewState: ReportsViewState['sales'];
+  onSalesViewStateUpdate: (updates: Partial<ReportsViewState['sales']>) => void;
+  productsViewState: ReportsViewState['products'];
+  onProductsViewStateUpdate: (updates: Partial<ReportsViewState['products']>) => void;
 }
 
 const formatCurrency = (amount: number) => {
@@ -22,24 +26,33 @@ type SortableSaleKeys = 'id' | 'date' | 'type' | 'total' | 'profit';
 type SortableProductKeys = 'sku' | 'name' | 'stock';
 
 
-export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, processSale }) => {
+export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, processSale, salesViewState, onSalesViewStateUpdate, productsViewState, onProductsViewStateUpdate }) => {
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
-  // Filters for Transaction History
-  const [saleSearch, setSaleSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('All');
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [saleSortConfig, setSaleSortConfig] = useState<{ key: SortableSaleKeys, direction: 'ascending' | 'descending' }>({ key: 'date', direction: 'descending' });
-  const [saleCurrentPage, setSaleCurrentPage] = useState(1);
-  const [saleItemsPerPage, setSaleItemsPerPage] = useState(10);
+  const { searchTerm: saleSearch, typeFilter, statusFilter, sortConfig: saleSortConfig, currentPage: saleCurrentPage, itemsPerPage: saleItemsPerPage } = salesViewState;
+  const { searchTerm: productSearch, stockFilter, sortConfig: productSortConfig, currentPage: productCurrentPage, itemsPerPage: productItemsPerPage } = productsViewState;
 
-  // Filters for Stock Levels
-  const [productSearch, setProductSearch] = useState('');
-  const [stockFilter, setStockFilter] = useState('All');
-  const [productSortConfig, setProductSortConfig] = useState<{ key: SortableProductKeys, direction: 'ascending' | 'descending' }>({ key: 'name', direction: 'ascending' });
-  const [productCurrentPage, setProductCurrentPage] = useState(1);
-  const [productItemsPerPage, setProductItemsPerPage] = useState(10);
+  const salesActiveFilterCount = (typeFilter !== 'All' ? 1 : 0) + (statusFilter !== 'All' ? 1 : 0);
+  const productsActiveFilterCount = stockFilter !== 'All' ? 1 : 0;
+  
+  const transactionTypeOptions = [
+    { value: 'All', label: 'All Types' },
+    { value: 'Sale', label: 'Sale' },
+    { value: 'Return', label: 'Return' },
+  ];
+  const transactionStatusOptions = [
+    { value: 'All', label: 'All Statuses' },
+    { value: 'Completed', label: 'Completed' },
+    { value: 'Partially Refunded', label: 'Partially Refunded' },
+    { value: 'Refunded', label: 'Refunded' },
+  ];
+  const productStockFilterOptions = [
+    { value: 'All', label: 'All Stock Status' },
+    { value: 'In Stock', label: 'In Stock' },
+    { value: 'Low Stock', label: 'Low Stock' },
+    { value: 'Out of Stock', label: 'Out of Stock' },
+  ];
 
 
   useEffect(() => {
@@ -48,15 +61,6 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
       return () => clearTimeout(timer);
     }
   }, [statusMessage]);
-
-  useEffect(() => {
-    setSaleCurrentPage(1);
-  }, [saleSearch, typeFilter, statusFilter, saleItemsPerPage]);
-
-  useEffect(() => {
-    setProductCurrentPage(1);
-  }, [productSearch, stockFilter, productItemsPerPage]);
-
 
   const handleRefund = () => {
     if (!viewingSale || viewingSale.type !== 'Sale' || (viewingSale.status !== 'Completed' && viewingSale.status !== 'Partially Refunded')) return;
@@ -109,7 +113,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
     if (saleSortConfig.key === key && saleSortConfig.direction === 'ascending') {
         direction = 'descending';
     }
-    setSaleSortConfig({ key, direction });
+    onSalesViewStateUpdate({ sortConfig: { key, direction } });
   };
 
   const requestProductSort = (key: SortableProductKeys) => {
@@ -117,7 +121,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
     if (productSortConfig.key === key && productSortConfig.direction === 'ascending') {
         direction = 'descending';
     }
-    setProductSortConfig({ key, direction });
+    onProductsViewStateUpdate({ sortConfig: { key, direction } });
   };
 
   const filteredAndSortedSales = useMemo(() => {
@@ -250,31 +254,31 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
         <div className="p-4">
             <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-4">Transaction History</h2>
-            <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex items-center gap-4">
                 <div className="relative flex-grow">
                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><SearchIcon /></div>
                     <input
                         type="text"
                         placeholder="Search by Receipt ID..."
                         value={saleSearch}
-                        onChange={e => setSaleSearch(e.target.value)}
+                        onChange={e => onSalesViewStateUpdate({ searchTerm: e.target.value })}
                         className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 focus:ring-blue-500 focus:border-blue-500"
                     />
                 </div>
-                 <FilterDropdown
-                    label="Transaction Type"
-                    options={[ { value: 'All', label: 'All Types' }, { value: 'Sale', label: 'Sale' }, { value: 'Return', label: 'Return' } ]}
-                    value={typeFilter}
-                    onChange={(v) => setTypeFilter(v)}
-                    className="w-full md:w-auto"
-                />
-                 <FilterDropdown
-                    label="Transaction Status"
-                    options={[ { value: 'All', label: 'All Statuses' }, { value: 'Completed', label: 'Completed' }, { value: 'Partially Refunded', label: 'Partially Refunded' }, { value: 'Refunded', label: 'Refunded' } ]}
-                    value={statusFilter}
-                    onChange={(v) => setStatusFilter(v)}
-                    className="w-full md:w-auto"
-                />
+                 <FilterMenu activeFilterCount={salesActiveFilterCount}>
+                    <FilterSelectItem
+                        label="Transaction Type"
+                        value={typeFilter}
+                        onChange={(value) => onSalesViewStateUpdate({ typeFilter: value })}
+                        options={transactionTypeOptions}
+                    />
+                    <FilterSelectItem
+                        label="Transaction Status"
+                        value={statusFilter}
+                        onChange={(value) => onSalesViewStateUpdate({ statusFilter: value })}
+                        options={transactionStatusOptions}
+                    />
+                </FilterMenu>
             </div>
         </div>
         <div className="overflow-x-auto">
@@ -321,9 +325,9 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
         <Pagination
             currentPage={saleCurrentPage}
             totalPages={saleTotalPages}
-            onPageChange={setSaleCurrentPage}
+            onPageChange={(page) => onSalesViewStateUpdate({ currentPage: page })}
             itemsPerPage={saleItemsPerPage}
-            setItemsPerPage={setSaleItemsPerPage}
+            setItemsPerPage={(size) => onSalesViewStateUpdate({ itemsPerPage: size })}
             totalItems={saleTotalItems}
         />
       </div>
@@ -331,29 +335,25 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
         <div className="p-4">
             <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-4">Stock Levels</h2>
-            <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex items-center gap-4">
                 <div className="relative flex-grow">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><SearchIcon /></div>
                     <input
                         type="text"
                         placeholder="Search by name or SKU..."
                         value={productSearch}
-                        onChange={e => setProductSearch(e.target.value)}
+                        onChange={e => onProductsViewStateUpdate({ searchTerm: e.target.value })}
                         className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 focus:ring-blue-500 focus:border-blue-500"
                     />
                 </div>
-                 <FilterDropdown
-                    label="Stock Status"
-                    options={[
-                        { value: 'All', label: 'All Stock Status' },
-                        { value: 'In Stock', label: 'In Stock' },
-                        { value: 'Low Stock', label: 'Low Stock' },
-                        { value: 'Out of Stock', label: 'Out of Stock' },
-                    ]}
-                    value={stockFilter}
-                    onChange={(v) => setStockFilter(v)}
-                    className="w-full md:w-auto"
-                />
+                <FilterMenu activeFilterCount={productsActiveFilterCount}>
+                    <FilterSelectItem
+                        label="Stock Status"
+                        value={stockFilter}
+                        onChange={(value) => onProductsViewStateUpdate({ stockFilter: value })}
+                        options={productStockFilterOptions}
+                    />
+                </FilterMenu>
             </div>
         </div>
         <div className="overflow-x-auto">
@@ -390,9 +390,9 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
         <Pagination
             currentPage={productCurrentPage}
             totalPages={productTotalPages}
-            onPageChange={setProductCurrentPage}
+            onPageChange={(page) => onProductsViewStateUpdate({ currentPage: page })}
             itemsPerPage={productItemsPerPage}
-            setItemsPerPage={setProductItemsPerPage}
+            setItemsPerPage={(size) => onProductsViewStateUpdate({ itemsPerPage: size })}
             totalItems={productTotalItems}
         />
       </div>
