@@ -148,6 +148,9 @@ interface MainLayoutProps {
   onUsersViewUpdate: (updates: Partial<UsersViewState>) => void;
   analysisViewState: AnalysisViewState;
   onAnalysisViewUpdate: (updates: Partial<AnalysisViewState>) => void;
+  importProducts: (newProducts: Omit<Product, 'id'>[]) => { success: boolean, message: string };
+  clearSales: () => void;
+  factoryReset: () => void;
 }
 
 // MainLayout Component for the authenticated app view
@@ -551,6 +554,46 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
     return newSale;
   }, [setSales, setProducts, setInventoryAdjustments]);
 
+  const importProducts = useCallback((newProducts: Omit<Product, 'id'>[]): { success: boolean, message: string } => {
+    let importedCount = 0;
+    let skippedCount = 0;
+    const existingSkus = new Set(products.map(p => p.sku));
+
+    const productsToAdd = newProducts.filter(p => {
+        if(existingSkus.has(p.sku)) {
+            skippedCount++;
+            return false;
+        }
+        // Basic validation
+        if (!p.sku || !p.name || isNaN(p.retailPrice) || isNaN(p.costPrice) || isNaN(p.stock) || isNaN(p.lowStockThreshold)) {
+            return false;
+        }
+        existingSkus.add(p.sku);
+        importedCount++;
+        return true;
+    }).map(p => ({ ...p, id: `prod_${Date.now()}_${p.sku}` }));
+    
+    setProducts(prev => [...prev, ...productsToAdd]);
+    
+    return { success: true, message: `Successfully imported ${importedCount} products. Skipped ${skippedCount} products with duplicate SKUs.` };
+
+  }, [products, setProducts]);
+
+  const clearSales = useCallback(() => {
+    setSales([]);
+    // Also remove sale-related inventory adjustments
+    setInventoryAdjustments(prev => prev.filter(adj => !adj.reason.startsWith('Sale #') && !adj.reason.startsWith('Return #')));
+  }, [setSales, setInventoryAdjustments]);
+
+  const factoryReset = useCallback(() => {
+    setProducts(INITIAL_PRODUCTS);
+    setSales([]);
+    setInventoryAdjustments([]);
+    const currentAdmin = users.find(u => u.id === currentUser?.id);
+    setUsers(currentAdmin ? [currentAdmin] : []);
+  }, [setProducts, setSales, setInventoryAdjustments, setUsers, users, currentUser]);
+
+
   if (!currentUser) {
     return <AuthForm businessName={businessName} users={users} onLogin={login} onSignup={signup} onGoBack={onGoBack} />;
   }
@@ -591,6 +634,9 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
       onUsersViewUpdate={handleUsersViewUpdate}
       analysisViewState={analysisViewState}
       onAnalysisViewUpdate={handleAnalysisViewUpdate}
+      importProducts={importProducts}
+      clearSales={clearSales}
+      factoryReset={factoryReset}
     />
   );
 };
