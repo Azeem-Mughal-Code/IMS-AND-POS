@@ -664,11 +664,12 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
                 <h2 className="text-xl font-bold text-gray-800 dark:text-white">{businessName}</h2>
                 <p className="text-sm">Receipt: <span className="font-mono">{lastSale.id}</span></p>
               </div>
-              <div className="space-y-4 text-sm">
+              <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
                   <p>Date: {new Date(lastSale.date).toLocaleString()}</p>
                   <p>Cashier: {lastSale.salespersonName}</p>
                   {lastSale.originalSaleId && <p>Original Sale: <span className="font-mono">{lastSale.originalSaleId}</span></p>}
                   <div className="border-t border-b py-2 border-gray-200 dark:border-gray-600">
+                      <h4 className="font-semibold mb-2 text-gray-800 dark:text-gray-200">Items</h4>
                       {lastSale.items.map(item => (
                           <div key={item.id} className="flex justify-between">
                               <span>{item.name} x{item.quantity}</span>

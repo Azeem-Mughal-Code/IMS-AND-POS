@@ -229,7 +229,7 @@ const PrintablePO = forwardRef<HTMLDivElement, { po: PurchaseOrder, currency: st
             <div className="text-center mb-4">
                 <h2 className="text-2xl font-bold">{businessName}</h2>
             </div>
-            <h2 className="text-xl font-bold mb-4 break-words">Purchase Order #{po.id}</h2>
+            <h2 className="text-sm font-bold mb-4 break-words">Purchase Order #{po.id}</h2>
             <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
                 <div><strong>Supplier:</strong> {po.supplierName}</div>
                 <div><strong>Date Created:</strong> {new Date(po.dateCreated).toLocaleDateString()}</div>
@@ -237,19 +237,19 @@ const PrintablePO = forwardRef<HTMLDivElement, { po: PurchaseOrder, currency: st
                 <div><strong>Date Expected:</strong> {new Date(po.dateExpected).toLocaleDateString()}</div>
             </div>
             <table className="w-full text-sm text-left">
-                <thead className="bg-gray-100 dark:bg-gray-700"><tr className="dark:text-gray-200"><th className="p-2">SKU</th><th className="p-2">Product</th><th className="p-2 text-right">Qty</th><th className="p-2 text-right">Cost</th><th className="p-2 text-right">Total</th></tr></thead>
+                <thead className="bg-gray-100 dark:bg-gray-700"><tr className="dark:text-gray-200"><th className="p-1">SKU</th><th className="p-1">Product</th><th className="p-1 text-right">Qty</th><th className="p-1 text-right">Cost</th><th className="p-1 text-right">Total</th></tr></thead>
                 <tbody>
                     {po.items.map(item => (
                         <tr key={item.productId} className="border-b dark:border-gray-600 dark:text-gray-200">
-                            <td className="p-2">{item.sku}</td><td className="p-2">{item.name}</td>
-                            <td className="p-2 text-right">{item.quantityOrdered}</td>
-                            <td className="p-2 text-right">{formatCurrency(item.costPrice)}</td>
-                            <td className="p-2 text-right">{formatCurrency(item.costPrice * item.quantityOrdered)}</td>
+                            <td className="p-1">{item.sku}</td><td className="p-1">{item.name}</td>
+                            <td className="p-1 text-right">{item.quantityOrdered}</td>
+                            <td className="p-1 text-right">{formatCurrency(item.costPrice)}</td>
+                            <td className="p-1 text-right">{formatCurrency(item.costPrice * item.quantityOrdered)}</td>
                         </tr>
                     ))}
                 </tbody>
                 <tfoot>
-                    <tr className="font-bold dark:text-gray-200"><td colSpan={4} className="p-2 text-right">Grand Total</td><td className="p-2 text-right">{formatCurrency(po.totalCost)}</td></tr>
+                    <tr className="font-bold dark:text-gray-200"><td colSpan={4} className="p-1 text-right">Grand Total</td><td className="p-1 text-right">{formatCurrency(po.totalCost)}</td></tr>
                 </tfoot>
             </table>
             {po.notes && <div className="mt-4 text-sm"><strong>Notes:</strong> {po.notes}</div>}
