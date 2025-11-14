@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { User, UserRole, View, UsersViewState, Product, Sale } from '../types';
 import { UserSettings } from './UserSettings';
 import { Modal } from './common/Modal';
-import { SunIcon, MoonIcon, ComputerDesktopIcon, LogoutIcon, ExportIcon, ImportIcon, DangerIcon, ChevronDownIcon } from './Icons';
+import { SunIcon, MoonIcon, ComputerDesktopIcon, LogoutIcon, ExportIcon, ImportIcon, DangerIcon, ChevronDownIcon, DevicePhoneMobileIcon, DeviceTabletIcon } from './Icons';
 import { Dropdown } from './common/Dropdown';
 
 interface SettingsProps {
@@ -43,6 +43,8 @@ interface SettingsProps {
     setDiscountRate: (rate: number) => void;
     discountThreshold: number;
     setDiscountThreshold: (threshold: number) => void;
+    deviceView: 'mobile' | 'tablet' | 'desktop';
+    setDeviceView: (view: 'mobile' | 'tablet' | 'desktop') => void;
 }
 
 const ThemeSelector: React.FC<{ theme: 'light' | 'dark' | 'system', setTheme: (theme: 'light' | 'dark' | 'system') => void }> = ({ theme, setTheme }) => {
@@ -60,6 +62,35 @@ const ThemeSelector: React.FC<{ theme: 'light' | 'dark' | 'system', setTheme: (t
                     onClick={() => setTheme(option.value as 'light' | 'dark' | 'system')}
                     className={`flex flex-col items-center justify-center p-3 rounded-md text-sm font-medium transition-colors ${
                         theme === option.value
+                            ? 'bg-white dark:bg-gray-900 text-blue-600 dark:text-blue-400 shadow'
+                            : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                >
+                    {option.icon}
+                    <span className="mt-1">{option.label}</span>
+                </button>
+            ))}
+        </div>
+    );
+};
+
+type DeviceView = 'mobile' | 'tablet' | 'desktop';
+
+const ViewSelector: React.FC<{ view: DeviceView, setView: (view: DeviceView) => void }> = ({ view, setView }) => {
+    const options = [
+        { value: 'mobile', label: 'Mobile', icon: <DevicePhoneMobileIcon className="h-6 w-6"/> },
+        { value: 'tablet', label: 'Tablet', icon: <DeviceTabletIcon className="h-6 w-6"/> },
+        { value: 'desktop', label: 'Device', icon: <ComputerDesktopIcon /> }
+    ];
+
+    return (
+        <div className="grid grid-cols-3 gap-2 rounded-lg bg-gray-100 dark:bg-gray-700 p-1">
+            {options.map(option => (
+                <button
+                    key={option.value}
+                    onClick={() => setView(option.value as DeviceView)}
+                    className={`flex flex-col items-center justify-center p-3 rounded-md text-sm font-medium transition-colors ${
+                        view === option.value
                             ? 'bg-white dark:bg-gray-900 text-blue-600 dark:text-blue-400 shadow'
                             : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                     }`}
@@ -102,7 +133,7 @@ const ToggleSwitch: React.FC<{
 
 
 // --- Data Management Component ---
-const DataManagement: React.FC<Omit<SettingsProps, 'onUsersViewUpdate' | 'usersViewState' | 'theme' | 'setTheme' | 'onLogout' | 'itemsPerPage' | 'setItemsPerPage' | 'currency' | 'setCurrency' | 'isSplitPaymentEnabled' | 'setIsSplitPaymentEnabled' | 'isChangeDueEnabled' | 'setIsChangeDueEnabled' | 'isIntegerCurrency' | 'setIsIntegerCurrency' | 'isTaxEnabled' | 'setIsTaxEnabled' | 'taxRate' | 'setTaxRate' | 'isDiscountEnabled' | 'setIsDiscountEnabled' | 'discountRate' | 'setDiscountRate' | 'discountThreshold' | 'setDiscountThreshold'>> = ({ currentUser, businessName, products, sales, importProducts, clearSales, factoryReset }) => {
+const DataManagement: React.FC<Omit<SettingsProps, 'onUsersViewUpdate' | 'usersViewState' | 'theme' | 'setTheme' | 'onLogout' | 'itemsPerPage' | 'setItemsPerPage' | 'currency' | 'setCurrency' | 'isSplitPaymentEnabled' | 'setIsSplitPaymentEnabled' | 'isChangeDueEnabled' | 'setIsChangeDueEnabled' | 'isIntegerCurrency' | 'setIsIntegerCurrency' | 'isTaxEnabled' | 'setIsTaxEnabled' | 'taxRate' | 'setTaxRate' | 'isDiscountEnabled' | 'setIsDiscountEnabled' | 'discountRate' | 'setDiscountRate' | 'discountThreshold' | 'setDiscountThreshold' | 'deviceView' | 'setDeviceView'>> = ({ currentUser, businessName, products, sales, importProducts, clearSales, factoryReset }) => {
     const [isImportModalOpen, setImportModalOpen] = useState(false);
     const [importFile, setImportFile] = useState<File | null>(null);
     const [importFeedback, setImportFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null);
@@ -390,7 +421,7 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({ title, subtitle, se
 
 
 export const Settings: React.FC<SettingsProps> = (props) => {
-    const { currentUser, updateUser, theme, setTheme, onLogout, itemsPerPage, setItemsPerPage, currency, setCurrency, isSplitPaymentEnabled, setIsSplitPaymentEnabled, isChangeDueEnabled, setIsChangeDueEnabled, isIntegerCurrency, setIsIntegerCurrency, isTaxEnabled, setIsTaxEnabled, taxRate, setTaxRate, isDiscountEnabled, setIsDiscountEnabled, discountRate, setDiscountRate, discountThreshold, setDiscountThreshold } = props;
+    const { currentUser, updateUser, theme, setTheme, onLogout, itemsPerPage, setItemsPerPage, currency, setCurrency, isSplitPaymentEnabled, setIsSplitPaymentEnabled, isChangeDueEnabled, setIsChangeDueEnabled, isIntegerCurrency, setIsIntegerCurrency, isTaxEnabled, setIsTaxEnabled, taxRate, setTaxRate, isDiscountEnabled, setIsDiscountEnabled, discountRate, setDiscountRate, discountThreshold, setDiscountThreshold, deviceView, setDeviceView } = props;
     const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
     
     const [profileUsername, setProfileUsername] = useState(currentUser.username);
@@ -464,6 +495,10 @@ export const Settings: React.FC<SettingsProps> = (props) => {
                     <div>
                         <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Theme</h3>
                         <ThemeSelector theme={theme} setTheme={setTheme} />
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Layout View</h3>
+                        <ViewSelector view={deviceView} setView={setDeviceView} />
                     </div>
                     <div>
                         <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Rows Per Page</h3>

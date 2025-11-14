@@ -177,6 +177,8 @@ interface MainLayoutProps {
   setDiscountRate: (rate: number) => void;
   discountThreshold: number;
   setDiscountThreshold: (threshold: number) => void;
+  deviceView: 'mobile' | 'tablet' | 'desktop';
+  setDeviceView: (view: 'mobile' | 'tablet' | 'desktop') => void;
 }
 
 // MainLayout Component for the authenticated app view
@@ -243,7 +245,7 @@ const MainLayout: React.FC<MainLayoutProps> = (props) => {
   );
 
   return (
-    <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    <div className="flex h-full bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       <aside className="w-64 bg-white dark:bg-gray-800 shadow-lg flex-col hidden md:flex">
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <h1 className="text-xl font-bold text-blue-600 dark:text-blue-400 truncate">{businessName}</h1>
@@ -315,6 +317,7 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
   const [isDiscountEnabled, setIsDiscountEnabled] = useLocalStorage<boolean>(`${ls_prefix}-isDiscountEnabled`, true);
   const [discountRate, setDiscountRate] = useLocalStorage<number>(`${ls_prefix}-discountRate`, 0.05); // 5%
   const [discountThreshold, setDiscountThreshold] = useLocalStorage<number>(`${ls_prefix}-discountThreshold`, 100);
+  const [deviceView, setDeviceView] = useLocalStorage<'mobile' | 'tablet' | 'desktop'>(`${ls_prefix}-deviceView`, 'desktop');
 
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [theme, setTheme] = useLocalStorage<'light' | 'dark' | 'system'>('ims-theme', 'system');
@@ -790,68 +793,80 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
     : ['pos', 'reports', 'settings'];
   const currentViewIsValid = availableViews.includes(activeView);
 
+  const deviceViewClasses = {
+    mobile: 'max-w-sm mx-auto shadow-lg ring-1 ring-black/5 h-full overflow-hidden rounded-xl border border-gray-300 dark:border-gray-700',
+    tablet: 'max-w-3xl mx-auto shadow-lg ring-1 ring-black/5 h-full overflow-hidden rounded-xl border border-gray-300 dark:border-gray-700',
+    desktop: 'w-full h-full',
+  };
+
   return (
-    <MainLayout
-      currentUser={currentUser}
-      businessName={businessName}
-      onLogout={logout}
-      products={products}
-      sales={sales}
-      inventoryAdjustments={inventoryAdjustments}
-      users={users}
-      purchaseOrders={purchaseOrders}
-      activeView={currentViewIsValid ? activeView : availableViews[0]}
-      setActiveView={setActiveView}
-      processSale={processSale}
-      addProduct={addProduct}
-      updateProduct={updateProduct}
-      deleteProduct={deleteProduct}
-      receiveStock={receiveStock}
-      adjustStock={adjustStock}
-      addUser={addUser}
-      updateUser={updateUser}
-      deleteUser={deleteUser}
-      addPurchaseOrder={addPurchaseOrder}
-      updatePurchaseOrder={updatePurchaseOrder}
-      receivePOItems={receivePOItems}
-      theme={theme}
-      setTheme={setTheme}
-      inventoryViewState={inventoryViewState}
-      onInventoryViewUpdate={handleInventoryViewUpdate}
-      reportsViewState={reportsViewState}
-      onReportsSalesViewUpdate={handleReportsSalesViewUpdate}
-      onReportsProductsViewUpdate={handleReportsProductsViewUpdate}
-      onReportsInventoryValuationViewUpdate={handleReportsInventoryValuationViewUpdate}
-      usersViewState={usersViewState}
-      onUsersViewUpdate={handleUsersViewUpdate}
-      analysisViewState={analysisViewState}
-      onAnalysisViewUpdate={handleAnalysisViewUpdate}
-      poViewState={poViewState}
-      onPOViewUpdate={handlePOViewUpdate}
-      importProducts={importProducts}
-      clearSales={clearSales}
-      factoryReset={factoryReset}
-      itemsPerPage={itemsPerPage}
-      setItemsPerPage={setItemsPerPage}
-      currency={currency}
-      setCurrency={setCurrency}
-      isSplitPaymentEnabled={isSplitPaymentEnabled}
-      setIsSplitPaymentEnabled={setIsSplitPaymentEnabled}
-      isChangeDueEnabled={isChangeDueEnabled}
-      setIsChangeDueEnabled={setIsChangeDueEnabled}
-      isIntegerCurrency={isIntegerCurrency}
-      setIsIntegerCurrency={setIsIntegerCurrency}
-      isTaxEnabled={isTaxEnabled}
-      setIsTaxEnabled={setIsTaxEnabled}
-      taxRate={taxRate}
-      setTaxRate={setTaxRate}
-      isDiscountEnabled={isDiscountEnabled}
-      setIsDiscountEnabled={setIsDiscountEnabled}
-      discountRate={discountRate}
-      setDiscountRate={setDiscountRate}
-      discountThreshold={discountThreshold}
-      setDiscountThreshold={setDiscountThreshold}
-    />
+    <div className="h-screen p-0 sm:py-4 sm:px-8">
+      <div className={`transition-all duration-300 ${deviceViewClasses[deviceView]}`}>
+        <MainLayout
+          currentUser={currentUser}
+          businessName={businessName}
+          onLogout={logout}
+          products={products}
+          sales={sales}
+          inventoryAdjustments={inventoryAdjustments}
+          users={users}
+          purchaseOrders={purchaseOrders}
+          activeView={currentViewIsValid ? activeView : availableViews[0]}
+          setActiveView={setActiveView}
+          processSale={processSale}
+          addProduct={addProduct}
+          updateProduct={updateProduct}
+          deleteProduct={deleteProduct}
+          receiveStock={receiveStock}
+          adjustStock={adjustStock}
+          addUser={addUser}
+          updateUser={updateUser}
+          deleteUser={deleteUser}
+          addPurchaseOrder={addPurchaseOrder}
+          updatePurchaseOrder={updatePurchaseOrder}
+          receivePOItems={receivePOItems}
+          theme={theme}
+          setTheme={setTheme}
+          inventoryViewState={inventoryViewState}
+          onInventoryViewUpdate={handleInventoryViewUpdate}
+          reportsViewState={reportsViewState}
+          onReportsSalesViewUpdate={handleReportsSalesViewUpdate}
+          onReportsProductsViewUpdate={handleReportsProductsViewUpdate}
+          onReportsInventoryValuationViewUpdate={handleReportsInventoryValuationViewUpdate}
+          usersViewState={usersViewState}
+          onUsersViewUpdate={handleUsersViewUpdate}
+          analysisViewState={analysisViewState}
+          onAnalysisViewUpdate={handleAnalysisViewUpdate}
+          poViewState={poViewState}
+          onPOViewUpdate={handlePOViewUpdate}
+          importProducts={importProducts}
+          clearSales={clearSales}
+          factoryReset={factoryReset}
+          itemsPerPage={itemsPerPage}
+          setItemsPerPage={setItemsPerPage}
+          currency={currency}
+          setCurrency={setCurrency}
+          isSplitPaymentEnabled={isSplitPaymentEnabled}
+          setIsSplitPaymentEnabled={setIsSplitPaymentEnabled}
+          isChangeDueEnabled={isChangeDueEnabled}
+          setIsChangeDueEnabled={setIsChangeDueEnabled}
+          isIntegerCurrency={isIntegerCurrency}
+          setIsIntegerCurrency={setIsIntegerCurrency}
+          isTaxEnabled={isTaxEnabled}
+          setIsTaxEnabled={setIsTaxEnabled}
+          taxRate={taxRate}
+          setTaxRate={setTaxRate}
+          isDiscountEnabled={isDiscountEnabled}
+          setIsDiscountEnabled={setIsDiscountEnabled}
+          discountRate={discountRate}
+          setDiscountRate={setDiscountRate}
+          discountThreshold={discountThreshold}
+          setDiscountThreshold={setDiscountThreshold}
+          deviceView={deviceView}
+          setDeviceView={setDeviceView}
+        />
+      </div>
+    </div>
   );
 };
 

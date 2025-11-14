@@ -110,6 +110,18 @@ export const ComputerDesktopIcon = () => (
   </svg>
 );
 
+export const DevicePhoneMobileIcon = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className || "h-6 w-6"}>
+        <path fillRule="evenodd" d="M6.75 3a.75.75 0 00-.75.75v16.5c0 .414.336.75.75.75h10.5a.75.75 0 00.75-.75V3.75a.75.75 0 00-.75-.75H6.75zM8.25 4.5a.75.75 0 01.75-.75h6a.75.75 0 010 1.5h-6a.75.75 0 01-.75-.75zM12 19.5a.75.75 0 100-1.5.75.75 0 000 1.5z" clipRule="evenodd" />
+    </svg>
+);
+
+export const DeviceTabletIcon = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className || "h-6 w-6"}>
+        <path fillRule="evenodd" d="M3 5.25a.75.75 0 01.75-.75h16.5a.75.75 0 01.75.75V18.75a.75.75 0 01-.75.75H3.75a.75.75 0 01-.75-.75V5.25zM4.5 6a.75.75 0 00-.75.75v10.5c0 .414.336.75.75.75h15a.75.75 0 00.75-.75V6.75a.75.75 0 00-.75-.75H4.5z" clipRule="evenodd" />
+    </svg>
+);
+
 export const ChevronDownIcon = ({ className }: { className?: string }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5"} viewBox="0 0 20 20" fill="currentColor">
         <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
