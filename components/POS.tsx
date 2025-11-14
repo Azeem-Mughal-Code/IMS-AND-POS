@@ -19,6 +19,7 @@ interface POSProps {
   isDiscountEnabled: boolean;
   discountRate: number;
   discountThreshold: number;
+  businessName: string;
 }
 
 const SimplePaymentModalContent: React.FC<{
@@ -218,7 +219,7 @@ const PaymentModalContent: React.FC<{
 }
 
 
-export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency, currentUser, isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold }) => {
+export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency, currentUser, isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, businessName }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -232,10 +233,26 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
 
   const handleSaveAsImage = () => {
     if (printableAreaRef.current) {
-        html2canvas(printableAreaRef.current, { backgroundColor: '#ffffff' }).then((canvas: any) => {
+        html2canvas(printableAreaRef.current, { 
+            backgroundColor: '#ffffff',
+            onclone: (clonedDoc) => {
+                clonedDoc.documentElement.classList.remove('dark');
+            }
+        }).then((canvas: HTMLCanvasElement) => {
+            const PADDING = 20;
+            const newCanvas = document.createElement('canvas');
+            newCanvas.width = canvas.width + PADDING * 2;
+            newCanvas.height = canvas.height + PADDING * 2;
+            const ctx = newCanvas.getContext('2d');
+            if (ctx) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, newCanvas.width, newCanvas.height);
+                ctx.drawImage(canvas, PADDING, PADDING);
+            }
+
             const link = document.createElement('a');
             link.download = `receipt-${lastSale?.id}.png`;
-            link.href = canvas.toDataURL('image/png');
+            link.href = newCanvas.toDataURL('image/png');
             link.click();
         });
     }
@@ -643,6 +660,9 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
         {lastSale && (
           <div>
             <div className="printable-area" ref={printableAreaRef}>
+              <div className="text-center mb-4">
+                <h2 className="text-xl font-bold text-gray-800 dark:text-white">{businessName}</h2>
+              </div>
               <div className="space-y-4 text-sm">
                   <p>Date: {new Date(lastSale.date).toLocaleString()}</p>
                   <p>Cashier: {lastSale.salespersonName}</p>

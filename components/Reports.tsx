@@ -20,6 +20,7 @@ interface ReportsProps {
   isIntegerCurrency: boolean;
   isTaxEnabled: boolean;
   taxRate: number;
+  businessName: string;
 }
 
 type SortableSaleKeys = 'id' | 'date' | 'type' | 'salespersonName' | 'total' | 'profit';
@@ -53,17 +54,33 @@ const getStartOfWeek = (date: Date): Date => {
 };
 
 
-export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, processSale, salesViewState, onSalesViewStateUpdate, productsViewState, onProductsViewStateUpdate, currency, isIntegerCurrency, isTaxEnabled, taxRate }) => {
+export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, processSale, salesViewState, onSalesViewStateUpdate, productsViewState, onProductsViewStateUpdate, currency, isIntegerCurrency, isTaxEnabled, taxRate, businessName }) => {
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const printableAreaRef = useRef<HTMLDivElement>(null);
 
   const handleSaveAsImage = () => {
     if (printableAreaRef.current && viewingSale) {
-        html2canvas(printableAreaRef.current, { backgroundColor: '#ffffff' }).then((canvas: any) => {
+        html2canvas(printableAreaRef.current, { 
+            backgroundColor: '#ffffff',
+            onclone: (clonedDoc) => {
+                clonedDoc.documentElement.classList.remove('dark');
+            }
+        }).then((canvas: HTMLCanvasElement) => {
+            const PADDING = 20;
+            const newCanvas = document.createElement('canvas');
+            newCanvas.width = canvas.width + PADDING * 2;
+            newCanvas.height = canvas.height + PADDING * 2;
+            const ctx = newCanvas.getContext('2d');
+            if (ctx) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, newCanvas.width, newCanvas.height);
+                ctx.drawImage(canvas, PADDING, PADDING);
+            }
+
             const link = document.createElement('a');
             link.download = `receipt-${viewingSale.id}.png`;
-            link.href = canvas.toDataURL('image/png');
+            link.href = newCanvas.toDataURL('image/png');
             link.click();
         });
     }
@@ -310,7 +327,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
         <div className={`border px-4 py-3 rounded relative mb-4 ${statusMessage.type === 'success' ? 'bg-green-100 border-green-400 text-green-700' : 'bg-red-100 border-red-400 text-red-700'}`} role="alert">
           <span className="block sm:inline">{statusMessage.text}</span>
           <span className="absolute top-0 bottom-0 right-0 px-4 py-3" onClick={() => setStatusMessage(null)}>
-            <svg className="fill-current h-6 w-6" role="button" xmlns="http://www.w.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z"/></svg>
+            <svg className="fill-current h-6 w-6" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z"/></svg>
           </span>
         </div>
       )}
@@ -474,56 +491,61 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
 
       <Modal isOpen={!!viewingSale} onClose={() => setViewingSale(null)} title={`${viewingSale?.type} Details - ${viewingSale?.id}`} size="md">
         {viewingSale && (
-            <div className="printable-area" ref={printableAreaRef}>
-                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
-                    <p><span className="font-semibold text-gray-800 dark:text-gray-200">Date:</span> {new Date(viewingSale.date).toLocaleString()}</p>
-                    <p><span className="font-semibold text-gray-800 dark:text-gray-200">Salesperson:</span> {viewingSale.salespersonName}</p>
-                     {viewingSale.type === 'Return' && viewingSale.originalSaleId && <p><span className="font-semibold text-gray-800 dark:text-gray-200">Original Sale ID:</span> <span className="font-mono">{viewingSale.originalSaleId}</span></p>}
-                    <div className="border-t border-b py-2 my-2 border-gray-200 dark:border-gray-600">
-                        <h4 className="font-semibold mb-2 text-gray-800 dark:text-gray-200">Items</h4>
-                        {viewingSale.items.map(item => (
-                            <div key={item.id} className={`flex justify-between items-center mb-1 ${item.returnedQuantity && item.returnedQuantity >= item.quantity ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
-                                <div>
-                                    <p className="font-medium text-gray-900 dark:text-white">{item.name}</p>
-                                    <p className="text-sm">
-                                      {item.quantity} &times; {formatCurrency(item.retailPrice)}
-                                      {item.returnedQuantity && item.returnedQuantity > 0 && <span className="ml-2 font-semibold not-line-through text-orange-600 dark:text-orange-400">(Returned: {item.returnedQuantity})</span>}
-                                    </p>
+            <div>
+                <div className="printable-area" ref={printableAreaRef}>
+                    <div className="text-center mb-4">
+                        <h2 className="text-2xl font-bold text-gray-800 dark:text-white">{businessName}</h2>
+                    </div>
+                    <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                        <p><span className="font-semibold text-gray-800 dark:text-gray-200">Date:</span> {new Date(viewingSale.date).toLocaleString()}</p>
+                        <p><span className="font-semibold text-gray-800 dark:text-gray-200">Salesperson:</span> {viewingSale.salespersonName}</p>
+                        {viewingSale.type === 'Return' && viewingSale.originalSaleId && <p><span className="font-semibold text-gray-800 dark:text-gray-200">Original Sale ID:</span> <span className="font-mono">{viewingSale.originalSaleId}</span></p>}
+                        <div className="border-t border-b py-2 my-2 border-gray-200 dark:border-gray-600">
+                            <h4 className="font-semibold mb-2 text-gray-800 dark:text-gray-200">Items</h4>
+                            {viewingSale.items.map(item => (
+                                <div key={item.id} className={`flex justify-between items-center mb-1 ${item.returnedQuantity && item.returnedQuantity >= item.quantity ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
+                                    <div>
+                                        <p className="font-medium text-gray-900 dark:text-white">{item.name}</p>
+                                        <p className="text-sm">
+                                        {item.quantity} &times; {formatCurrency(item.retailPrice)}
+                                        {item.returnedQuantity && item.returnedQuantity > 0 && <span className="ml-2 font-semibold not-line-through text-orange-600 dark:text-orange-400">(Returned: {item.returnedQuantity})</span>}
+                                        </p>
+                                    </div>
+                                    <span className="font-medium text-gray-900 dark:text-white">{formatCurrency(item.retailPrice * item.quantity)}</span>
                                 </div>
-                                <span className="font-medium text-gray-900 dark:text-white">{formatCurrency(item.retailPrice * item.quantity)}</span>
+                            ))}
+                        </div>
+                        <div className="space-y-1 font-medium text-gray-800 dark:text-gray-200">
+                            <div className="flex justify-between"><span>Subtotal:</span> <span>{formatCurrency(viewingSale.subtotal)}</span></div>
+                            {viewingSale.discount > 0 && (
+                                <div className="flex justify-between"><span>Discount:</span> <span>-{formatCurrency(viewingSale.discount)}</span></div>
+                            )}
+                            <div className="flex justify-between"><span>Tax:</span> <span>{formatCurrency(viewingSale.tax)}</span></div>
+                            <div className="flex justify-between text-lg font-bold text-gray-900 dark:text-white"><span>Total:</span> <span>{formatCurrency(viewingSale.total)}</span></div>
+                        </div>
+                        <div>
+                            <h4 className="font-semibold text-gray-800 dark:text-gray-200">Payments:</h4>
+                            {viewingSale.payments.map((p, i) => (
+                            <div key={i} className="flex justify-between">
+                                <span>{p.type}:</span>
+                                <span>{formatCurrency(p.amount)}</span>
                             </div>
-                        ))}
-                    </div>
-                    <div className="space-y-1 font-medium text-gray-800 dark:text-gray-200">
-                        <div className="flex justify-between"><span>Subtotal:</span> <span>{formatCurrency(viewingSale.subtotal)}</span></div>
-                        {viewingSale.discount > 0 && (
-                            <div className="flex justify-between"><span>Discount:</span> <span>-{formatCurrency(viewingSale.discount)}</span></div>
-                        )}
-                        <div className="flex justify-between"><span>Tax:</span> <span>{formatCurrency(viewingSale.tax)}</span></div>
-                        <div className="flex justify-between text-lg font-bold text-gray-900 dark:text-white"><span>Total:</span> <span>{formatCurrency(viewingSale.total)}</span></div>
-                    </div>
-                    <div>
-                        <h4 className="font-semibold text-gray-800 dark:text-gray-200">Payments:</h4>
-                        {viewingSale.payments.map((p, i) => (
-                          <div key={i} className="flex justify-between">
-                            <span>{p.type}:</span>
-                            <span>{formatCurrency(p.amount)}</span>
-                          </div>
-                        ))}
-                        <div className="border-t mt-2 pt-2 border-gray-200 dark:border-gray-600 font-semibold">
-                            {(() => {
-                                const totalPaid = viewingSale.payments.reduce((sum, p) => sum + p.amount, 0);
-                                const changeDue = totalPaid - Math.abs(viewingSale.total);
-                                if (changeDue > 0.005) {
-                                    return (
-                                        <div className="flex justify-between text-green-600 dark:text-green-400">
-                                            <span>Change Given:</span>
-                                            <span>{formatCurrency(changeDue)}</span>
-                                        </div>
-                                    );
-                                }
-                                return null;
-                            })()}
+                            ))}
+                            <div className="border-t mt-2 pt-2 border-gray-200 dark:border-gray-600 font-semibold">
+                                {(() => {
+                                    const totalPaid = viewingSale.payments.reduce((sum, p) => sum + p.amount, 0);
+                                    const changeDue = totalPaid - Math.abs(viewingSale.total);
+                                    if (changeDue > 0.005) {
+                                        return (
+                                            <div className="flex justify-between text-green-600 dark:text-green-400">
+                                                <span>Change Given:</span>
+                                                <span>{formatCurrency(changeDue)}</span>
+                                            </div>
+                                        );
+                                    }
+                                    return null;
+                                })()}
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -28,6 +28,7 @@ interface InventoryProps {
   onPOViewStateUpdate: (updates: Partial<POViewState>) => void;
   inventoryValuationViewState: ReportsViewState['inventoryValuation'];
   onInventoryValuationViewStateUpdate: (updates: Partial<ReportsViewState['inventoryValuation']>) => void;
+  businessName: string;
 }
 
 const ProductForm: React.FC<{ product?: Product, onSubmit: (p: any) => void, onCancel: () => void }> = ({ product, onSubmit, onCancel }) => {
@@ -221,10 +222,13 @@ const CreatePOModal: React.FC<{
     );
 };
 
-const PrintablePO = forwardRef<HTMLDivElement, { po: PurchaseOrder, currency: string, isIntegerCurrency: boolean }>(({ po, currency, isIntegerCurrency }, ref) => {
+const PrintablePO = forwardRef<HTMLDivElement, { po: PurchaseOrder, currency: string, isIntegerCurrency: boolean, businessName: string }>(({ po, currency, isIntegerCurrency, businessName }, ref) => {
     const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: isIntegerCurrency ? 0 : 2, maximumFractionDigits: isIntegerCurrency ? 0 : 2 }).format(amount);
     return (
         <div className="printable-area p-4 text-gray-900 dark:text-white" ref={ref}>
+            <div className="text-center mb-4">
+                <h2 className="text-2xl font-bold">{businessName}</h2>
+            </div>
             <h2 className="text-2xl font-bold mb-4">Purchase Order #{po.id}</h2>
             <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
                 <div><strong>Supplier:</strong> {po.supplierName}</div>
@@ -586,17 +590,32 @@ const ProductsView: React.FC<InventoryProps> = ({ products, sales, addProduct, u
   );
 }
 
-const PurchaseOrdersView: React.FC<Pick<InventoryProps, 'purchaseOrders' | 'receivePOItems' | 'poViewState' | 'onPOViewStateUpdate' | 'currency' | 'isIntegerCurrency' | 'currentUser'> & { setIsCreatePOModalOpen: (isOpen: boolean) => void }> = ({ purchaseOrders, receivePOItems, poViewState, onPOViewStateUpdate, currency, isIntegerCurrency, currentUser, setIsCreatePOModalOpen }) => {
+const PurchaseOrdersView: React.FC<Pick<InventoryProps, 'purchaseOrders' | 'receivePOItems' | 'poViewState' | 'onPOViewStateUpdate' | 'currency' | 'isIntegerCurrency' | 'currentUser' | 'businessName'> & { setIsCreatePOModalOpen: (isOpen: boolean) => void }> = ({ purchaseOrders, receivePOItems, poViewState, onPOViewStateUpdate, currency, isIntegerCurrency, currentUser, setIsCreatePOModalOpen, businessName }) => {
     const [viewingPO, setViewingPO] = useState<PurchaseOrder | null>(null);
     const [receivingPO, setReceivingPO] = useState<PurchaseOrder | null>(null);
     const printableRef = useRef<HTMLDivElement>(null);
 
     const handleSaveAsImage = (poId: string) => {
         if (printableRef.current) {
-            html2canvas(printableRef.current, { backgroundColor: '#ffffff' }).then((canvas: any) => {
+            html2canvas(printableRef.current, { 
+                backgroundColor: '#ffffff',
+                onclone: (clonedDoc) => {
+                    clonedDoc.documentElement.classList.remove('dark');
+                }
+            }).then((canvas: HTMLCanvasElement) => {
+                const PADDING = 20;
+                const newCanvas = document.createElement('canvas');
+                newCanvas.width = canvas.width + PADDING * 2;
+                newCanvas.height = canvas.height + PADDING * 2;
+                const ctx = newCanvas.getContext('2d');
+                if (ctx) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, newCanvas.width, newCanvas.height);
+                    ctx.drawImage(canvas, PADDING, PADDING);
+                }
                 const link = document.createElement('a');
                 link.download = `po-${poId}.png`;
-                link.href = canvas.toDataURL('image/png');
+                link.href = newCanvas.toDataURL('image/png');
                 link.click();
             });
         }
@@ -696,7 +715,7 @@ const PurchaseOrdersView: React.FC<Pick<InventoryProps, 'purchaseOrders' | 'rece
              
              {viewingPO &&
                 <Modal isOpen={!!viewingPO} onClose={() => setViewingPO(null)} title={`Purchase Order - ${viewingPO.id}`}>
-                    <PrintablePO ref={printableRef} po={viewingPO} currency={currency} isIntegerCurrency={isIntegerCurrency} />
+                    <PrintablePO ref={printableRef} po={viewingPO} currency={currency} isIntegerCurrency={isIntegerCurrency} businessName={businessName}/>
                     <div className="flex justify-end items-center gap-2 pt-4 no-print">
                         <button onClick={() => handleSaveAsImage(viewingPO.id)} title="Save as Image" className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                             <PhotoIcon className="h-5 w-5" />
@@ -959,10 +978,25 @@ export const Inventory: React.FC<InventoryProps> = (props) => {
 
   const handleSaveLastPOAsImage = () => {
     if (lastCreatedPORef.current && lastCreatedPO) {
-        html2canvas(lastCreatedPORef.current, { backgroundColor: '#ffffff' }).then((canvas:any) => {
+        html2canvas(lastCreatedPORef.current, { 
+            backgroundColor: '#ffffff',
+            onclone: (clonedDoc) => {
+                clonedDoc.documentElement.classList.remove('dark');
+            }
+        }).then((canvas: HTMLCanvasElement) => {
+            const PADDING = 20;
+            const newCanvas = document.createElement('canvas');
+            newCanvas.width = canvas.width + PADDING * 2;
+            newCanvas.height = canvas.height + PADDING * 2;
+            const ctx = newCanvas.getContext('2d');
+            if (ctx) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, newCanvas.width, newCanvas.height);
+                ctx.drawImage(canvas, PADDING, PADDING);
+            }
             const link = document.createElement('a');
             link.download = `po-${lastCreatedPO.id}.png`;
-            link.href = canvas.toDataURL('image/png');
+            link.href = newCanvas.toDataURL('image/png');
             link.click();
         });
     }
@@ -1048,7 +1082,7 @@ export const Inventory: React.FC<InventoryProps> = (props) => {
 
       {lastCreatedPO && 
         <Modal isOpen={!!lastCreatedPO} onClose={() => setLastCreatedPO(null)} title={`Purchase Order - ${lastCreatedPO.id}`}>
-            <PrintablePO ref={lastCreatedPORef} po={lastCreatedPO} currency={props.currency} isIntegerCurrency={props.isIntegerCurrency} />
+            <PrintablePO ref={lastCreatedPORef} po={lastCreatedPO} currency={props.currency} isIntegerCurrency={props.isIntegerCurrency} businessName={props.businessName} />
             <div className="flex justify-end items-center gap-2 pt-4 no-print">
                 <button onClick={handleSaveLastPOAsImage} title="Save as Image" className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                     <PhotoIcon className="h-5 w-5" />

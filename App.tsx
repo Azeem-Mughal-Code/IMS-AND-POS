@@ -181,8 +181,7 @@ interface MainLayoutProps {
 
 // MainLayout Component for the authenticated app view
 const MainLayout: React.FC<MainLayoutProps> = (props) => {
-  const { currentUser, businessName, onLogout, products, sales, inventoryAdjustments, users, activeView, setActiveView,
-      inventoryViewState, onInventoryViewUpdate, reportsViewState, onReportsSalesViewUpdate, onReportsProductsViewUpdate, onReportsInventoryValuationViewUpdate, analysisViewState, onAnalysisViewUpdate, currency, isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold } = props;
+  const { currentUser, businessName, onLogout, products, sales, activeView, setActiveView, analysisViewState, onAnalysisViewUpdate, currency, isIntegerCurrency } = props;
   
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   
@@ -206,9 +205,23 @@ const MainLayout: React.FC<MainLayoutProps> = (props) => {
   const renderView = () => {
     switch (activeView) {
       case 'dashboard': return <Dashboard products={products} sales={sales} currency={currency} isIntegerCurrency={isIntegerCurrency} />;
-      case 'pos': return <POS products={products} sales={sales} processSale={props.processSale} currency={currency} currentUser={currentUser} isSplitPaymentEnabled={isSplitPaymentEnabled} isChangeDueEnabled={isChangeDueEnabled} isIntegerCurrency={isIntegerCurrency} isTaxEnabled={isTaxEnabled} taxRate={taxRate} isDiscountEnabled={isDiscountEnabled} discountRate={discountRate} discountThreshold={discountThreshold}/>;
-      case 'inventory': return <Inventory products={products} sales={sales} addProduct={props.addProduct} updateProduct={props.updateProduct} receiveStock={props.receiveStock} adjustStock={props.adjustStock} deleteProduct={props.deleteProduct} inventoryAdjustments={inventoryAdjustments} currentUser={currentUser} viewState={inventoryViewState} onViewStateUpdate={onInventoryViewUpdate} currency={currency} isIntegerCurrency={isIntegerCurrency} addPurchaseOrder={props.addPurchaseOrder} purchaseOrders={props.purchaseOrders} receivePOItems={props.receivePOItems} poViewState={props.poViewState} onPOViewStateUpdate={props.onPOViewUpdate} inventoryValuationViewState={reportsViewState.inventoryValuation} onInventoryValuationViewStateUpdate={onReportsInventoryValuationViewUpdate} />;
-      case 'reports': return <Reports sales={sales} products={products} currentUser={currentUser} processSale={props.processSale} salesViewState={reportsViewState.sales} onSalesViewStateUpdate={onReportsSalesViewUpdate} productsViewState={reportsViewState.products} onProductsViewStateUpdate={onReportsProductsViewUpdate} currency={currency} isIntegerCurrency={isIntegerCurrency} isTaxEnabled={isTaxEnabled} taxRate={taxRate} />;
+      case 'pos': return <POS {...props} />;
+      case 'inventory': return <Inventory 
+          {...props} 
+          viewState={props.inventoryViewState} 
+          onViewStateUpdate={props.onInventoryViewUpdate}
+          poViewState={props.poViewState}
+          onPOViewStateUpdate={props.onPOViewUpdate}
+          inventoryValuationViewState={props.reportsViewState.inventoryValuation}
+          onInventoryValuationViewStateUpdate={props.onReportsInventoryValuationViewUpdate}
+        />;
+      case 'reports': return <Reports 
+          {...props} 
+          salesViewState={props.reportsViewState.sales} 
+          onSalesViewStateUpdate={props.onReportsSalesViewUpdate}
+          productsViewState={props.reportsViewState.products}
+          onProductsViewStateUpdate={props.onReportsProductsViewUpdate}
+        />;
       case 'analysis': return <Analysis products={products} sales={sales} viewState={analysisViewState} onViewStateUpdate={onAnalysisViewUpdate} currency={currency} isIntegerCurrency={isIntegerCurrency} />;
       case 'settings': return <Settings {...props} />;
       default: return <Dashboard products={products} sales={sales} currency={currency} isIntegerCurrency={isIntegerCurrency} />;
@@ -678,7 +691,7 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
     return newSale;
   }, [sales, setSales, setProducts, setInventoryAdjustments]);
 
-  const importProducts = useCallback((newProducts: Omit<Product, 'id'>[]): { success: boolean, message: string } => {
+  const importProducts = useCallback((newProducts: Omit<Product, 'id'>[]): { success: boolean; message: string } => {
     let importedCount = 0;
     let skippedCount = 0;
     const existingSkus = new Set(products.map(p => p.sku));
