@@ -662,6 +662,7 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
             <div className="printable-area" ref={printableAreaRef}>
               <div className="text-center mb-4">
                 <h2 className="text-xl font-bold text-gray-800 dark:text-white">{businessName}</h2>
+                <p className="text-sm">Receipt: <span className="font-mono">{lastSale.id}</span></p>
               </div>
               <div className="space-y-4 text-sm">
                   <p>Date: {new Date(lastSale.date).toLocaleString()}</p>

@@ -229,7 +229,7 @@ const PrintablePO = forwardRef<HTMLDivElement, { po: PurchaseOrder, currency: st
             <div className="text-center mb-4">
                 <h2 className="text-2xl font-bold">{businessName}</h2>
             </div>
-            <h2 className="text-2xl font-bold mb-4">Purchase Order #{po.id}</h2>
+            <h2 className="text-xl font-bold mb-4 break-words">Purchase Order #{po.id}</h2>
             <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
                 <div><strong>Supplier:</strong> {po.supplierName}</div>
                 <div><strong>Date Created:</strong> {new Date(po.dateCreated).toLocaleDateString()}</div>

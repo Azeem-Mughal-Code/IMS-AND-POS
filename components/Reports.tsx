@@ -494,7 +494,8 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
             <div>
                 <div className="printable-area" ref={printableAreaRef}>
                     <div className="text-center mb-4">
-                        <h2 className="text-2xl font-bold text-gray-800 dark:text-white">{businessName}</h2>
+                        <h2 className="text-xl font-bold text-gray-800 dark:text-white">{businessName}</h2>
+                        <p className="text-sm">Receipt: <span className="font-mono">{viewingSale.id}</span></p>
                     </div>
                     <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
                         <p><span className="font-semibold text-gray-800 dark:text-gray-200">Date:</span> {new Date(viewingSale.date).toLocaleString()}</p>
