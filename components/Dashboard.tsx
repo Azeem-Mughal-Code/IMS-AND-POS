@@ -30,6 +30,13 @@ const getStartOfWeek = (date: Date): Date => {
   return d;
 };
 
+const toLocalDateKey = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 export const Dashboard: React.FC<{ products: Product[], sales: Sale[], currency: string, isIntegerCurrency: boolean }> = ({ products, sales, currency, isIntegerCurrency }) => {
   const [timeRange, setTimeRange] = useState<TimeRange>('weekly');
 
@@ -95,13 +102,13 @@ export const Dashboard: React.FC<{ products: Product[], sales: Sale[], currency:
                 return { 
                     name, 
                     Sales: 0,
-                    dateKey: d.toISOString().split('T')[0]
+                    dateKey: toLocalDateKey(d)
                 };
             });
 
             const salesByDay: { [key: string]: number } = {};
             filteredSales.forEach(sale => {
-                const key = sale.date.split('T')[0];
+                const key = toLocalDateKey(new Date(sale.date));
                 if (salesByDay[key] === undefined) salesByDay[key] = 0;
                 salesByDay[key] += sale.total;
             });

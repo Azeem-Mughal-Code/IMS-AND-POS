@@ -37,8 +37,36 @@ interface AnalysisProps {
     isIntegerCurrency: boolean;
 }
 
+type TimeRange = 'today' | 'weekly' | 'monthly' | 'yearly' | 'all';
+
+const TimeRangeButton: React.FC<{
+    label: string;
+    range: TimeRange;
+    currentTimeRange: TimeRange;
+    setTimeRange: (range: TimeRange) => void;
+}> = ({ label, range, currentTimeRange, setTimeRange }) => (
+    <button
+        onClick={() => setTimeRange(range)}
+        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
+            currentTimeRange === range
+                ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow'
+                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+        }`}
+    >
+        {label}
+    </button>
+);
+
+const getStartOfWeek = (date: Date): Date => {
+  const d = new Date(date);
+  d.setDate(d.getDate() - d.getDay());
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+
 export const Analysis: React.FC<AnalysisProps> = ({ products, sales, viewState, onViewStateUpdate, currency, isIntegerCurrency }) => {
-    const { searchTerm, sortConfig, currentPage, itemsPerPage } = viewState;
+    const { searchTerm, sortConfig, currentPage, itemsPerPage, timeRange } = viewState;
 
     const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
         style: 'currency',
@@ -47,10 +75,35 @@ export const Analysis: React.FC<AnalysisProps> = ({ products, sales, viewState, 
         maximumFractionDigits: isIntegerCurrency ? 0 : 2,
     }).format(amount);
 
+    const filteredSales = useMemo(() => {
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        switch (timeRange) {
+            case 'today':
+                return sales.filter(sale => new Date(sale.date) >= today);
+            case 'weekly': {
+                const startOfWeek = getStartOfWeek(now);
+                return sales.filter(sale => new Date(sale.date) >= startOfWeek);
+            }
+            case 'monthly': {
+                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                return sales.filter(sale => new Date(sale.date) >= startOfMonth);
+            }
+            case 'yearly': {
+                const startOfYear = new Date(now.getFullYear(), 0, 1);
+                return sales.filter(sale => new Date(sale.date) >= startOfYear);
+            }
+            case 'all':
+            default:
+                return sales;
+        }
+    }, [sales, timeRange]);
+
     const productPerformance = useMemo<PerformanceMetric[]>(() => {
         const metrics: { [key: string]: Omit<PerformanceMetric, 'product'> } = {};
 
-        sales.forEach(sale => {
+        filteredSales.forEach(sale => {
             if (sale.type === 'Sale') {
                 sale.items.forEach(item => {
                     if (!metrics[item.id]) {
@@ -68,7 +121,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ products, sales, viewState, 
             product: p,
             ... (metrics[p.id] || { unitsSold: 0, revenue: 0, cogs: 0, profit: 0 })
         }));
-    }, [products, sales]);
+    }, [products, filteredSales]);
     
     const requestSort = (key: SortableAnalysisKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -159,7 +212,18 @@ export const Analysis: React.FC<AnalysisProps> = ({ products, sales, viewState, 
 
     return (
         <div className="p-6 space-y-6">
-            <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Business Analysis</h1>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Business Analysis</h1>
+                 <div className="flex-shrink-0 bg-gray-200 dark:bg-gray-700 p-1 rounded-lg overflow-x-auto">
+                    <div className="flex items-center space-x-1">
+                        <TimeRangeButton label="Today" range="today" currentTimeRange={timeRange} setTimeRange={(range) => onViewStateUpdate({ timeRange: range })} />
+                        <TimeRangeButton label="Week" range="weekly" currentTimeRange={timeRange} setTimeRange={(range) => onViewStateUpdate({ timeRange: range })} />
+                        <TimeRangeButton label="Month" range="monthly" currentTimeRange={timeRange} setTimeRange={(range) => onViewStateUpdate({ timeRange: range })} />
+                        <TimeRangeButton label="Year" range="yearly" currentTimeRange={timeRange} setTimeRange={(range) => onViewStateUpdate({ timeRange: range })} />
+                        <TimeRangeButton label="All Time" range="all" currentTimeRange={timeRange} setTimeRange={(range) => onViewStateUpdate({ timeRange: range })} />
+                    </div>
+                </div>
+            </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <KPICard title="Best Seller (Units)" productName={kpis.bestSellerByUnits?.product.name || 'N/A'} value={`${kpis.bestSellerByUnits?.unitsSold || 0} Units`} />

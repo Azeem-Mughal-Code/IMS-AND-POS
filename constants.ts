@@ -1,4 +1,4 @@
-import { Product, Supplier } from './types';
+import { Product } from './types';
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
@@ -54,24 +54,5 @@ export const INITIAL_PRODUCTS: Product[] = [
     costPrice: 180.00,
     stock: 50,
     lowStockThreshold: 15,
-  },
-];
-
-export const INITIAL_SUPPLIERS: Supplier[] = [
-  {
-    id: 'sup_1',
-    name: 'Tech Essentials Inc.',
-    contactPerson: 'Alice Johnson',
-    email: 'alice@techessentials.com',
-    phone: '123-456-7890',
-    address: '123 Tech Ave, Silicon Valley, CA'
-  },
-  {
-    id: 'sup_2',
-    name: 'Global Components',
-    contactPerson: 'Bob Williams',
-    email: 'bob@globalcomp.com',
-    phone: '987-654-3210',
-    address: '456 Component Rd, Austin, TX'
   },
 ];

@@ -1,7 +1,9 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Product, CartItem, PaymentType, Sale, User, Payment } from '../types';
-import { SearchIcon, PlusIcon, MinusIcon, TrashIcon } from './Icons';
+import { SearchIcon, PlusIcon, MinusIcon, TrashIcon, PhotoIcon } from './Icons';
 import { Modal } from './common/Modal';
+
+declare var html2canvas: any;
 
 interface POSProps {
   products: Product[];
@@ -225,6 +227,19 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
   const [mode, setMode] = useState<'Sale' | 'Return'>('Sale');
   const [selectedSaleForReturn, setSelectedSaleForReturn] = useState<Sale | null>(null);
   const [returnSearchTerm, setReturnSearchTerm] = useState('');
+  const [feedback, setFeedback] = useState<{ type: 'error', text: string } | null>(null);
+  const printableAreaRef = useRef<HTMLDivElement>(null);
+
+  const handleSaveAsImage = () => {
+    if (printableAreaRef.current) {
+        html2canvas(printableAreaRef.current, { backgroundColor: '#ffffff' }).then((canvas: any) => {
+            const link = document.createElement('a');
+            link.download = `receipt-${lastSale?.id}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        });
+    }
+  };
 
   const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -247,9 +262,11 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
     setSearchTerm('');
     setSelectedSaleForReturn(null);
     setReturnSearchTerm('');
+    setFeedback(null);
   };
   
   const addToCart = (product: Product) => {
+    setFeedback(null);
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item.id === product.id);
       if (existingItem) {
@@ -344,14 +361,23 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
       ...(mode === 'Return' && selectedSaleForReturn && { originalSaleId: selectedSaleForReturn.id })
     };
     
-    const newSale = processSale(sale);
-    
-    setLastSale(newSale);
-    setCart([]);
-    setIsPaymentModalOpen(false);
-    setIsReceiptModalOpen(true);
-    if (mode === 'Return') {
-      setSelectedSaleForReturn(null);
+    try {
+        const newSale = processSale(sale);
+        
+        setLastSale(newSale);
+        setCart([]);
+        setIsPaymentModalOpen(false);
+        setIsReceiptModalOpen(true);
+        if (mode === 'Return') {
+          setSelectedSaleForReturn(null);
+        }
+    } catch (error) {
+        if (error instanceof Error) {
+            setFeedback({ type: 'error', text: error.message });
+        } else {
+            setFeedback({ type: 'error', text: 'An unknown error occurred while processing the sale.' });
+        }
+        setIsPaymentModalOpen(false);
     }
   };
   
@@ -454,11 +480,11 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
              <h3 className="text-lg font-semibold p-4 border-b dark:border-gray-700 text-gray-800 dark:text-gray-200">Select a Sale to Return</h3>
              {returnableSales.length > 0 ? returnableSales.map(sale => (
                <div key={sale.id} onClick={() => setSelectedSaleForReturn(sale)} className="p-4 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
-                 <div className="flex justify-between font-semibold text-gray-900 dark:text-white">
-                   <span>Receipt ID: ...{sale.id.slice(-8)}</span>
-                   <span>{formatCurrency(sale.total)}</span>
+                 <div className="flex justify-between items-center">
+                    <span className="font-semibold text-gray-900 dark:text-white truncate">Receipt ID: <span className="font-mono">{sale.id}</span></span>
+                    <span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(sale.total)}</span>
                  </div>
-                 <div className="text-sm text-gray-500 dark:text-gray-400">{new Date(sale.date).toLocaleString()} &middot; {sale.status}</div>
+                 <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{new Date(sale.date).toLocaleString()} &middot; {sale.status}</div>
                </div>
              )) : <div className="p-10 text-center text-gray-500">No returnable sales found.</div>}
           </div>
@@ -471,7 +497,7 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
         <div className="mb-4">
             <div className="p-3 bg-blue-50 dark:bg-gray-700 rounded-lg">
                 <div className="flex justify-between items-center">
-                    <h3 className="font-semibold text-gray-800 dark:text-white">Returning items from ...{selectedSaleForReturn.id.slice(-8)}</h3>
+                    <h3 className="font-semibold text-gray-800 dark:text-white truncate">Returning items from <span className="font-mono">{selectedSaleForReturn.id}</span></h3>
                     <button onClick={() => { setSelectedSaleForReturn(null); setCart([]); }} className="text-sm text-blue-600 hover:underline">Change Sale</button>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">{new Date(selectedSaleForReturn.date).toLocaleString()}</p>
@@ -547,6 +573,11 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
                 Return
             </button>
         </div>
+        {feedback && (
+          <div className={`mb-4 px-4 py-3 rounded-md text-sm ${feedback.type === 'error' ? 'bg-red-100 dark:bg-red-900 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-200' : ''}`} role="alert">
+            {feedback.text}
+          </div>
+        )}
         {mode === 'Sale' ? renderSaleMode() : renderReturnMode()}
       </div>
       
@@ -608,58 +639,63 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
         )}
       </Modal>
 
-      <Modal isOpen={isReceiptModalOpen} onClose={startNewSale} title={`${lastSale?.type} Receipt - ${lastSale?.id.slice(-8)}`}>
+      <Modal isOpen={isReceiptModalOpen} onClose={startNewSale} title={`${lastSale?.type} Receipt - ${lastSale?.id}`}>
         {lastSale && (
-          <div className="printable-area">
-            <div className="space-y-4 text-sm">
-                <p>Date: {new Date(lastSale.date).toLocaleString()}</p>
-                <p>Cashier: {lastSale.salespersonName}</p>
-                {lastSale.originalSaleId && <p>Original Sale: ...{lastSale.originalSaleId.slice(-8)}</p>}
-                <div className="border-t border-b py-2 border-gray-200 dark:border-gray-600">
-                    {lastSale.items.map(item => (
-                        <div key={item.id} className="flex justify-between">
-                            <span>{item.name} x{item.quantity}</span>
-                            <span>{formatCurrency(item.retailPrice * item.quantity)}</span>
-                        </div>
-                    ))}
-                </div>
-                 <div className="space-y-1 font-medium">
-                    <div className="flex justify-between"><span>Subtotal:</span> <span>{formatCurrency(lastSale.subtotal)}</span></div>
-                    {lastSale.discount > 0 && (
-                        <div className="flex justify-between"><span>Discount:</span> <span>-{formatCurrency(lastSale.discount)}</span></div>
-                    )}
-                    <div className="flex justify-between"><span>Tax:</span> <span>{formatCurrency(lastSale.tax)}</span></div>
-                    <div className="flex justify-between text-lg font-bold"><span>Total:</span> <span>{formatCurrency(lastSale.total)}</span></div>
-                </div>
-                <div>
-                    <h4 className="font-semibold">Payments:</h4>
-                    {lastSale.payments.map((p, i) => (
-                        <div key={i} className="flex justify-between">
-                            <span>{p.type}:</span>
-                            <span>{formatCurrency(p.amount)}</span>
-                        </div>
-                    ))}
-                     <div className="border-t mt-2 pt-2 border-gray-200 dark:border-gray-600 font-semibold">
-                       {isChangeDueEnabled && ((): {totalPaid: number, changeDue: number} => {
-                            const totalPaid = lastSale.payments.reduce((sum, p) => sum + p.amount, 0);
-                            const changeDue = totalPaid - Math.abs(lastSale.total);
-                            return {totalPaid, changeDue};
-                        })().changeDue > 0.005 && (
-                            <div className="flex justify-between text-green-600 dark:text-green-400">
-                                <span>Change Due:</span>
-                                <span>
-                                    {formatCurrency(
-                                        lastSale.payments.reduce((sum, p) => sum + p.amount, 0) - Math.abs(lastSale.total)
-                                    )}
-                                </span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-                 <div className="flex justify-end gap-2 pt-4 no-print">
-                    <button onClick={() => window.print()} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Print</button>
-                    <button onClick={startNewSale} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">New Transaction</button>
-                </div>
+          <div>
+            <div className="printable-area" ref={printableAreaRef}>
+              <div className="space-y-4 text-sm">
+                  <p>Date: {new Date(lastSale.date).toLocaleString()}</p>
+                  <p>Cashier: {lastSale.salespersonName}</p>
+                  {lastSale.originalSaleId && <p>Original Sale: <span className="font-mono">{lastSale.originalSaleId}</span></p>}
+                  <div className="border-t border-b py-2 border-gray-200 dark:border-gray-600">
+                      {lastSale.items.map(item => (
+                          <div key={item.id} className="flex justify-between">
+                              <span>{item.name} x{item.quantity}</span>
+                              <span>{formatCurrency(item.retailPrice * item.quantity)}</span>
+                          </div>
+                      ))}
+                  </div>
+                   <div className="space-y-1 font-medium">
+                      <div className="flex justify-between"><span>Subtotal:</span> <span>{formatCurrency(lastSale.subtotal)}</span></div>
+                      {lastSale.discount > 0 && (
+                          <div className="flex justify-between"><span>Discount:</span> <span>-{formatCurrency(lastSale.discount)}</span></div>
+                      )}
+                      <div className="flex justify-between"><span>Tax:</span> <span>{formatCurrency(lastSale.tax)}</span></div>
+                      <div className="flex justify-between text-lg font-bold"><span>Total:</span> <span>{formatCurrency(lastSale.total)}</span></div>
+                  </div>
+                  <div>
+                      <h4 className="font-semibold">Payments:</h4>
+                      {lastSale.payments.map((p, i) => (
+                          <div key={i} className="flex justify-between">
+                              <span>{p.type}:</span>
+                              <span>{formatCurrency(p.amount)}</span>
+                          </div>
+                      ))}
+                       <div className="border-t mt-2 pt-2 border-gray-200 dark:border-gray-600 font-semibold">
+                         {isChangeDueEnabled && ((): {totalPaid: number, changeDue: number} => {
+                              const totalPaid = lastSale.payments.reduce((sum, p) => sum + p.amount, 0);
+                              const changeDue = totalPaid - Math.abs(lastSale.total);
+                              return {totalPaid, changeDue};
+                          })().changeDue > 0.005 && (
+                              <div className="flex justify-between text-green-600 dark:text-green-400">
+                                  <span>Change Due:</span>
+                                  <span>
+                                      {formatCurrency(
+                                          lastSale.payments.reduce((sum, p) => sum + p.amount, 0) - Math.abs(lastSale.total)
+                                      )}
+                                  </span>
+                              </div>
+                          )}
+                      </div>
+                  </div>
+              </div>
+            </div>
+            <div className="flex justify-end items-center gap-2 pt-4 no-print">
+                <button onClick={handleSaveAsImage} title="Save as Image" className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                    <PhotoIcon className="h-5 w-5" />
+                </button>
+                <button onClick={() => window.print()} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Print</button>
+                <button onClick={startNewSale} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">New Transaction</button>
             </div>
           </div>
         )}

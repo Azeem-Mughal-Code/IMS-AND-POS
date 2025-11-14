@@ -1,15 +1,14 @@
 import React, { useState, useCallback, FormEvent, useEffect, useRef } from 'react';
-import { Product, Sale, User, UserRole, View, InventoryAdjustment, InventoryViewState, ReportsViewState, UsersViewState, AnalysisViewState, Supplier, PurchaseOrder, POItem, ProcurementViewState, Payment, PaymentType } from './types';
+import { Product, Sale, User, UserRole, View, InventoryAdjustment, InventoryViewState, ReportsViewState, UsersViewState, AnalysisViewState, PurchaseOrder, POItem, POViewState, Payment, PaymentType } from './types';
 import useLocalStorage from './hooks/useLocalStorage';
-import { INITIAL_PRODUCTS, INITIAL_SUPPLIERS } from './constants';
+import { INITIAL_PRODUCTS } from './constants';
 import { Dashboard } from './components/Dashboard';
 import { POS } from './components/POS';
 import { Inventory } from './components/Inventory';
 import { Reports } from './components/Reports';
 import { Settings } from './components/Settings';
 import { Analysis } from './components/Analysis';
-import { Procurement } from './components/Procurement';
-import { DashboardIcon, POSIcon, InventoryIcon, ReportsIcon, UsersIcon, UserIcon, LogoutIcon, SettingsIcon, AnalysisIcon, ChevronDownIcon, ProcurementIcon } from './components/Icons';
+import { DashboardIcon, POSIcon, InventoryIcon, ReportsIcon, UsersIcon, UserIcon, LogoutIcon, SettingsIcon, AnalysisIcon, ChevronDownIcon } from './components/Icons';
 
 // Component to select a business workspace
 const BusinessSelector: React.FC<{ onSelect: (name: string) => void }> = ({ onSelect }) => {
@@ -126,7 +125,6 @@ interface MainLayoutProps {
   sales: Sale[];
   inventoryAdjustments: InventoryAdjustment[];
   users: User[];
-  suppliers: Supplier[];
   purchaseOrders: PurchaseOrder[];
   activeView: View;
   setActiveView: (view: View) => void;
@@ -139,10 +137,7 @@ interface MainLayoutProps {
   addUser: (username: string, pass: string, role: UserRole) => { success: boolean, message?: string };
   updateUser: (userId: string, newUsername: string, newPassword?: string) => { success: boolean, message?: string };
   deleteUser: (userId: string) => { success: boolean; message?: string };
-  addSupplier: (supplier: Omit<Supplier, 'id'>) => void;
-  updateSupplier: (supplier: Supplier) => void;
-  deleteSupplier: (supplierId: string) => { success: boolean, message?: string };
-  addPurchaseOrder: (po: Omit<PurchaseOrder, 'id'>) => void;
+  addPurchaseOrder: (po: Omit<PurchaseOrder, 'id'>) => PurchaseOrder;
   updatePurchaseOrder: (po: PurchaseOrder) => void;
   receivePOItems: (poId: string, receivedItems: { productId: string, quantity: number }[]) => void;
   theme: 'light' | 'dark' | 'system';
@@ -157,9 +152,8 @@ interface MainLayoutProps {
   onUsersViewUpdate: (updates: Partial<UsersViewState>) => void;
   analysisViewState: AnalysisViewState;
   onAnalysisViewUpdate: (updates: Partial<AnalysisViewState>) => void;
-  procurementViewState: ProcurementViewState;
-  onProcurementSuppliersViewUpdate: (updates: Partial<ProcurementViewState['suppliers']>) => void;
-  onProcurementPOsViewUpdate: (updates: Partial<ProcurementViewState['purchaseOrders']>) => void;
+  poViewState: POViewState;
+  onPOViewUpdate: (updates: Partial<POViewState>) => void;
   importProducts: (newProducts: Omit<Product, 'id'>[]) => { success: boolean, message: string };
   clearSales: () => void;
   factoryReset: () => void;
@@ -213,10 +207,9 @@ const MainLayout: React.FC<MainLayoutProps> = (props) => {
     switch (activeView) {
       case 'dashboard': return <Dashboard products={products} sales={sales} currency={currency} isIntegerCurrency={isIntegerCurrency} />;
       case 'pos': return <POS products={products} sales={sales} processSale={props.processSale} currency={currency} currentUser={currentUser} isSplitPaymentEnabled={isSplitPaymentEnabled} isChangeDueEnabled={isChangeDueEnabled} isIntegerCurrency={isIntegerCurrency} isTaxEnabled={isTaxEnabled} taxRate={taxRate} isDiscountEnabled={isDiscountEnabled} discountRate={discountRate} discountThreshold={discountThreshold}/>;
-      case 'inventory': return <Inventory products={products} sales={sales} addProduct={props.addProduct} updateProduct={props.updateProduct} receiveStock={props.receiveStock} adjustStock={props.adjustStock} deleteProduct={props.deleteProduct} inventoryAdjustments={inventoryAdjustments} currentUser={currentUser} viewState={inventoryViewState} onViewStateUpdate={onInventoryViewUpdate} currency={currency} isIntegerCurrency={isIntegerCurrency} />;
-      case 'reports': return <Reports sales={sales} products={products} currentUser={currentUser} processSale={props.processSale} salesViewState={reportsViewState.sales} onSalesViewStateUpdate={onReportsSalesViewUpdate} productsViewState={reportsViewState.products} onProductsViewStateUpdate={onReportsProductsViewUpdate} inventoryValuationViewState={reportsViewState.inventoryValuation} onReportsInventoryValuationViewUpdate={onReportsInventoryValuationViewUpdate} currency={currency} isIntegerCurrency={isIntegerCurrency} isTaxEnabled={isTaxEnabled} taxRate={taxRate} />;
+      case 'inventory': return <Inventory products={products} sales={sales} addProduct={props.addProduct} updateProduct={props.updateProduct} receiveStock={props.receiveStock} adjustStock={props.adjustStock} deleteProduct={props.deleteProduct} inventoryAdjustments={inventoryAdjustments} currentUser={currentUser} viewState={inventoryViewState} onViewStateUpdate={onInventoryViewUpdate} currency={currency} isIntegerCurrency={isIntegerCurrency} addPurchaseOrder={props.addPurchaseOrder} purchaseOrders={props.purchaseOrders} receivePOItems={props.receivePOItems} poViewState={props.poViewState} onPOViewStateUpdate={props.onPOViewUpdate} inventoryValuationViewState={reportsViewState.inventoryValuation} onInventoryValuationViewStateUpdate={onReportsInventoryValuationViewUpdate} />;
+      case 'reports': return <Reports sales={sales} products={products} currentUser={currentUser} processSale={props.processSale} salesViewState={reportsViewState.sales} onSalesViewStateUpdate={onReportsSalesViewUpdate} productsViewState={reportsViewState.products} onProductsViewStateUpdate={onReportsProductsViewUpdate} currency={currency} isIntegerCurrency={isIntegerCurrency} isTaxEnabled={isTaxEnabled} taxRate={taxRate} />;
       case 'analysis': return <Analysis products={products} sales={sales} viewState={analysisViewState} onViewStateUpdate={onAnalysisViewUpdate} currency={currency} isIntegerCurrency={isIntegerCurrency} />;
-      case 'procurement': return <Procurement {...props} />;
       case 'settings': return <Settings {...props} />;
       default: return <Dashboard products={products} sales={sales} currency={currency} isIntegerCurrency={isIntegerCurrency} />;
     }
@@ -246,7 +239,6 @@ const MainLayout: React.FC<MainLayoutProps> = (props) => {
           {currentUser.role === UserRole.Admin && <NavItem view="dashboard" icon={<DashboardIcon />} label="Dashboard" />}
           <NavItem view="pos" icon={<POSIcon />} label="Point of Sale" />
           {currentUser.role === UserRole.Admin && <NavItem view="inventory" icon={<InventoryIcon />} label="Inventory" />}
-          {currentUser.role === UserRole.Admin && <NavItem view="procurement" icon={<ProcurementIcon />} label="Procurement" />}
           <NavItem view="reports" icon={<ReportsIcon />} label="Reports" />
           {currentUser.role === UserRole.Admin && <NavItem view="analysis" icon={<AnalysisIcon />} label="Analysis" />}
         </nav>
@@ -297,7 +289,6 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
   const [sales, setSales] = useLocalStorage<Sale[]>(`${ls_prefix}-sales`, []);
   const [inventoryAdjustments, setInventoryAdjustments] = useLocalStorage<InventoryAdjustment[]>(`${ls_prefix}-adjustments`, []);
   const [users, setUsers] = useLocalStorage<User[]>(`${ls_prefix}-users`, []);
-  const [suppliers, setSuppliers] = useLocalStorage<Supplier[]>(`${ls_prefix}-suppliers`, INITIAL_SUPPLIERS);
   const [purchaseOrders, setPurchaseOrders] = useLocalStorage<PurchaseOrder[]>(`${ls_prefix}-purchaseOrders`, []);
   const [currentUser, setCurrentUser] = useLocalStorage<User | null>(`${ls_prefix}-currentUser`, null);
   
@@ -329,6 +320,7 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
         searchTerm: '',
         typeFilter: 'All',
         statusFilter: 'All',
+        timeRange: 'all',
         sortConfig: { key: 'date', direction: 'descending' },
         currentPage: 1,
         itemsPerPage: 10,
@@ -356,26 +348,19 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
   });
   
   const [analysisViewState, setAnalysisViewState] = useState<AnalysisViewState>({
+    timeRange: 'all',
     searchTerm: '',
     sortConfig: { key: 'profit', direction: 'descending' },
     currentPage: 1,
     itemsPerPage: 10,
   });
   
-  const [procurementViewState, setProcurementViewState] = useState<ProcurementViewState>({
-      suppliers: {
-        searchTerm: '',
-        sortConfig: { key: 'name', direction: 'ascending' },
-        currentPage: 1,
-        itemsPerPage: 10,
-      },
-      purchaseOrders: {
-        searchTerm: '',
-        statusFilter: 'All',
-        sortConfig: { key: 'dateCreated', direction: 'descending' },
-        currentPage: 1,
-        itemsPerPage: 10,
-      }
+  const [poViewState, setPOViewState] = useState<POViewState>({
+      searchTerm: '',
+      statusFilter: 'All',
+      sortConfig: { key: 'dateCreated', direction: 'descending' },
+      currentPage: 1,
+      itemsPerPage: 10,
   });
 
   const handleInventoryViewUpdate = useCallback((updates: Partial<InventoryViewState>) => {
@@ -397,6 +382,7 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
         const filterChanged = (updates.searchTerm !== undefined && updates.searchTerm !== prev.sales.searchTerm) ||
                             (updates.typeFilter !== undefined && updates.typeFilter !== prev.sales.typeFilter) ||
                             (updates.statusFilter !== undefined && updates.statusFilter !== prev.sales.statusFilter) ||
+                            (updates.timeRange !== undefined && updates.timeRange !== prev.sales.timeRange) ||
                             (updates.itemsPerPage !== undefined && updates.itemsPerPage !== prev.sales.itemsPerPage);
         if (filterChanged) {
             newSalesState.currentPage = 1;
@@ -446,6 +432,7 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
     setAnalysisViewState(prev => {
         const newState = { ...prev, ...updates };
         const filterChanged = (updates.searchTerm !== undefined && updates.searchTerm !== prev.searchTerm) ||
+                            (updates.timeRange !== undefined && updates.timeRange !== prev.timeRange) ||
                             (updates.itemsPerPage !== undefined && updates.itemsPerPage !== prev.itemsPerPage);
         if (filterChanged) {
             newState.currentPage = 1;
@@ -454,23 +441,13 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
     });
   }, []);
   
-  const handleProcurementSuppliersViewUpdate = useCallback((updates: Partial<ProcurementViewState['suppliers']>) => {
-    setProcurementViewState(prev => {
-        const newSuppliersState = { ...prev.suppliers, ...updates };
-        if (updates.searchTerm !== undefined || updates.itemsPerPage !== undefined) {
-            newSuppliersState.currentPage = 1;
-        }
-        return { ...prev, suppliers: newSuppliersState };
-    });
-  }, []);
-  
-  const handleProcurementPOsViewUpdate = useCallback((updates: Partial<ProcurementViewState['purchaseOrders']>) => {
-    setProcurementViewState(prev => {
-        const newPOsState = { ...prev.purchaseOrders, ...updates };
+  const handlePOViewUpdate = useCallback((updates: Partial<POViewState>) => {
+    setPOViewState(prev => {
+        const newState = { ...prev, ...updates };
         if (updates.searchTerm !== undefined || updates.statusFilter !== undefined || updates.itemsPerPage !== undefined) {
-            newPOsState.currentPage = 1;
+            newState.currentPage = 1;
         }
-        return { ...prev, purchaseOrders: newPOsState };
+        return newState;
     });
   }, []);
 
@@ -484,11 +461,7 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
     }));
     setUsersViewState(prev => ({ ...prev, itemsPerPage, currentPage: 1 }));
     setAnalysisViewState(prev => ({ ...prev, itemsPerPage, currentPage: 1 }));
-    setProcurementViewState(prev => ({
-        ...prev,
-        suppliers: { ...prev.suppliers, itemsPerPage, currentPage: 1 },
-        purchaseOrders: { ...prev.purchaseOrders, itemsPerPage, currentPage: 1 },
-    }));
+    setPOViewState(prev => ({ ...prev, itemsPerPage, currentPage: 1 }));
   }, [itemsPerPage]);
 
   useEffect(() => {
@@ -582,7 +555,7 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
   const addProduct = useCallback((product: Omit<Product, 'id'>) => setProducts(prev => [...prev, { ...product, id: `prod_${Date.now()}` }]), [setProducts]);
   const updateProduct = useCallback((updatedProduct: Product) => setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p)), [setProducts]);
 
-  const deleteProduct = useCallback((productId: string): { success: boolean, message?: string } => {
+  const deleteProduct = useCallback((productId: string): { success: boolean; message?: string } => {
     const productInSale = sales.some(sale => sale.items.some(item => item.id === productId));
     if (productInSale) {
         return { success: false, message: 'Cannot delete product with sales history. Consider setting stock to 0 instead.' };
@@ -607,14 +580,48 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
   }, [products, setProducts, setInventoryAdjustments]);
 
   const processSale = useCallback((saleData: Omit<Sale, 'id' | 'date'>): Sale => {
+    const now = new Date();
+
+    // Plausibility Check: Ensure current time is after the last transaction time.
+    if (sales.length > 0) {
+        const lastSaleDate = new Date(sales[0].date);
+        // Add a small buffer (e.g., 1 second) to account for rapid transactions or clock skew.
+        if (now.getTime() < lastSaleDate.getTime() - 1000) { 
+            throw new Error('System clock appears to be incorrect. Please check your device time settings and try again.');
+        }
+    }
+
+    const year = String(now.getFullYear()).slice(-2);
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const datePrefix = `${year}${month}${day}`;
+
+    // Find the highest sequence number from today's sales
+    const maxSequence = sales
+        .filter(sale => sale.id.startsWith(datePrefix))
+        .reduce((max, sale) => {
+            const parts = sale.id.split('-');
+            if (parts.length > 1) {
+                const sequence = parseInt(parts[1], 10);
+                if (!isNaN(sequence) && sequence > max) {
+                    return sequence;
+                }
+            }
+            return max;
+        }, 0);
+
+    const nextSequence = maxSequence + 1;
+    const sequenceString = String(nextSequence).padStart(4, '0');
+    const newId = `${datePrefix}-${sequenceString}`;
+
     const itemsWithDefaults = saleData.type === 'Sale' 
         ? saleData.items.map(item => ({...item, returnedQuantity: 0}))
         : saleData.items;
 
     const newSale: Sale = {
         ...saleData,
-        id: `sale_${Date.now()}`,
-        date: new Date().toISOString(),
+        id: newId,
+        date: now.toISOString(),
         ...(saleData.type === 'Sale' && { items: itemsWithDefaults, status: 'Completed' })
     };
 
@@ -669,7 +676,7 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
         return updatedProducts;
     });
     return newSale;
-  }, [setSales, setProducts, setInventoryAdjustments]);
+  }, [sales, setSales, setProducts, setInventoryAdjustments]);
 
   const importProducts = useCallback((newProducts: Omit<Product, 'id'>[]): { success: boolean, message: string } => {
     let importedCount = 0;
@@ -710,17 +717,12 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
     setUsers(currentAdmin ? [currentAdmin] : []);
   }, [setProducts, setSales, setInventoryAdjustments, setUsers, users, currentUser]);
   
-  // --- Procurement Functions ---
-  const addSupplier = useCallback((supplier: Omit<Supplier, 'id'>) => setSuppliers(prev => [...prev, { ...supplier, id: `sup_${Date.now()}` }]), [setSuppliers]);
-  const updateSupplier = useCallback((updatedSupplier: Supplier) => setSuppliers(prev => prev.map(s => s.id === updatedSupplier.id ? updatedSupplier : s)), [setSuppliers]);
-  const deleteSupplier = useCallback((supplierId: string) => {
-    const isUsed = purchaseOrders.some(po => po.supplierId === supplierId);
-    if(isUsed) return { success: false, message: 'Cannot delete supplier with existing purchase orders.' };
-    setSuppliers(prev => prev.filter(s => s.id !== supplierId));
-    return { success: true };
-  }, [purchaseOrders, setSuppliers]);
-  
-  const addPurchaseOrder = useCallback((po: Omit<PurchaseOrder, 'id'>) => setPurchaseOrders(prev => [{ ...po, id: `po_${Date.now()}` }, ...prev]), [setPurchaseOrders]);
+  const addPurchaseOrder = useCallback((poData: Omit<PurchaseOrder, 'id'>): PurchaseOrder => {
+      const newPO: PurchaseOrder = { ...poData, id: `po_${Date.now()}` };
+      setPurchaseOrders(prev => [newPO, ...prev]);
+      return newPO;
+  }, [setPurchaseOrders]);
+
   const updatePurchaseOrder = useCallback((updatedPO: PurchaseOrder) => setPurchaseOrders(prev => prev.map(po => po.id === updatedPO.id ? updatedPO : po)), [setPurchaseOrders]);
 
   const receivePOItems = useCallback((poId: string, receivedItems: { productId: string, quantity: number }[]) => {
@@ -771,7 +773,7 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
   }
   
   const availableViews: View[] = currentUser.role === UserRole.Admin 
-    ? ['dashboard', 'pos', 'inventory', 'procurement', 'reports', 'analysis', 'settings'] 
+    ? ['dashboard', 'pos', 'inventory', 'reports', 'analysis', 'settings'] 
     : ['pos', 'reports', 'settings'];
   const currentViewIsValid = availableViews.includes(activeView);
 
@@ -784,7 +786,6 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
       sales={sales}
       inventoryAdjustments={inventoryAdjustments}
       users={users}
-      suppliers={suppliers}
       purchaseOrders={purchaseOrders}
       activeView={currentViewIsValid ? activeView : availableViews[0]}
       setActiveView={setActiveView}
@@ -797,9 +798,6 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
       addUser={addUser}
       updateUser={updateUser}
       deleteUser={deleteUser}
-      addSupplier={addSupplier}
-      updateSupplier={updateSupplier}
-      deleteSupplier={deleteSupplier}
       addPurchaseOrder={addPurchaseOrder}
       updatePurchaseOrder={updatePurchaseOrder}
       receivePOItems={receivePOItems}
@@ -815,9 +813,8 @@ const BusinessWorkspace: React.FC<{ businessName: string, onGoBack: () => void }
       onUsersViewUpdate={handleUsersViewUpdate}
       analysisViewState={analysisViewState}
       onAnalysisViewUpdate={handleAnalysisViewUpdate}
-      procurementViewState={procurementViewState}
-      onProcurementSuppliersViewUpdate={handleProcurementSuppliersViewUpdate}
-      onProcurementPOsViewUpdate={handleProcurementPOsViewUpdate}
+      poViewState={poViewState}
+      onPOViewUpdate={handlePOViewUpdate}
       importProducts={importProducts}
       clearSales={clearSales}
       factoryReset={factoryReset}

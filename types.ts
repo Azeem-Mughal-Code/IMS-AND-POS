@@ -55,23 +55,13 @@ export interface Sale {
   salespersonName: string; // NEW: Salesperson tracking
 }
 
-export type View = 'dashboard' | 'pos' | 'inventory' | 'reports' | 'analysis' | 'settings' | 'procurement';
+export type View = 'dashboard' | 'pos' | 'inventory' | 'reports' | 'analysis' | 'settings';
 
 export interface InventoryAdjustment {
   productId: string;
   date: string;
   quantity: number;
   reason: string;
-}
-
-// NEW: For Procurement
-export interface Supplier {
-  id: string;
-  name: string;
-  contactPerson?: string;
-  email?: string;
-  phone?: string;
-  address?: string;
 }
 
 export interface POItem {
@@ -85,14 +75,23 @@ export interface POItem {
 
 export interface PurchaseOrder {
   id: string;
-  supplierId: string;
-  supplierName: string; // denormalized
+  supplierName: string;
   dateCreated: string;
   dateExpected: string;
   status: 'Pending' | 'Partial' | 'Received';
   items: POItem[];
   notes?: string;
   totalCost: number;
+}
+
+// FIX: Added Supplier interface for procurement features.
+export interface Supplier {
+  id: string;
+  name: string;
+  contactPerson?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
 }
 
 
@@ -118,6 +117,7 @@ export interface ReportsViewState {
         searchTerm: string;
         typeFilter: string;
         statusFilter: string;
+        timeRange: 'today' | 'weekly' | 'monthly' | 'yearly' | 'all';
         sortConfig: SortConfig<SaleSortKeys>;
         currentPage: number;
         itemsPerPage: number;
@@ -147,19 +147,13 @@ export interface UsersViewState {
 
 type AnalysisSortKeys = 'product' | 'unitsSold' | 'revenue' | 'profit' | 'profitMargin' | 'sellThrough';
 export interface AnalysisViewState {
+    timeRange: 'today' | 'weekly' | 'monthly' | 'yearly' | 'all';
     searchTerm: string;
     sortConfig: SortConfig<AnalysisSortKeys>;
     currentPage: number;
     itemsPerPage: number;
 }
 
-type SupplierSortKeys = 'name' | 'contactPerson' | 'email';
-export interface SuppliersViewState {
-    searchTerm: string;
-    sortConfig: SortConfig<SupplierSortKeys>;
-    currentPage: number;
-    itemsPerPage: number;
-}
 type POSortKeys = 'id' | 'supplierName' | 'dateCreated' | 'status' | 'totalCost';
 export interface POViewState {
     searchTerm: string;
@@ -168,7 +162,15 @@ export interface POViewState {
     currentPage: number;
     itemsPerPage: number;
 }
+
+// FIX: Added ProcurementViewState for procurement features.
+type SupplierSortKeys = 'name' | 'contactPerson' | 'email' | 'phone';
 export interface ProcurementViewState {
-    suppliers: SuppliersViewState;
+    suppliers: {
+        searchTerm: string;
+        sortConfig: SortConfig<SupplierSortKeys>;
+        currentPage: number;
+        itemsPerPage: number;
+    };
     purchaseOrders: POViewState;
 }
