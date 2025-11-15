@@ -16,46 +16,46 @@ const PrintablePO = forwardRef<HTMLDivElement, { po: PurchaseOrder, currency: st
 
     return (
         <div className="printable-area p-4 text-gray-900 dark:text-white" ref={ref}>
-            <div className="text-center mb-6">
+            <div className="text-center mb-4">
                 <h2 className="text-2xl font-bold">{businessName}</h2>
                 <p className="text-lg">Purchase Order</p>
             </div>
-            <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-3 text-xs">
                 <div><strong>PO Number:</strong> <span className="font-mono">{po.id}</span></div>
                 <div><strong>Supplier:</strong> {po.supplierName}</div>
                 <div><strong>Date Created:</strong> {new Date(po.dateCreated).toLocaleDateString()}</div>
                 <div><strong>Date Expected:</strong> {new Date(po.dateExpected).toLocaleDateString()}</div>
                 <div><strong>Status:</strong> {po.status}</div>
             </div>
-            <table className="w-full text-sm text-left">
+            <table className="w-full text-xs text-left">
                 <thead className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
                     <tr>
-                        <th className="py-1 px-2">SKU</th>
-                        <th className="py-1 px-2">Product</th>
-                        <th className="py-1 px-2 text-right">Qty</th>
-                        <th className="py-1 px-2 text-right">Cost</th>
-                        <th className="py-1 px-2 text-right">Total</th>
+                        <th className="py-0.5 px-2">SKU</th>
+                        <th className="py-0.5 px-2">Product</th>
+                        <th className="py-0.5 px-2 text-right">Qty</th>
+                        <th className="py-0.5 px-2 text-right">Cost</th>
+                        <th className="py-0.5 px-2 text-right">Total</th>
                     </tr>
                 </thead>
                 <tbody className="text-gray-900 dark:text-white">
                     {po.items.map(item => (
                         <tr key={item.productId} className="border-b dark:border-gray-600">
-                            <td className="py-1 px-2">{item.sku}</td>
-                            <td className="py-1 px-2">{item.name}</td>
-                            <td className="py-1 px-2 text-right">{item.quantityOrdered}</td>
-                            <td className="py-1 px-2 text-right">{formatCurrency(item.costPrice)}</td>
-                            <td className="py-1 px-2 text-right">{formatCurrency(item.costPrice * item.quantityOrdered)}</td>
+                            <td className="py-0.5 px-2">{item.sku}</td>
+                            <td className="py-0.5 px-2">{item.name}</td>
+                            <td className="py-0.5 px-2 text-right">{item.quantityOrdered}</td>
+                            <td className="py-0.5 px-2 text-right">{formatCurrency(item.costPrice)}</td>
+                            <td className="py-0.5 px-2 text-right">{formatCurrency(item.costPrice * item.quantityOrdered)}</td>
                         </tr>
                     ))}
                 </tbody>
                 <tfoot className="text-gray-900 dark:text-white">
                     <tr className="font-bold">
-                        <td colSpan={4} className="py-1 px-2 text-right">Grand Total</td>
-                        <td className="py-1 px-2 text-right">{formatCurrency(po.totalCost)}</td>
+                        <td colSpan={4} className="py-0.5 px-2 text-right">Grand Total</td>
+                        <td className="py-0.5 px-2 text-right">{formatCurrency(po.totalCost)}</td>
                     </tr>
                 </tfoot>
             </table>
-            {po.notes && <div className="mt-4 text-sm"><strong>Notes:</strong> {po.notes}</div>}
+            {po.notes && <div className="mt-4 text-xs"><strong>Notes:</strong> {po.notes}</div>}
         </div>
     );
 });
@@ -281,7 +281,7 @@ export const PurchaseOrdersView: React.FC = () => {
                     clonedDoc.documentElement.classList.remove('dark');
                 }
             }).then((canvas: HTMLCanvasElement) => {
-                const PADDING = 40;
+                const PADDING = 20;
                 const newCanvas = document.createElement('canvas');
                 newCanvas.width = canvas.width + PADDING * 2;
                 newCanvas.height = canvas.height + PADDING * 2;
