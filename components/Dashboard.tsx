@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { Card } from './common/Card';
-import { Product, Sale } from '../types';
+import { useAppContext } from './context/AppContext';
 
 type TimeRange = 'today' | 'weekly' | 'monthly' | 'yearly' | 'all';
 
@@ -37,7 +37,8 @@ const toLocalDateKey = (date: Date): string => {
     return `${year}-${month}-${day}`;
 };
 
-export const Dashboard: React.FC<{ products: Product[], sales: Sale[], currency: string, isIntegerCurrency: boolean }> = ({ products, sales, currency, isIntegerCurrency }) => {
+export const Dashboard: React.FC = () => {
+  const { products, sales, currency, isIntegerCurrency } = useAppContext();
   const [timeRange, setTimeRange] = useState<TimeRange>('weekly');
 
   const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {

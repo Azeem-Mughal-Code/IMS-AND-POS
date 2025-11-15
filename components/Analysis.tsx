@@ -1,12 +1,16 @@
 import React, { useMemo } from 'react';
-import { Product, Sale, AnalysisViewState } from '../types';
+import { AnalysisViewState } from '../types';
 import { SearchIcon, ChevronDownIcon, ChevronUpIcon } from './Icons';
 import { Pagination } from './common/Pagination';
-
-const formatCurrencyDefault = (amount: number) => `$${amount.toFixed(2)}`;
+import { useAppContext } from './context/AppContext';
 
 type PerformanceMetric = {
-    product: Product;
+    product: {
+        id: string;
+        sku: string;
+        name: string;
+        stock: number;
+    };
     unitsSold: number;
     revenue: number;
     cogs: number;
@@ -27,15 +31,6 @@ const KPICard: React.FC<{ title: string; productName: string; value: string; }> 
         <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{value}</p>
     </div>
 );
-
-interface AnalysisProps {
-    products: Product[];
-    sales: Sale[];
-    viewState: AnalysisViewState;
-    onViewStateUpdate: (updates: Partial<AnalysisViewState>) => void;
-    currency: string;
-    isIntegerCurrency: boolean;
-}
 
 type TimeRange = 'today' | 'weekly' | 'monthly' | 'yearly' | 'all';
 
@@ -65,8 +60,9 @@ const getStartOfWeek = (date: Date): Date => {
 };
 
 
-export const Analysis: React.FC<AnalysisProps> = ({ products, sales, viewState, onViewStateUpdate, currency, isIntegerCurrency }) => {
-    const { searchTerm, sortConfig, currentPage, itemsPerPage, timeRange } = viewState;
+export const Analysis: React.FC = () => {
+    const { products, sales, analysisViewState, onAnalysisViewUpdate, currency, isIntegerCurrency } = useAppContext();
+    const { searchTerm, sortConfig, currentPage, itemsPerPage, timeRange } = analysisViewState;
 
     const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
         style: 'currency',
@@ -118,7 +114,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ products, sales, viewState, 
         });
 
         return products.map(p => ({
-            product: p,
+            product: { id: p.id, sku: p.sku, name: p.name, stock: p.stock },
             ... (metrics[p.id] || { unitsSold: 0, revenue: 0, cogs: 0, profit: 0 })
         }));
     }, [products, filteredSales]);
@@ -128,7 +124,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ products, sales, viewState, 
         if (sortConfig.key === key && sortConfig.direction === 'ascending') {
             direction = 'descending';
         }
-        onViewStateUpdate({ sortConfig: { key, direction } });
+        onAnalysisViewUpdate({ sortConfig: { key, direction } });
     };
     
     const filteredAndSortedPerformance = useMemo(() => {
@@ -216,11 +212,11 @@ export const Analysis: React.FC<AnalysisProps> = ({ products, sales, viewState, 
                 <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Business Analysis</h1>
                  <div className="flex-shrink-0 bg-gray-200 dark:bg-gray-700 p-1 rounded-lg overflow-x-auto">
                     <div className="flex items-center space-x-1">
-                        <TimeRangeButton label="Today" range="today" currentTimeRange={timeRange} setTimeRange={(range) => onViewStateUpdate({ timeRange: range })} />
-                        <TimeRangeButton label="Week" range="weekly" currentTimeRange={timeRange} setTimeRange={(range) => onViewStateUpdate({ timeRange: range })} />
-                        <TimeRangeButton label="Month" range="monthly" currentTimeRange={timeRange} setTimeRange={(range) => onViewStateUpdate({ timeRange: range })} />
-                        <TimeRangeButton label="Year" range="yearly" currentTimeRange={timeRange} setTimeRange={(range) => onViewStateUpdate({ timeRange: range })} />
-                        <TimeRangeButton label="All Time" range="all" currentTimeRange={timeRange} setTimeRange={(range) => onViewStateUpdate({ timeRange: range })} />
+                        <TimeRangeButton label="Today" range="today" currentTimeRange={timeRange} setTimeRange={(range) => onAnalysisViewUpdate({ timeRange: range })} />
+                        <TimeRangeButton label="Week" range="weekly" currentTimeRange={timeRange} setTimeRange={(range) => onAnalysisViewUpdate({ timeRange: range })} />
+                        <TimeRangeButton label="Month" range="monthly" currentTimeRange={timeRange} setTimeRange={(range) => onAnalysisViewUpdate({ timeRange: range })} />
+                        <TimeRangeButton label="Year" range="yearly" currentTimeRange={timeRange} setTimeRange={(range) => onAnalysisViewUpdate({ timeRange: range })} />
+                        <TimeRangeButton label="All Time" range="all" currentTimeRange={timeRange} setTimeRange={(range) => onAnalysisViewUpdate({ timeRange: range })} />
                     </div>
                 </div>
             </div>
@@ -242,7 +238,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ products, sales, viewState, 
                             type="text"
                             placeholder="Search by product name or SKU..."
                             value={searchTerm}
-                            onChange={(e) => onViewStateUpdate({ searchTerm: e.target.value })}
+                            onChange={(e) => onAnalysisViewUpdate({ searchTerm: e.target.value })}
                             className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 focus:ring-blue-500 focus:border-blue-500"
                         />
                     </div>
@@ -278,7 +274,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ products, sales, viewState, 
                  <Pagination
                     currentPage={currentPage}
                     totalPages={totalPages}
-                    onPageChange={(page) => onViewStateUpdate({ currentPage: page })}
+                    onPageChange={(page) => onAnalysisViewUpdate({ currentPage: page })}
                     itemsPerPage={itemsPerPage}
                     totalItems={totalItems}
                 />

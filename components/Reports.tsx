@@ -1,27 +1,13 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Product, Sale, User, UserRole, ReportsViewState, PaymentType } from '../types';
+import { Sale, UserRole, ReportsViewState, PaymentType } from '../types';
 import { Modal } from './common/Modal';
 import { FilterMenu, FilterSelectItem } from './common/FilterMenu';
 import { Pagination } from './common/Pagination';
 import { SearchIcon, ChevronUpIcon, ChevronDownIcon, PhotoIcon } from './Icons';
+import { useAppContext } from './context/AppContext';
+import { PrintableReceipt } from './common/PrintableReceipt';
 
 declare var html2canvas: any;
-
-interface ReportsProps {
-  sales: Sale[];
-  products: Product[];
-  currentUser: User;
-  processSale: (sale: Omit<Sale, 'id' | 'date'>) => Sale;
-  salesViewState: ReportsViewState['sales'];
-  onSalesViewStateUpdate: (updates: Partial<ReportsViewState['sales']>) => void;
-  productsViewState: ReportsViewState['products'];
-  onProductsViewStateUpdate: (updates: Partial<ReportsViewState['products']>) => void;
-  currency: string;
-  isIntegerCurrency: boolean;
-  isTaxEnabled: boolean;
-  taxRate: number;
-  businessName: string;
-}
 
 type SortableSaleKeys = 'id' | 'date' | 'type' | 'salespersonName' | 'total' | 'profit';
 type SortableProductKeys = 'sku' | 'name' | 'stock';
@@ -54,7 +40,13 @@ const getStartOfWeek = (date: Date): Date => {
 };
 
 
-export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, processSale, salesViewState, onSalesViewStateUpdate, productsViewState, onProductsViewStateUpdate, currency, isIntegerCurrency, isTaxEnabled, taxRate, businessName }) => {
+export const Reports: React.FC = () => {
+  const { 
+    sales, products, currentUser, processSale, reportsViewState, 
+    onReportsSalesViewUpdate, onReportsProductsViewUpdate, 
+    currency, isIntegerCurrency, isTaxEnabled, taxRate 
+  } = useAppContext();
+    
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const printableAreaRef = useRef<HTMLDivElement>(null);
@@ -63,7 +55,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
     if (printableAreaRef.current && viewingSale) {
         html2canvas(printableAreaRef.current, { 
             backgroundColor: '#ffffff',
-            onclone: (clonedDoc) => {
+            onclone: (clonedDoc: Document) => {
                 clonedDoc.documentElement.classList.remove('dark');
             }
         }).then((canvas: HTMLCanvasElement) => {
@@ -93,8 +85,8 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
     maximumFractionDigits: isIntegerCurrency ? 0 : 2,
   }).format(amount);
 
-  const { searchTerm: saleSearch, typeFilter, statusFilter, timeRange: saleTimeRange, sortConfig: saleSortConfig, currentPage: saleCurrentPage, itemsPerPage: saleItemsPerPage } = salesViewState;
-  const { searchTerm: productSearch, stockFilter, sortConfig: productSortConfig, currentPage: productCurrentPage, itemsPerPage: productItemsPerPage } = productsViewState;
+  const { searchTerm: saleSearch, typeFilter, statusFilter, timeRange: saleTimeRange, sortConfig: saleSortConfig, currentPage: saleCurrentPage, itemsPerPage: saleItemsPerPage } = reportsViewState.sales;
+  const { searchTerm: productSearch, stockFilter, sortConfig: productSortConfig, currentPage: productCurrentPage, itemsPerPage: productItemsPerPage } = reportsViewState.products;
 
   const salesActiveFilterCount = (typeFilter !== 'All' ? 1 : 0) + (statusFilter !== 'All' ? 1 : 0) + (saleTimeRange !== 'all' ? 1 : 0);
   const productsActiveFilterCount = stockFilter !== 'All' ? 1 : 0;
@@ -179,7 +171,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
     if (saleSortConfig.key === key && saleSortConfig.direction === 'ascending') {
         direction = 'descending';
     }
-    onSalesViewStateUpdate({ sortConfig: { key, direction } });
+    onReportsSalesViewUpdate({ sortConfig: { key, direction } });
   };
 
   const requestProductSort = (key: SortableProductKeys) => {
@@ -187,7 +179,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
     if (productSortConfig.key === key && productSortConfig.direction === 'ascending') {
         direction = 'descending';
     }
-    onProductsViewStateUpdate({ sortConfig: { key, direction } });
+    onReportsProductsViewUpdate({ sortConfig: { key, direction } });
   };
   
 
@@ -338,11 +330,11 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
                  <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200">Transaction History</h2>
                  <div className="flex-shrink-0 bg-gray-200 dark:bg-gray-700 p-1 rounded-lg overflow-x-auto">
                     <div className="flex items-center space-x-1">
-                        <TimeRangeButton label="Today" range="today" currentTimeRange={saleTimeRange} setTimeRange={(range) => onSalesViewStateUpdate({ timeRange: range })} />
-                        <TimeRangeButton label="Week" range="weekly" currentTimeRange={saleTimeRange} setTimeRange={(range) => onSalesViewStateUpdate({ timeRange: range })} />
-                        <TimeRangeButton label="Month" range="monthly" currentTimeRange={saleTimeRange} setTimeRange={(range) => onSalesViewStateUpdate({ timeRange: range })} />
-                        <TimeRangeButton label="Year" range="yearly" currentTimeRange={saleTimeRange} setTimeRange={(range) => onSalesViewStateUpdate({ timeRange: range })} />
-                        <TimeRangeButton label="All Time" range="all" currentTimeRange={saleTimeRange} setTimeRange={(range) => onSalesViewStateUpdate({ timeRange: range })} />
+                        <TimeRangeButton label="Today" range="today" currentTimeRange={saleTimeRange} setTimeRange={(range) => onReportsSalesViewUpdate({ timeRange: range })} />
+                        <TimeRangeButton label="Week" range="weekly" currentTimeRange={saleTimeRange} setTimeRange={(range) => onReportsSalesViewUpdate({ timeRange: range })} />
+                        <TimeRangeButton label="Month" range="monthly" currentTimeRange={saleTimeRange} setTimeRange={(range) => onReportsSalesViewUpdate({ timeRange: range })} />
+                        <TimeRangeButton label="Year" range="yearly" currentTimeRange={saleTimeRange} setTimeRange={(range) => onReportsSalesViewUpdate({ timeRange: range })} />
+                        <TimeRangeButton label="All Time" range="all" currentTimeRange={saleTimeRange} setTimeRange={(range) => onReportsSalesViewUpdate({ timeRange: range })} />
                     </div>
                 </div>
             </div>
@@ -353,7 +345,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
                         type="text"
                         placeholder="Search by Receipt ID or Salesperson..."
                         value={saleSearch}
-                        onChange={e => onSalesViewStateUpdate({ searchTerm: e.target.value })}
+                        onChange={e => onReportsSalesViewUpdate({ searchTerm: e.target.value })}
                         className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 focus:ring-blue-500 focus:border-blue-500"
                     />
                 </div>
@@ -361,13 +353,13 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
                     <FilterSelectItem
                         label="Transaction Type"
                         value={typeFilter}
-                        onChange={(value) => onSalesViewStateUpdate({ typeFilter: value })}
+                        onChange={(value) => onReportsSalesViewUpdate({ typeFilter: value })}
                         options={transactionTypeOptions}
                     />
                     <FilterSelectItem
                         label="Transaction Status"
                         value={statusFilter}
-                        onChange={(value) => onSalesViewStateUpdate({ statusFilter: value })}
+                        onChange={(value) => onReportsSalesViewUpdate({ statusFilter: value })}
                         options={transactionStatusOptions}
                     />
                 </FilterMenu>
@@ -419,7 +411,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
         <Pagination
             currentPage={saleCurrentPage}
             totalPages={saleTotalPages}
-            onPageChange={(page) => onSalesViewStateUpdate({ currentPage: page })}
+            onPageChange={(page) => onReportsSalesViewUpdate({ currentPage: page })}
             itemsPerPage={saleItemsPerPage}
             totalItems={saleTotalItems}
         />
@@ -435,7 +427,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
                         type="text"
                         placeholder="Search by name or SKU..."
                         value={productSearch}
-                        onChange={e => onProductsViewStateUpdate({ searchTerm: e.target.value })}
+                        onChange={e => onReportsProductsViewUpdate({ searchTerm: e.target.value })}
                         className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 focus:ring-blue-500 focus:border-blue-500"
                     />
                 </div>
@@ -443,7 +435,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
                     <FilterSelectItem
                         label="Stock Status"
                         value={stockFilter}
-                        onChange={(value) => onProductsViewStateUpdate({ stockFilter: value })}
+                        onChange={(value) => onReportsProductsViewUpdate({ stockFilter: value })}
                         options={productStockFilterOptions}
                     />
                 </FilterMenu>
@@ -483,7 +475,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
         <Pagination
             currentPage={productCurrentPage}
             totalPages={productTotalPages}
-            onPageChange={(page) => onProductsViewStateUpdate({ currentPage: page })}
+            onPageChange={(page) => onReportsProductsViewUpdate({ currentPage: page })}
             itemsPerPage={productItemsPerPage}
             totalItems={productTotalItems}
         />
@@ -492,64 +484,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, currentUser, 
       <Modal isOpen={!!viewingSale} onClose={() => setViewingSale(null)} title={`${viewingSale?.type} Details - ${viewingSale?.id}`} size="md">
         {viewingSale && (
             <div>
-                <div className="printable-area" ref={printableAreaRef}>
-                    <div className="text-center mb-4">
-                        <h2 className="text-xl font-bold text-gray-800 dark:text-white">{businessName}</h2>
-                        <p className="text-sm">Receipt: <span className="font-mono">{viewingSale.id}</span></p>
-                    </div>
-                    <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
-                        <p><span className="font-semibold text-gray-800 dark:text-gray-200">Date:</span> {new Date(viewingSale.date).toLocaleString()}</p>
-                        <p><span className="font-semibold text-gray-800 dark:text-gray-200">Salesperson:</span> {viewingSale.salespersonName}</p>
-                        {viewingSale.type === 'Return' && viewingSale.originalSaleId && <p><span className="font-semibold text-gray-800 dark:text-gray-200">Original Sale ID:</span> <span className="font-mono">{viewingSale.originalSaleId}</span></p>}
-                        <div className="border-t border-b py-2 my-2 border-gray-200 dark:border-gray-600">
-                            <h4 className="font-semibold mb-2 text-gray-800 dark:text-gray-200">Items</h4>
-                            {viewingSale.items.map(item => (
-                                <div key={item.id} className={`flex justify-between items-center mb-1 ${item.returnedQuantity && item.returnedQuantity >= item.quantity ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
-                                    <div>
-                                        <p className="font-medium text-gray-900 dark:text-white">{item.name}</p>
-                                        <p className="text-sm">
-                                        {item.quantity} &times; {formatCurrency(item.retailPrice)}
-                                        {item.returnedQuantity && item.returnedQuantity > 0 && <span className="ml-2 font-semibold not-line-through text-orange-600 dark:text-orange-400">(Returned: {item.returnedQuantity})</span>}
-                                        </p>
-                                    </div>
-                                    <span className="font-medium text-gray-900 dark:text-white">{formatCurrency(item.retailPrice * item.quantity)}</span>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="space-y-1 font-medium text-gray-800 dark:text-gray-200">
-                            <div className="flex justify-between"><span>Subtotal:</span> <span>{formatCurrency(viewingSale.subtotal)}</span></div>
-                            {viewingSale.discount > 0 && (
-                                <div className="flex justify-between"><span>Discount:</span> <span>-{formatCurrency(viewingSale.discount)}</span></div>
-                            )}
-                            <div className="flex justify-between"><span>Tax:</span> <span>{formatCurrency(viewingSale.tax)}</span></div>
-                            <div className="flex justify-between text-lg font-bold text-gray-900 dark:text-white"><span>Total:</span> <span>{formatCurrency(viewingSale.total)}</span></div>
-                        </div>
-                        <div>
-                            <h4 className="font-semibold text-gray-800 dark:text-gray-200">Payments:</h4>
-                            {viewingSale.payments.map((p, i) => (
-                            <div key={i} className="flex justify-between">
-                                <span>{p.type}:</span>
-                                <span>{formatCurrency(p.amount)}</span>
-                            </div>
-                            ))}
-                            <div className="border-t mt-2 pt-2 border-gray-200 dark:border-gray-600 font-semibold">
-                                {(() => {
-                                    const totalPaid = viewingSale.payments.reduce((sum, p) => sum + p.amount, 0);
-                                    const changeDue = totalPaid - Math.abs(viewingSale.total);
-                                    if (changeDue > 0.005) {
-                                        return (
-                                            <div className="flex justify-between text-green-600 dark:text-green-400">
-                                                <span>Change Given:</span>
-                                                <span>{formatCurrency(changeDue)}</span>
-                                            </div>
-                                        );
-                                    }
-                                    return null;
-                                })()}
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <PrintableReceipt ref={printableAreaRef} sale={viewingSale} />
                  <div className="flex justify-end items-center gap-2 pt-4 no-print">
                     {viewingSale.type === 'Sale' && (viewingSale.status === 'Completed' || viewingSale.status === 'Partially Refunded') ? (
                         <button onClick={handleRefund} className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600">

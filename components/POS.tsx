@@ -1,36 +1,21 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Product, CartItem, PaymentType, Sale, User, Payment } from '../types';
+import { Product, CartItem, PaymentType, Sale, Payment } from '../types';
 import { SearchIcon, PlusIcon, MinusIcon, TrashIcon, PhotoIcon } from './Icons';
 import { Modal } from './common/Modal';
+import { useAppContext } from './context/AppContext';
+import { PrintableReceipt } from './common/PrintableReceipt';
 
 declare var html2canvas: any;
 
 interface POSProps {
-  products: Product[];
-  sales: Sale[];
-  processSale: (sale: Omit<Sale, 'id' | 'date'>) => Sale;
-  currency: string;
-  currentUser: User;
-  isSplitPaymentEnabled: boolean;
-  isChangeDueEnabled: boolean;
-  isIntegerCurrency: boolean;
-  isTaxEnabled: boolean;
-  taxRate: number;
-  isDiscountEnabled: boolean;
-  discountRate: number;
-  discountThreshold: number;
-  businessName: string;
 }
 
 const SimplePaymentModalContent: React.FC<{
     total: number;
     onCompleteSale: (payments: Payment[]) => void;
     onClose: () => void;
-    currency: string;
-    isChangeDueEnabled: boolean;
-    isIntegerCurrency: boolean;
-}> = ({ total, onCompleteSale, onClose, currency, isChangeDueEnabled, isIntegerCurrency }) => {
-    // Default amount tendered to total, especially important when change is disabled.
+}> = ({ total, onCompleteSale, onClose }) => {
+    const { currency, isChangeDueEnabled, isIntegerCurrency } = useAppContext();
     const [amountTendered, setAmountTendered] = useState(total.toFixed(2));
 
     const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
@@ -41,14 +26,11 @@ const SimplePaymentModalContent: React.FC<{
     }).format(amount);
 
     const numericAmountTendered = parseFloat(amountTendered) || 0;
-    // Calculate change only if enabled, otherwise it's 0.
     const changeDue = isChangeDueEnabled && numericAmountTendered > total ? numericAmountTendered - total : 0;
-    // Can complete if change is enabled and amount is sufficient, OR if change is disabled (exact amount).
     const canComplete = isChangeDueEnabled ? numericAmountTendered >= total : true;
 
     const handlePayment = (type: PaymentType) => {
         if (!canComplete) return;
-        // Use the entered amount if change is enabled, otherwise use the exact total.
         const paymentAmount = isChangeDueEnabled ? numericAmountTendered : total;
         const payments: Payment[] = [{ type, amount: paymentAmount }];
         onCompleteSale(payments);
@@ -102,10 +84,8 @@ const PaymentModalContent: React.FC<{
     total: number,
     onCompleteSale: (payments: Payment[]) => void,
     onClose: () => void,
-    currency: string,
-    isChangeDueEnabled: boolean,
-    isIntegerCurrency: boolean
-}> = ({ total, onCompleteSale, onClose, currency, isChangeDueEnabled, isIntegerCurrency }) => {
+}> = ({ total, onCompleteSale, onClose }) => {
+    const { currency, isChangeDueEnabled, isIntegerCurrency } = useAppContext();
     const [payments, setPayments] = useState<Payment[]>([]);
     const [currentAmount, setCurrentAmount] = useState('');
 
@@ -122,7 +102,6 @@ const PaymentModalContent: React.FC<{
     const canComplete = totalPaid >= total;
     
     useEffect(() => {
-        // Set initial amount to total due
         if (total > 0) {
             setCurrentAmount(total.toFixed(2));
         }
@@ -132,13 +111,11 @@ const PaymentModalContent: React.FC<{
         let amount = parseFloat(currentAmount);
         if (isNaN(amount) || amount <= 0) return;
 
-        // If change is disabled, cap amount at remaining.
-        // The check is now more robust to prevent capping on subsequent payments when change is enabled.
         if (!isChangeDueEnabled && amount > remaining) {
             amount = remaining;
         }
 
-        if (amount > 0.005) { // Check for amounts bigger than half a cent
+        if (amount > 0.005) {
             setPayments(prev => [...prev, { type, amount }]);
             const newRemaining = remaining - amount;
             setCurrentAmount(newRemaining > 0 ? newRemaining.toFixed(2) : '');
@@ -146,7 +123,6 @@ const PaymentModalContent: React.FC<{
     };
 
     const removePayment = (index: number) => {
-        const paymentToRemove = payments[index];
         const newPayments = payments.filter((_, i) => i !== index);
         setPayments(newPayments);
         const newTotalPaid = newPayments.reduce((sum, p) => sum + p.amount, 0);
@@ -219,7 +195,8 @@ const PaymentModalContent: React.FC<{
 }
 
 
-export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency, currentUser, isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, businessName }) => {
+export const POS: React.FC<POSProps> = () => {
+  const { products, sales, processSale, currentUser, isSplitPaymentEnabled, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, currency, isIntegerCurrency } = useAppContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -231,11 +208,18 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
   const [feedback, setFeedback] = useState<{ type: 'error', text: string } | null>(null);
   const printableAreaRef = useRef<HTMLDivElement>(null);
 
+  const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: isIntegerCurrency ? 0 : 2,
+    maximumFractionDigits: isIntegerCurrency ? 0 : 2,
+  }).format(amount);
+
   const handleSaveAsImage = () => {
     if (printableAreaRef.current) {
         html2canvas(printableAreaRef.current, { 
             backgroundColor: '#ffffff',
-            onclone: (clonedDoc) => {
+            onclone: (clonedDoc: Document) => {
                 clonedDoc.documentElement.classList.remove('dark');
             }
         }).then((canvas: HTMLCanvasElement) => {
@@ -257,13 +241,6 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
         });
     }
   };
-
-  const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: isIntegerCurrency ? 0 : 2,
-    maximumFractionDigits: isIntegerCurrency ? 0 : 2,
-  }).format(amount);
 
   const filteredProducts = useMemo(() => {
     if (!searchTerm) return [];
@@ -343,9 +320,19 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
     const subtotal = cart.reduce((sum, item) => sum + item.retailPrice * item.quantity, 0);
     
     if (mode === 'Return') {
-        const tax = isTaxEnabled ? subtotal * taxRate : 0;
-        const total = subtotal + tax;
-        return { subtotal: -subtotal, tax: -tax, total: -total, discount: 0 };
+        let discount = 0;
+        // If there's an original sale with a discount, calculate the proportional discount for the returned items
+        if (selectedSaleForReturn && selectedSaleForReturn.discount && selectedSaleForReturn.subtotal > 0) {
+            const originalDiscountRate = selectedSaleForReturn.discount / selectedSaleForReturn.subtotal;
+            discount = subtotal * originalDiscountRate;
+        }
+
+        const taxableAmount = subtotal - discount;
+        const tax = isTaxEnabled ? taxableAmount * taxRate : 0;
+        const total = taxableAmount + tax;
+        
+        // Return negative values for a refund, but a positive discount for display consistency
+        return { subtotal: -subtotal, tax: -tax, total: -total, discount: discount };
     }
 
     const discount = (isDiscountEnabled && subtotal >= discountThreshold)
@@ -357,7 +344,7 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
     const total = taxableAmount + tax;
 
     return { subtotal, discount, tax, total };
-  }, [cart, mode, isTaxEnabled, taxRate, isDiscountEnabled, discountThreshold, discountRate]);
+  }, [cart, mode, isTaxEnabled, taxRate, isDiscountEnabled, discountThreshold, discountRate, selectedSaleForReturn]);
 
   const handleCompleteSale = (payments: Payment[]) => {
     const cogs = cart.reduce((sum, item) => sum + item.costPrice * item.quantity, 0);
@@ -531,7 +518,7 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {selectedSaleForReturn.items.map(item => {
                 const maxReturnable = item.quantity - (item.returnedQuantity || 0);
-                const currentReturnQty = cart.find(c => c.id === item.id)?.quantity || 0;
+                const currentReturnQty = cart.find(c => c.id === item.id)?.quantity;
                 if (maxReturnable <= 0) {
                     return (
                         <tr key={item.id} className="bg-gray-50 dark:bg-gray-700 opacity-60">
@@ -556,7 +543,7 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
                                 type="number"
                                 min="0"
                                 max={maxReturnable}
-                                value={currentReturnQty}
+                                value={currentReturnQty ?? ''}
                                 onChange={e => handleReturnQtyChange(item, e.target.value)}
                                 className="w-20 text-center p-1 border rounded-md dark:bg-gray-700 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
                             />
@@ -610,7 +597,7 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
             {totals.discount > 0 && (
               <div className="flex justify-between text-green-600 dark:text-green-400">
                 <span>Discount</span>
-                <span className="font-medium">-{formatCurrency(totals.discount)}</span>
+                <span className="font-medium">{mode === 'Return' ? formatCurrency(Math.abs(totals.discount)) : `-${formatCurrency(totals.discount)}`}</span>
               </div>
             )}
             {isTaxEnabled && (
@@ -640,18 +627,12 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
                 total={Math.abs(totals.total)} 
                 onCompleteSale={handleCompleteSale}
                 onClose={() => setIsPaymentModalOpen(false)}
-                currency={currency}
-                isChangeDueEnabled={isChangeDueEnabled}
-                isIntegerCurrency={isIntegerCurrency}
             />
         ) : (
             <SimplePaymentModalContent
                 total={Math.abs(totals.total)}
                 onCompleteSale={handleCompleteSale}
                 onClose={() => setIsPaymentModalOpen(false)}
-                currency={currency}
-                isChangeDueEnabled={isChangeDueEnabled}
-                isIntegerCurrency={isIntegerCurrency}
             />
         )}
       </Modal>
@@ -659,59 +640,7 @@ export const POS: React.FC<POSProps> = ({ products, sales, processSale, currency
       <Modal isOpen={isReceiptModalOpen} onClose={startNewSale} title={`${lastSale?.type} Receipt - ${lastSale?.id}`}>
         {lastSale && (
           <div>
-            <div className="printable-area" ref={printableAreaRef}>
-              <div className="text-center mb-4">
-                <h2 className="text-xl font-bold text-gray-800 dark:text-white">{businessName}</h2>
-                <p className="text-sm">Receipt: <span className="font-mono">{lastSale.id}</span></p>
-              </div>
-              <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
-                  <p>Date: {new Date(lastSale.date).toLocaleString()}</p>
-                  <p>Cashier: {lastSale.salespersonName}</p>
-                  {lastSale.originalSaleId && <p>Original Sale: <span className="font-mono">{lastSale.originalSaleId}</span></p>}
-                  <div className="border-t border-b py-2 border-gray-200 dark:border-gray-600">
-                      <h4 className="font-semibold mb-2 text-gray-800 dark:text-gray-200">Items</h4>
-                      {lastSale.items.map(item => (
-                          <div key={item.id} className="flex justify-between">
-                              <span>{item.name} x{item.quantity}</span>
-                              <span>{formatCurrency(item.retailPrice * item.quantity)}</span>
-                          </div>
-                      ))}
-                  </div>
-                   <div className="space-y-1 font-medium">
-                      <div className="flex justify-between"><span>Subtotal:</span> <span>{formatCurrency(lastSale.subtotal)}</span></div>
-                      {lastSale.discount > 0 && (
-                          <div className="flex justify-between"><span>Discount:</span> <span>-{formatCurrency(lastSale.discount)}</span></div>
-                      )}
-                      <div className="flex justify-between"><span>Tax:</span> <span>{formatCurrency(lastSale.tax)}</span></div>
-                      <div className="flex justify-between text-lg font-bold"><span>Total:</span> <span>{formatCurrency(lastSale.total)}</span></div>
-                  </div>
-                  <div>
-                      <h4 className="font-semibold">Payments:</h4>
-                      {lastSale.payments.map((p, i) => (
-                          <div key={i} className="flex justify-between">
-                              <span>{p.type}:</span>
-                              <span>{formatCurrency(p.amount)}</span>
-                          </div>
-                      ))}
-                       <div className="border-t mt-2 pt-2 border-gray-200 dark:border-gray-600 font-semibold">
-                         {isChangeDueEnabled && ((): {totalPaid: number, changeDue: number} => {
-                              const totalPaid = lastSale.payments.reduce((sum, p) => sum + p.amount, 0);
-                              const changeDue = totalPaid - Math.abs(lastSale.total);
-                              return {totalPaid, changeDue};
-                          })().changeDue > 0.005 && (
-                              <div className="flex justify-between text-green-600 dark:text-green-400">
-                                  <span>Change Due:</span>
-                                  <span>
-                                      {formatCurrency(
-                                          lastSale.payments.reduce((sum, p) => sum + p.amount, 0) - Math.abs(lastSale.total)
-                                      )}
-                                  </span>
-                              </div>
-                          )}
-                      </div>
-                  </div>
-              </div>
-            </div>
+            <PrintableReceipt ref={printableAreaRef} sale={lastSale} />
             <div className="flex justify-end items-center gap-2 pt-4 no-print">
                 <button onClick={handleSaveAsImage} title="Save as Image" className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                     <PhotoIcon className="h-5 w-5" />

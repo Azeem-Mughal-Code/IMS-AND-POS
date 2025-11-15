@@ -1,18 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { User, UserRole, UsersViewState } from '../types';
+import { User, UserRole } from '../types';
 import { Modal } from './common/Modal';
 import { Pagination } from './common/Pagination';
 import { TrashIcon, PlusIcon, SearchIcon, ChevronUpIcon, ChevronDownIcon, PencilIcon } from './Icons';
-
-interface UserSettingsProps {
-  users: User[];
-  currentUser: User;
-  addUser: (username: string, pass: string, role: UserRole) => { success: boolean, message?: string };
-  updateUser: (userId: string, newUsername: string, newPassword?: string) => { success: boolean, message?: string };
-  deleteUser: (userId: string) => { success: boolean; message?: string };
-  viewState: UsersViewState;
-  onViewStateUpdate: (updates: Partial<UsersViewState>) => void;
-}
+import { useAppContext } from './context/AppContext';
 
 const UserForm: React.FC<{
     user?: User | null;
@@ -62,7 +53,8 @@ const UserForm: React.FC<{
 
 type SortableUserKeys = 'username' | 'role';
 
-export const UserSettings: React.FC<UserSettingsProps> = ({ users, currentUser, addUser, updateUser, deleteUser, viewState, onViewStateUpdate }) => {
+export const UserSettings: React.FC = () => {
+  const { users, currentUser, addUser, updateUser, deleteUser, usersViewState, onUsersViewUpdate } = useAppContext();
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
@@ -78,14 +70,14 @@ export const UserSettings: React.FC<UserSettingsProps> = ({ users, currentUser, 
   }, [feedback]);
 
 
-  const { searchTerm, sortConfig, currentPage, itemsPerPage } = viewState;
+  const { searchTerm, sortConfig, currentPage, itemsPerPage } = usersViewState;
 
   const requestSort = (key: SortableUserKeys) => {
     let direction: 'ascending' | 'descending' = 'ascending';
     if (sortConfig.key === key && sortConfig.direction === 'ascending') {
         direction = 'descending';
     }
-    onViewStateUpdate({ sortConfig: { key, direction } });
+    onUsersViewUpdate({ sortConfig: { key, direction } });
   };
   
   const filteredAndSortedUsers = useMemo(() => {
@@ -205,7 +197,7 @@ export const UserSettings: React.FC<UserSettingsProps> = ({ users, currentUser, 
                     type="text"
                     placeholder="Search by username..."
                     value={searchTerm}
-                    onChange={e => onViewStateUpdate({ searchTerm: e.target.value, currentPage: 1 })}
+                    onChange={e => onUsersViewUpdate({ searchTerm: e.target.value, currentPage: 1 })}
                     className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 focus:ring-blue-500 focus:border-blue-500"
                 />
             </div>
@@ -250,7 +242,7 @@ export const UserSettings: React.FC<UserSettingsProps> = ({ users, currentUser, 
         <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
-            onPageChange={(page) => onViewStateUpdate({ currentPage: page })}
+            onPageChange={(page) => onUsersViewUpdate({ currentPage: page })}
             itemsPerPage={itemsPerPage}
             totalItems={totalItems}
         />

@@ -84,7 +84,7 @@ export interface PurchaseOrder {
   totalCost: number;
 }
 
-// FIX: Added Supplier interface for procurement features.
+// FIX: Added missing Supplier interface for procurement feature.
 export interface Supplier {
   id: string;
   name: string;
@@ -93,7 +93,6 @@ export interface Supplier {
   phone?: string;
   address?: string;
 }
-
 
 // Generic type for sort configuration
 export type SortConfig<T extends string> = { key: T; direction: 'ascending' | 'descending' };
@@ -163,8 +162,8 @@ export interface POViewState {
     itemsPerPage: number;
 }
 
-// FIX: Added ProcurementViewState for procurement features.
-type SupplierSortKeys = 'name' | 'contactPerson' | 'email' | 'phone';
+// FIX: Added missing ProcurementViewState for procurement feature.
+type SupplierSortKeys = keyof Omit<Supplier, 'id' | 'address'>;
 export interface ProcurementViewState {
     suppliers: {
         searchTerm: string;
