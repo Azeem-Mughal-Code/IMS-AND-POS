@@ -15,7 +15,8 @@ export const Settings: React.FC = () => {
         currentUser, updateUser, onLogout, theme, itemsPerPage, setItemsPerPage, currency, setCurrency,
         isSplitPaymentEnabled, setIsSplitPaymentEnabled, isChangeDueEnabled, setIsChangeDueEnabled,
         isIntegerCurrency, setIsIntegerCurrency, isTaxEnabled, setIsTaxEnabled, taxRate, setTaxRate,
-        isDiscountEnabled, setIsDiscountEnabled, discountRate, setDiscountRate, discountThreshold, setDiscountThreshold
+        isDiscountEnabled, setIsDiscountEnabled, discountRate, setDiscountRate, discountThreshold, setDiscountThreshold,
+        cashierPermissions
     } = useAppContext();
 
     const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
@@ -27,6 +28,9 @@ export const Settings: React.FC = () => {
     const [profileSuccess, setProfileSuccess] = useState('');
 
     const [expandedSection, setExpandedSection] = useState<string | null>('profile');
+    
+    const canEditProfile = currentUser.role === UserRole.Admin || cashierPermissions.canEditOwnProfile;
+    const canEditBehavior = currentUser.role === UserRole.Admin || cashierPermissions.canEditBehaviorSettings;
 
     useEffect(() => {
         if (isEditProfileModalOpen) {
@@ -75,9 +79,15 @@ export const Settings: React.FC = () => {
                 expandedSection={expandedSection}
                 setExpandedSection={setExpandedSection}
             >
-                 <button onClick={() => setIsEditProfileModalOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium w-full sm:w-auto">
-                    Edit Profile
-                </button>
+                {canEditProfile ? (
+                    <button onClick={() => setIsEditProfileModalOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium w-full sm:w-auto">
+                        Edit Profile
+                    </button>
+                ) : (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                        Your profile is managed by an administrator.
+                    </p>
+                )}
             </AccordionSection>
 
              <AccordionSection
@@ -119,99 +129,101 @@ export const Settings: React.FC = () => {
                 </div>
             </AccordionSection>
 
-            <AccordionSection
-                title="Behavior"
-                subtitle="Customize the functionality of the application."
-                sectionId="behavior"
-                expandedSection={expandedSection}
-                setExpandedSection={setExpandedSection}
-            >
-                <div className="space-y-6">
-                    <div>
-                        <ToggleSwitch
-                            enabled={isIntegerCurrency}
-                            onChange={setIsIntegerCurrency}
-                            label="Use Integer Currency"
-                        />
-                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                            Display and calculate all money values as whole numbers (e.g., for JPY).
-                        </p>
-                    </div>
-                     <div className="border-t border-gray-200 dark:border-gray-700 my-4"></div>
-                    <div>
-                        <ToggleSwitch
-                            enabled={isTaxEnabled}
-                            onChange={setIsTaxEnabled}
-                            label="Enable Sales Tax"
-                        />
-                        {isTaxEnabled && (
-                            <div className="mt-4">
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tax Rate (%)</label>
-                                <input
-                                    type="number"
-                                    value={taxRate * 100}
-                                    onChange={e => setTaxRate(parseFloat(e.target.value) / 100)}
-                                    className="mt-1 block w-full sm:w-1/2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
-                                    step="0.01" min="0"
-                                />
-                            </div>
-                        )}
-                    </div>
-                    <div className="border-t border-gray-200 dark:border-gray-700 my-4"></div>
-                    <div>
-                        <ToggleSwitch
-                            enabled={isDiscountEnabled}
-                            onChange={setIsDiscountEnabled}
-                            label="Enable Automatic Discount"
-                        />
-                        {isDiscountEnabled && (
-                            <div className="mt-4 space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Discount Rate (%)</label>
+            {canEditBehavior && (
+                <AccordionSection
+                    title="Behavior"
+                    subtitle="Customize the functionality of the application."
+                    sectionId="behavior"
+                    expandedSection={expandedSection}
+                    setExpandedSection={setExpandedSection}
+                >
+                    <div className="space-y-6">
+                        <div>
+                            <ToggleSwitch
+                                enabled={isIntegerCurrency}
+                                onChange={setIsIntegerCurrency}
+                                label="Use Integer Currency"
+                            />
+                             <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                                Display and calculate all money values as whole numbers (e.g., for JPY).
+                            </p>
+                        </div>
+                         <div className="border-t border-gray-200 dark:border-gray-700 my-4"></div>
+                        <div>
+                            <ToggleSwitch
+                                enabled={isTaxEnabled}
+                                onChange={setIsTaxEnabled}
+                                label="Enable Sales Tax"
+                            />
+                            {isTaxEnabled && (
+                                <div className="mt-4">
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tax Rate (%)</label>
                                     <input
                                         type="number"
-                                        value={discountRate * 100}
-                                        onChange={e => setDiscountRate(parseFloat(e.target.value) / 100)}
+                                        value={taxRate * 100}
+                                        onChange={e => setTaxRate(parseFloat(e.target.value) / 100)}
                                         className="mt-1 block w-full sm:w-1/2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
-                                        step="0.1" min="0"
+                                        step="0.01" min="0"
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Minimum Purchase for Discount</label>
-                                    <input
-                                        type="number"
-                                        value={discountThreshold}
-                                        onChange={e => setDiscountThreshold(parseFloat(e.target.value))}
-                                        className="mt-1 block w-full sm:w-1/2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
-                                        step="1" min="0"
-                                    />
+                            )}
+                        </div>
+                        <div className="border-t border-gray-200 dark:border-gray-700 my-4"></div>
+                        <div>
+                            <ToggleSwitch
+                                enabled={isDiscountEnabled}
+                                onChange={setIsDiscountEnabled}
+                                label="Enable Automatic Discount"
+                            />
+                            {isDiscountEnabled && (
+                                <div className="mt-4 space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Discount Rate (%)</label>
+                                        <input
+                                            type="number"
+                                            value={discountRate * 100}
+                                            onChange={e => setDiscountRate(parseFloat(e.target.value) / 100)}
+                                            className="mt-1 block w-full sm:w-1/2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
+                                            step="0.1" min="0"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Minimum Purchase for Discount</label>
+                                        <input
+                                            type="number"
+                                            value={discountThreshold}
+                                            onChange={e => setDiscountThreshold(parseFloat(e.target.value))}
+                                            className="mt-1 block w-full sm:w-1/2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
+                                            step="1" min="0"
+                                        />
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
+                        </div>
+                         <div className="border-t border-gray-200 dark:border-gray-700 my-4"></div>
+                        <div>
+                            <ToggleSwitch
+                                enabled={isSplitPaymentEnabled}
+                                onChange={setIsSplitPaymentEnabled}
+                                label="Enable Split Payments"
+                            />
+                             <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                                Allows a single sale to be paid for with multiple payment methods.
+                            </p>
+                        </div>
+                        <div>
+                            <ToggleSwitch
+                                enabled={isChangeDueEnabled}
+                                onChange={setIsChangeDueEnabled}
+                                label="Calculate Change Due"
+                            />
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                                Automatically calculate and display change due in the POS and on receipts.
+                            </p>
+                        </div>
                     </div>
-                     <div className="border-t border-gray-200 dark:border-gray-700 my-4"></div>
-                    <div>
-                        <ToggleSwitch
-                            enabled={isSplitPaymentEnabled}
-                            onChange={setIsSplitPaymentEnabled}
-                            label="Enable Split Payments"
-                        />
-                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                            Allows a single sale to be paid for with multiple payment methods.
-                        </p>
-                    </div>
-                    <div>
-                        <ToggleSwitch
-                            enabled={isChangeDueEnabled}
-                            onChange={setIsChangeDueEnabled}
-                            label="Calculate Change Due"
-                        />
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                            Automatically calculate and display change due in the POS and on receipts.
-                        </p>
-                    </div>
-                </div>
-            </AccordionSection>
+                </AccordionSection>
+            )}
             
             {currentUser.role === UserRole.Admin && (
                 <>

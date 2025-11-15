@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { UserRole, View } from '../../types';
 import { Dashboard } from '../Dashboard';
 import { POS } from '../POS';
@@ -10,7 +10,7 @@ import { DashboardIcon, POSIcon, InventoryIcon, ReportsIcon, SettingsIcon, Analy
 import { useAppContext } from '../context/AppContext';
 
 export const MainLayout: React.FC = () => {
-    const { currentUser, businessName, activeView, setActiveView, onLogout } = useAppContext();
+    const { currentUser, businessName, activeView, setActiveView, onLogout, cashierPermissions } = useAppContext();
     
     const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
     const profileDropdownRef = useRef<HTMLDivElement>(null);
@@ -29,11 +29,26 @@ export const MainLayout: React.FC = () => {
         };
     }, [isProfileDropdownOpen]);
 
-    useEffect(() => {
-        if (currentUser?.role === UserRole.Cashier && activeView !== 'pos' && activeView !== 'reports' && activeView !== 'settings') {
-            setActiveView('pos');
+    const availableViews = useMemo(() => {
+        if (currentUser.role === UserRole.Admin) {
+            return ['dashboard', 'pos', 'inventory', 'reports', 'analysis', 'settings'];
         }
-    }, [currentUser, activeView, setActiveView]);
+        // For Cashier
+        const views: View[] = [];
+        if (cashierPermissions.canViewDashboard) views.push('dashboard');
+        views.push('pos');
+        if (cashierPermissions.canViewInventory) views.push('inventory');
+        if (cashierPermissions.canViewReports) views.push('reports');
+        if (cashierPermissions.canViewAnalysis) views.push('analysis');
+        views.push('settings');
+        return views;
+    }, [currentUser, cashierPermissions]);
+
+    useEffect(() => {
+        if (!availableViews.includes(activeView)) {
+            setActiveView(availableViews[0] || 'pos');
+        }
+    }, [activeView, availableViews, setActiveView]);
 
     const renderView = () => {
         switch (activeView) {
@@ -60,13 +75,8 @@ export const MainLayout: React.FC = () => {
         <span className="text-xs font-medium">{label}</span>
         </button>
     );
-
-    const availableViews: View[] = currentUser.role === UserRole.Admin 
-    ? ['dashboard', 'pos', 'inventory', 'reports', 'analysis', 'settings'] 
-    : ['pos', 'reports', 'settings'];
   
     if (!availableViews.includes(activeView)) {
-        setActiveView(availableViews[0]);
         return null; // Render nothing on this cycle, useEffect will fix it
     }
 
@@ -77,11 +87,11 @@ export const MainLayout: React.FC = () => {
             <h1 className="text-xl font-bold text-blue-600 dark:text-blue-400 truncate">{businessName}</h1>
             </div>
             <nav className="flex-grow p-4 space-y-2">
-            {currentUser.role === UserRole.Admin && <NavItem view="dashboard" icon={<DashboardIcon />} label="Dashboard" />}
+            {(currentUser.role === UserRole.Admin || cashierPermissions.canViewDashboard) && <NavItem view="dashboard" icon={<DashboardIcon />} label="Dashboard" />}
             <NavItem view="pos" icon={<POSIcon />} label="Point of Sale" />
-            {currentUser.role === UserRole.Admin && <NavItem view="inventory" icon={<InventoryIcon />} label="Inventory" />}
-            <NavItem view="reports" icon={<ReportsIcon />} label="Reports" />
-            {currentUser.role === UserRole.Admin && <NavItem view="analysis" icon={<AnalysisIcon />} label="Analysis" />}
+            {(currentUser.role === UserRole.Admin || cashierPermissions.canViewInventory) && <NavItem view="inventory" icon={<InventoryIcon />} label="Inventory" />}
+            {(currentUser.role === UserRole.Admin || cashierPermissions.canViewReports) && <NavItem view="reports" icon={<ReportsIcon />} label="Reports" />}
+            {(currentUser.role === UserRole.Admin || cashierPermissions.canViewAnalysis) && <NavItem view="analysis" icon={<AnalysisIcon />} label="Analysis" />}
             </nav>
             <div className="p-4 border-t border-gray-200 dark:border-gray-700" ref={profileDropdownRef}>
                 <div className="relative">
@@ -112,11 +122,11 @@ export const MainLayout: React.FC = () => {
         <main className="flex-1 overflow-y-auto pb-16 md:pb-0">{renderView()}</main>
 
         <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-around shadow-lg">
-            {currentUser.role === UserRole.Admin && <BottomNavItem view="dashboard" icon={<DashboardIcon />} label="Dashboard" />}
+            {(currentUser.role === UserRole.Admin || cashierPermissions.canViewDashboard) && <BottomNavItem view="dashboard" icon={<DashboardIcon />} label="Dashboard" />}
             <BottomNavItem view="pos" icon={<POSIcon />} label="POS" />
-            {currentUser.role === UserRole.Admin && <BottomNavItem view="inventory" icon={<InventoryIcon />} label="Inventory" />}
-            <BottomNavItem view="reports" icon={<ReportsIcon />} label="Reports" />
-            {currentUser.role === UserRole.Admin && <BottomNavItem view="analysis" icon={<AnalysisIcon />} label="Analysis" />}
+            {(currentUser.role === UserRole.Admin || cashierPermissions.canViewInventory) && <BottomNavItem view="inventory" icon={<InventoryIcon />} label="Inventory" />}
+            {(currentUser.role === UserRole.Admin || cashierPermissions.canViewReports) && <BottomNavItem view="reports" icon={<ReportsIcon />} label="Reports" />}
+            {(currentUser.role === UserRole.Admin || cashierPermissions.canViewAnalysis) && <BottomNavItem view="analysis" icon={<AnalysisIcon />} label="Analysis" />}
             <BottomNavItem view="settings" icon={<SettingsIcon />} label="Settings" />
         </nav>
         </div>

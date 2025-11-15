@@ -19,7 +19,7 @@ export enum PaymentType {
 export interface Product {
   id: string;
   sku: string;
-  name: string;
+  name:string;
   retailPrice: number;
   costPrice: number;
   stock: number;
@@ -53,6 +53,17 @@ export interface Sale {
   status?: 'Completed' | 'Partially Refunded' | 'Refunded';
   salespersonId: string; // NEW: Salesperson tracking
   salespersonName: string; // NEW: Salesperson tracking
+}
+
+// NEW: For cashier permissions
+export interface CashierPermissions {
+  canProcessReturns: boolean;
+  canViewReports: boolean;
+  canViewAnalysis: boolean;
+  canEditOwnProfile: boolean;
+  canViewDashboard: boolean;
+  canViewInventory: boolean;
+  canEditBehaviorSettings: boolean;
 }
 
 export type View = 'dashboard' | 'pos' | 'inventory' | 'reports' | 'analysis' | 'settings';

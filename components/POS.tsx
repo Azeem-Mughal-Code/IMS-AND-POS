@@ -4,6 +4,7 @@ import { SearchIcon, PlusIcon, MinusIcon, TrashIcon, PhotoIcon } from './Icons';
 import { Modal } from './common/Modal';
 import { useAppContext } from './context/AppContext';
 import { PrintableReceipt } from './common/PrintableReceipt';
+import { UserRole } from '../types';
 
 declare var html2canvas: any;
 
@@ -201,7 +202,7 @@ const PaymentModalContent: React.FC<{
 
 
 export const POS: React.FC<POSProps> = () => {
-  const { products, sales, processSale, currentUser, isSplitPaymentEnabled, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, currency, isIntegerCurrency } = useAppContext();
+  const { products, sales, processSale, currentUser, isSplitPaymentEnabled, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, currency, isIntegerCurrency, cashierPermissions } = useAppContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -212,6 +213,8 @@ export const POS: React.FC<POSProps> = () => {
   const [returnSearchTerm, setReturnSearchTerm] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'error', text: string } | null>(null);
   const printableAreaRef = useRef<HTMLDivElement>(null);
+
+  const canProcessReturns = currentUser.role === UserRole.Admin || cashierPermissions.canProcessReturns;
 
   const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -256,6 +259,7 @@ export const POS: React.FC<POSProps> = () => {
   }, [searchTerm, products]);
 
   const switchMode = (newMode: 'Sale' | 'Return') => {
+    if (newMode === 'Return' && !canProcessReturns) return;
     setMode(newMode);
     setCart([]);
     setSearchTerm('');
@@ -599,16 +603,18 @@ export const POS: React.FC<POSProps> = () => {
         <div className="flex mb-4 rounded-lg bg-gray-200 dark:bg-gray-700 p-1">
             <button 
                 onClick={() => switchMode('Sale')}
-                className={`w-1/2 py-2 text-sm font-semibold rounded-md transition-colors ${mode === 'Sale' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow' : 'text-gray-600 dark:text-gray-300'}`}
+                className={`${canProcessReturns ? 'w-1/2' : 'w-full'} py-2 text-sm font-semibold rounded-md transition-colors ${mode === 'Sale' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow' : 'text-gray-600 dark:text-gray-300'}`}
             >
                 Sale
             </button>
-            <button 
-                onClick={() => switchMode('Return')}
-                className={`w-1/2 py-2 text-sm font-semibold rounded-md transition-colors ${mode === 'Return' ? 'bg-white dark:bg-gray-800 text-orange-600 dark:text-orange-400 shadow' : 'text-gray-600 dark:text-gray-300'}`}
-            >
-                Return
-            </button>
+            {canProcessReturns && (
+                <button 
+                    onClick={() => switchMode('Return')}
+                    className={`w-1/2 py-2 text-sm font-semibold rounded-md transition-colors ${mode === 'Return' ? 'bg-white dark:bg-gray-800 text-orange-600 dark:text-orange-400 shadow' : 'text-gray-600 dark:text-gray-300'}`}
+                >
+                    Return
+                </button>
+            )}
         </div>
         {feedback && (
           <div className={`mb-4 px-4 py-3 rounded-md text-sm ${feedback.type === 'error' ? 'bg-red-100 dark:bg-red-900 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-200' : ''}`} role="alert">

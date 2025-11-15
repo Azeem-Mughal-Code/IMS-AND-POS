@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { 
     Product, Sale, User, UserRole, View, InventoryAdjustment, InventoryViewState, ReportsViewState, 
-    UsersViewState, AnalysisViewState, PurchaseOrder, POViewState, PaymentType
+    UsersViewState, AnalysisViewState, PurchaseOrder, POViewState, PaymentType, CashierPermissions
 } from '../../types';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { INITIAL_PRODUCTS } from '../../constants';
@@ -33,6 +33,7 @@ interface AppContextType {
     usersViewState: UsersViewState;
     analysisViewState: AnalysisViewState;
     poViewState: POViewState;
+    cashierPermissions: CashierPermissions;
     
     // Setters & Functions
     login: (username: string, pass: string) => boolean;
@@ -66,6 +67,7 @@ interface AppContextType {
     setIsDiscountEnabled: (enabled: boolean) => void;
     setDiscountRate: (rate: number) => void;
     setDiscountThreshold: (threshold: number) => void;
+    setCashierPermissions: (permissions: CashierPermissions) => void;
     onInventoryViewUpdate: (updates: Partial<InventoryViewState>) => void;
     onReportsSalesViewUpdate: (updates: Partial<ReportsViewState['sales']>) => void;
     onReportsProductsViewUpdate: (updates: Partial<ReportsViewState['products']>) => void;
@@ -107,6 +109,15 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
     const [isDiscountEnabled, setIsDiscountEnabled] = useLocalStorage<boolean>(`${ls_prefix}-isDiscountEnabled`, true);
     const [discountRate, setDiscountRate] = useLocalStorage<number>(`${ls_prefix}-discountRate`, 0.05); // 5%
     const [discountThreshold, setDiscountThreshold] = useLocalStorage<number>(`${ls_prefix}-discountThreshold`, 100);
+    const [cashierPermissions, setCashierPermissions] = useLocalStorage<CashierPermissions>(`${ls_prefix}-cashierPermissions`, {
+        canProcessReturns: true,
+        canViewReports: true,
+        canViewAnalysis: false,
+        canEditOwnProfile: true,
+        canViewDashboard: false,
+        canViewInventory: false,
+        canEditBehaviorSettings: false,
+    });
 
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [theme, setTheme] = useLocalStorage<'light' | 'dark' | 'system'>('ims-theme', 'system');
@@ -298,12 +309,12 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
         businessName, products, sales, inventoryAdjustments, users, purchaseOrders, currentUser, itemsPerPage, currency,
         isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled,
         discountRate, discountThreshold, activeView, theme, inventoryViewState, reportsViewState, usersViewState,
-        analysisViewState, poViewState,
+        analysisViewState, poViewState, cashierPermissions,
         login, signup, onLogout, addUser, updateUser, deleteUser, addProduct, updateProduct, deleteProduct, receiveStock,
         adjustStock, processSale, importProducts, clearSales, factoryReset, addPurchaseOrder, updatePurchaseOrder,
         deletePurchaseOrder, receivePOItems, setActiveView, setTheme, setItemsPerPage, setCurrency, setIsSplitPaymentEnabled,
         setIsChangeDueEnabled, setIsIntegerCurrency, setIsTaxEnabled, setTaxRate, setIsDiscountEnabled, setDiscountRate,
-        setDiscountThreshold, onInventoryViewUpdate, onReportsSalesViewUpdate, onReportsProductsViewUpdate,
+        setDiscountThreshold, setCashierPermissions, onInventoryViewUpdate, onReportsSalesViewUpdate, onReportsProductsViewUpdate,
         onReportsInventoryValuationViewUpdate, onUsersViewUpdate, onAnalysisViewUpdate, onPOViewUpdate
     };
 

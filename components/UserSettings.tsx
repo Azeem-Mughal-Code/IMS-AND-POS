@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { User, UserRole } from '../types';
+import { User, UserRole, CashierPermissions } from '../types';
 import { Modal } from './common/Modal';
 import { Pagination } from './common/Pagination';
-import { TrashIcon, PlusIcon, SearchIcon, ChevronUpIcon, ChevronDownIcon, PencilIcon } from './Icons';
+import { TrashIcon, PlusIcon, SearchIcon, ChevronUpIcon, ChevronDownIcon, PencilIcon, ShieldCheckIcon } from './Icons';
 import { useAppContext } from './context/AppContext';
+import { ToggleSwitch } from './common/ToggleSwitch';
 
 const UserForm: React.FC<{
     user?: User | null;
@@ -51,11 +52,80 @@ const UserForm: React.FC<{
     );
 };
 
+const PermissionsModal: React.FC<{
+    onClose: () => void;
+}> = ({ onClose }) => {
+    const { cashierPermissions, setCashierPermissions } = useAppContext();
+    const [localPermissions, setLocalPermissions] = useState<CashierPermissions>(cashierPermissions);
+
+    const handleToggle = (key: keyof CashierPermissions, value: boolean) => {
+        setLocalPermissions(prev => ({ ...prev, [key]: value }));
+    };
+
+    const handleSave = () => {
+        setCashierPermissions(localPermissions);
+        onClose();
+    };
+
+    return (
+        <div className="space-y-6">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+                Configure what actions users with the 'Cashier' role are permitted to perform throughout the application.
+            </p>
+            <div className="space-y-4">
+                <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 border-b pb-2 mb-2 dark:border-gray-600">Page Access</h4>
+                <ToggleSwitch
+                    enabled={localPermissions.canViewDashboard}
+                    onChange={(val) => handleToggle('canViewDashboard', val)}
+                    label="Can View Dashboard Page"
+                />
+                 <ToggleSwitch
+                    enabled={localPermissions.canViewInventory}
+                    onChange={(val) => handleToggle('canViewInventory', val)}
+                    label="Can View Inventory Page"
+                />
+                <ToggleSwitch
+                    enabled={localPermissions.canViewReports}
+                    onChange={(val) => handleToggle('canViewReports', val)}
+                    label="Can View Reports Page"
+                />
+                <ToggleSwitch
+                    enabled={localPermissions.canViewAnalysis}
+                    onChange={(val) => handleToggle('canViewAnalysis', val)}
+                    label="Can View Analysis Page"
+                />
+
+                <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 border-b pb-2 mb-2 pt-4 dark:border-gray-600">Action & Settings Permissions</h4>
+                <ToggleSwitch
+                    enabled={localPermissions.canProcessReturns}
+                    onChange={(val) => handleToggle('canProcessReturns', val)}
+                    label="Can Process Returns in POS"
+                />
+                 <ToggleSwitch
+                    enabled={localPermissions.canEditOwnProfile}
+                    onChange={(val) => handleToggle('canEditOwnProfile', val)}
+                    label="Can Edit Own Profile"
+                />
+                 <ToggleSwitch
+                    enabled={localPermissions.canEditBehaviorSettings}
+                    onChange={(val) => handleToggle('canEditBehaviorSettings', val)}
+                    label="Can Edit Behavior Settings"
+                />
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+                <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
+                <button type="button" onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Save Permissions</button>
+            </div>
+        </div>
+    );
+};
+
 type SortableUserKeys = 'username' | 'role';
 
 export const UserSettings: React.FC = () => {
   const { users, currentUser, addUser, updateUser, deleteUser, usersViewState, onUsersViewUpdate } = useAppContext();
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [formError, setFormError] = useState('');
@@ -176,6 +246,10 @@ export const UserSettings: React.FC = () => {
   return (
     <div>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <button onClick={() => setIsPermissionsModalOpen(true)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center gap-2 w-full sm:w-auto justify-center">
+            <ShieldCheckIcon />
+            Cashier Permissions
+        </button>
         <button onClick={openAddModal} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2 w-full sm:w-auto justify-center">
             <PlusIcon />
             Add User
@@ -249,6 +323,10 @@ export const UserSettings: React.FC = () => {
 
       <Modal isOpen={isUserModalOpen} onClose={closeUserModal} title={editingUser ? "Edit User" : "Add New User"} size="sm">
           <UserForm user={editingUser} onSubmit={handleUserFormSubmit} onCancel={closeUserModal} errorMessage={formError} />
+      </Modal>
+
+      <Modal isOpen={isPermissionsModalOpen} onClose={() => setIsPermissionsModalOpen(false)} title="Cashier Role Permissions" size="md">
+        <PermissionsModal onClose={() => setIsPermissionsModalOpen(false)} />
       </Modal>
 
       <Modal isOpen={!!userToDelete} onClose={() => setUserToDelete(null)} title="Confirm Deletion" size="sm">
