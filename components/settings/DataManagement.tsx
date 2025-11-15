@@ -1,11 +1,14 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Modal } from '../common/Modal';
 import { ExportIcon, ImportIcon, DangerIcon } from '../Icons';
 import { Product, Sale } from '../../types';
 import { useAppContext } from '../context/AppContext';
+import { Dropdown } from '../common/Dropdown';
+
+type PruneTarget = 'sales' | 'purchaseOrders' | 'stockHistory' | 'notifications';
 
 export const DataManagement: React.FC = () => {
-    const { currentUser, businessName, products, sales, importProducts, clearSales, factoryReset } = useAppContext();
+    const { currentUser, businessName, products, sales, importProducts, clearSales, factoryReset, pruneData } = useAppContext();
     const [isImportModalOpen, setImportModalOpen] = useState(false);
     const [importFile, setImportFile] = useState<File | null>(null);
     const [importFeedback, setImportFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null);
@@ -13,7 +16,23 @@ export const DataManagement: React.FC = () => {
 
     const [isDangerModalOpen, setDangerModalOpen] = useState(false);
     const [dangerAction, setDangerAction] = useState<'clearSales' | 'factoryReset' | null>(null);
+    const [confirmationText, setConfirmationText] = useState('');
     const [confirmationPassword, setConfirmationPassword] = useState('');
+    const [dangerError, setDangerError] = useState('');
+    
+    const [isPruneModalOpen, setIsPruneModalOpen] = useState(false);
+    const [pruneTarget, setPruneTarget] = useState<PruneTarget>('sales');
+    const [pruneDays, setPruneDays] = useState(365);
+    const [pruneConfirmation, setPruneConfirmation] = useState('');
+    const [prunePassword, setPrunePassword] = useState('');
+    const [pruneFeedback, setPruneFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+
+    const pruneOptions: { value: PruneTarget; label: string }[] = [
+        { value: 'sales', label: 'Sales Records' },
+        { value: 'purchaseOrders', label: 'Completed POs' },
+        { value: 'stockHistory', label: 'Stock History' },
+        { value: 'notifications', label: 'Notifications' },
+    ];
 
     const convertToCSV = (data: any[], type: 'products' | 'sales') => {
         if (!data || data.length === 0) return '';
@@ -133,22 +152,62 @@ export const DataManagement: React.FC = () => {
     
     const openDangerModal = (action: 'clearSales' | 'factoryReset') => {
         setDangerAction(action);
+        setDangerError('');
         setDangerModalOpen(true);
     };
 
     const closeDangerModal = () => {
         setDangerModalOpen(false);
         setDangerAction(null);
+        setConfirmationText('');
         setConfirmationPassword('');
+        setDangerError('');
     };
     
     const handleDangerAction = () => {
-        if(confirmationPassword !== currentUser.password) return;
+        setDangerError('');
+        const confirmWord = dangerAction === 'clearSales' ? 'CLEAR SALES' : 'RESET';
 
-        if(dangerAction === 'clearSales') clearSales();
-        if(dangerAction === 'factoryReset') factoryReset();
+        if (confirmationText.toUpperCase() !== confirmWord) {
+            setDangerError('Confirmation text does not match.');
+            return;
+        }
+        if (confirmationPassword !== currentUser.password) {
+            setDangerError('Incorrect admin password.');
+            return;
+        }
+
+        if (dangerAction === 'clearSales') clearSales();
+        if (dangerAction === 'factoryReset') factoryReset();
 
         closeDangerModal();
+    };
+
+    const isDangerConfirmValid = useMemo(() => {
+        if (!dangerAction) return false;
+        const confirmWord = dangerAction === 'clearSales' ? 'CLEAR SALES' : 'RESET';
+        return confirmationText.toUpperCase() === confirmWord;
+    }, [dangerAction, confirmationText]);
+    
+    const handlePruneClick = () => {
+        setPruneFeedback(null);
+        setPruneConfirmation('');
+        setPrunePassword('');
+        setIsPruneModalOpen(true);
+    };
+
+    const confirmPrune = () => {
+        if (pruneConfirmation.toUpperCase() !== 'PRUNE') {
+            setPruneFeedback({ type: 'error', message: 'Confirmation text does not match.' });
+            return;
+        }
+        if (prunePassword !== currentUser.password) {
+            setPruneFeedback({ type: 'error', message: 'Incorrect admin password.' });
+            return;
+        }
+        const result = pruneData(pruneTarget, pruneDays);
+        setPruneFeedback(result);
+        setIsPruneModalOpen(false);
     };
 
     return (
@@ -174,6 +233,29 @@ export const DataManagement: React.FC = () => {
                             <ImportIcon /> Import Products from CSV
                         </button>
                     </div>
+                </div>
+
+                {/* Data Pruning */}
+                <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <h3 className="font-semibold text-gray-700 dark:text-gray-300">Data Pruning</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-4">
+                        Permanently delete old records to free up space and improve performance. This action cannot be undone.
+                    </p>
+                    <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg flex flex-col sm:flex-row items-center gap-4 flex-wrap">
+                        <span className="font-medium text-gray-800 dark:text-gray-200">Delete</span>
+                        <div className="w-full sm:w-auto sm:min-w-[200px]"><Dropdown options={pruneOptions} value={pruneTarget} onChange={setPruneTarget} /></div>
+                        <span className="font-medium text-gray-800 dark:text-gray-200">older than</span>
+                        <input type="number" value={pruneDays} onChange={e => setPruneDays(parseInt(e.target.value) || 0)} min="1" className="w-24 px-3 py-2.5 text-sm rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
+                        <span className="font-medium text-gray-800 dark:text-gray-200">days</span>
+                        <button onClick={handlePruneClick} className="w-full sm:w-auto sm:ml-auto px-4 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 text-sm font-semibold">
+                            Prune Data
+                        </button>
+                    </div>
+                     {pruneFeedback && !isPruneModalOpen && (
+                        <div className={`mt-4 text-sm p-3 rounded-md ${pruneFeedback.type === 'success' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' : 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'}`}>
+                            {pruneFeedback.message}
+                        </div>
+                    )}
                 </div>
 
                 {/* Danger Zone */}
@@ -220,10 +302,36 @@ export const DataManagement: React.FC = () => {
             <Modal isOpen={isDangerModalOpen} onClose={closeDangerModal} title="Are you absolutely sure?">
                 <div className="space-y-4">
                     {dangerAction === 'clearSales' && (
-                        <p className="text-gray-700 dark:text-gray-300">This will permanently delete all sales and return history. This action cannot be undone.</p>
+                        <>
+                            <p className="text-gray-700 dark:text-gray-300">This will permanently delete all sales and return history. This action cannot be undone.</p>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    To confirm, type <strong className="font-mono text-gray-800 dark:text-gray-200">CLEAR SALES</strong> in the box below.
+                                </label>
+                                <input 
+                                    type="text" 
+                                    value={confirmationText}
+                                    onChange={e => setConfirmationText(e.target.value)}
+                                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-red-500 focus:ring-red-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
+                                />
+                            </div>
+                        </>
                     )}
                     {dangerAction === 'factoryReset' && (
-                        <p className="text-gray-700 dark:text-gray-300">This will permanently delete all products, sales, and cashier accounts. Your admin account will be preserved. This action cannot be undone.</p>
+                        <>
+                            <p className="text-gray-700 dark:text-gray-300">This will permanently delete all products, sales, and cashier accounts. Your admin account will be preserved. This action cannot be undone.</p>
+                             <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    To confirm, type <strong className="font-mono text-gray-800 dark:text-gray-200">RESET</strong> in the box below.
+                                </label>
+                                <input 
+                                    type="text" 
+                                    value={confirmationText}
+                                    onChange={e => setConfirmationText(e.target.value)}
+                                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-red-500 focus:ring-red-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
+                                />
+                            </div>
+                        </>
                     )}
                      <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -236,14 +344,58 @@ export const DataManagement: React.FC = () => {
                             className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-red-500 focus:ring-red-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
                         />
                     </div>
+                    {dangerError && <p className="text-red-500 text-sm">{dangerError}</p>}
                 </div>
                  <div className="flex justify-end gap-2 pt-6 mt-6 border-t border-gray-200 dark:border-gray-700">
                     <button onClick={closeDangerModal} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
                     <button 
                         onClick={handleDangerAction}
-                        disabled={confirmationPassword !== currentUser.password}
+                        disabled={!isDangerConfirmValid || !confirmationPassword}
                         className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
                         I understand, proceed
+                    </button>
+                </div>
+            </Modal>
+            
+            <Modal isOpen={isPruneModalOpen} onClose={() => setIsPruneModalOpen(false)} title="Confirm Data Pruning">
+                 <div className="space-y-4">
+                    <p className="text-gray-700 dark:text-gray-300">
+                        You are about to permanently delete all <strong className="font-semibold text-gray-800 dark:text-white">{pruneOptions.find(o => o.value === pruneTarget)?.label}</strong> older than <strong className="font-semibold text-gray-800 dark:text-white">{pruneDays}</strong> days.
+                    </p>
+                     <p className="text-sm text-yellow-700 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/50 p-3 rounded-md">This action cannot be undone. Please be certain before proceeding.</p>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            To confirm, type <strong className="font-mono text-gray-800 dark:text-gray-200">PRUNE</strong> in the box below.
+                        </label>
+                        <input 
+                            type="text" 
+                            value={pruneConfirmation}
+                            onChange={e => setPruneConfirmation(e.target.value)}
+                            className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
+                        />
+                    </div>
+                     <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                           Enter your admin password to confirm.
+                        </label>
+                        <input 
+                            type="password" 
+                            value={prunePassword}
+                            onChange={e => setPrunePassword(e.target.value)}
+                            className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
+                        />
+                    </div>
+                     {pruneFeedback && pruneFeedback.type === 'error' && (
+                        <p className="text-red-500 text-sm">{pruneFeedback.message}</p>
+                     )}
+                </div>
+                <div className="flex justify-end gap-2 pt-6 mt-6 border-t border-gray-200 dark:border-gray-700">
+                    <button onClick={() => setIsPruneModalOpen(false)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
+                    <button 
+                        onClick={confirmPrune}
+                        disabled={pruneConfirmation.toUpperCase() !== 'PRUNE' || !prunePassword}
+                        className="px-4 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                        Prune Data
                     </button>
                 </div>
             </Modal>

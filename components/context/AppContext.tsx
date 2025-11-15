@@ -56,6 +56,7 @@ interface AppContextType {
     importProducts: (newProducts: Omit<Product, 'id'>[]) => { success: boolean; message: string };
     clearSales: () => void;
     factoryReset: () => void;
+    pruneData: (target: 'sales' | 'purchaseOrders' | 'stockHistory' | 'notifications', days: number) => { success: boolean; message: string };
     addPurchaseOrder: (po: Omit<PurchaseOrder, 'id'>) => PurchaseOrder;
     updatePurchaseOrder: (po: PurchaseOrder) => void;
     deletePurchaseOrder: (poId: string) => { success: boolean; message?: string };
@@ -385,6 +386,49 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
    
      const clearSales = useCallback(() => { setSales([]); setInventoryAdjustments(prev => prev.filter(adj => !adj.reason.startsWith('Sale #') && !adj.reason.startsWith('Return #'))); }, [setSales, setInventoryAdjustments]);
      const factoryReset = useCallback(() => { setProducts(INITIAL_PRODUCTS); setSales([]); setInventoryAdjustments([]); const admin = users.find(u => u.id === currentUser?.id); setUsers(admin ? [admin] : []); setNotifications([]); }, [setProducts, setSales, setInventoryAdjustments, setUsers, users, currentUser, setNotifications]);
+     
+    const pruneData = useCallback((target: 'sales' | 'purchaseOrders' | 'stockHistory' | 'notifications', days: number): { success: boolean; message: string } => {
+        if (days <= 0) {
+            return { success: false, message: 'Please provide a positive number of days.' };
+        }
+
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - days);
+        let count = 0;
+
+        switch (target) {
+            case 'sales':
+                const salesToKeep = sales.filter(s => new Date(s.date) >= cutoffDate);
+                count = sales.length - salesToKeep.length;
+                if (count > 0) setSales(salesToKeep);
+                return { success: true, message: `Successfully deleted ${count} sales records older than ${days} days.` };
+
+            case 'purchaseOrders':
+                const posToKeep = purchaseOrders.filter(po => {
+                    if (po.status !== 'Received') return true; // Keep if not completed
+                    return new Date(po.dateCreated) >= cutoffDate;
+                });
+                count = purchaseOrders.length - posToKeep.length;
+                if (count > 0) setPurchaseOrders(posToKeep);
+                return { success: true, message: `Successfully deleted ${count} completed purchase order records older than ${days} days.` };
+                
+            case 'stockHistory':
+                const adjustmentsToKeep = inventoryAdjustments.filter(adj => new Date(adj.date) >= cutoffDate);
+                count = inventoryAdjustments.length - adjustmentsToKeep.length;
+                if (count > 0) setInventoryAdjustments(adjustmentsToKeep);
+                return { success: true, message: `Successfully deleted ${count} stock history records older than ${days} days.` };
+            
+            case 'notifications':
+                const notificationsToKeep = notifications.filter(n => new Date(n.timestamp) >= cutoffDate);
+                count = notifications.length - notificationsToKeep.length;
+                if (count > 0) setNotifications(notificationsToKeep);
+                return { success: true, message: `Successfully deleted ${count} notification records older than ${days} days.` };
+                
+            default:
+                return { success: false, message: 'Invalid data target specified for pruning.' };
+        }
+    }, [sales, purchaseOrders, inventoryAdjustments, notifications, setSales, setPurchaseOrders, setInventoryAdjustments, setNotifications]);
+     
      const addPurchaseOrder = useCallback((poData: Omit<PurchaseOrder, 'id'>): PurchaseOrder => { const newPO: PurchaseOrder = { ...poData, id: `po_${Date.now()}` }; setPurchaseOrders(prev => [newPO, ...prev]); return newPO; }, [setPurchaseOrders]);
      const updatePurchaseOrder = useCallback((updatedPO: PurchaseOrder) => setPurchaseOrders(prev => prev.map(po => po.id === updatedPO.id ? updatedPO : po)), [setPurchaseOrders]);
      
@@ -438,7 +482,7 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
         discountRate, discountThreshold, activeView, theme, inventoryViewState, reportsViewState, usersViewState,
         analysisViewState, poViewState, cashierPermissions,
         login, signup, onLogout, addUser, updateUser, deleteUser, addProduct, updateProduct, deleteProduct, receiveStock,
-        adjustStock, processSale, importProducts, clearSales, factoryReset, addPurchaseOrder, updatePurchaseOrder,
+        adjustStock, processSale, importProducts, clearSales, factoryReset, pruneData, addPurchaseOrder, updatePurchaseOrder,
         deletePurchaseOrder, receivePOItems, addNotification, markNotificationAsRead, markAllNotificationsAsRead, clearNotifications, setActiveView, setTheme, setItemsPerPage, setCurrency, addCurrency, updateCurrency, deleteCurrency, setCurrencyDisplay, formatCurrency, setIsSplitPaymentEnabled,
         setIsChangeDueEnabled, setIsIntegerCurrency, setIsTaxEnabled, setTaxRate, setIsDiscountEnabled, setDiscountRate,
         setDiscountThreshold, setCashierPermissions, onInventoryViewUpdate, onReportsSalesViewUpdate, onReportsProductsViewUpdate,
