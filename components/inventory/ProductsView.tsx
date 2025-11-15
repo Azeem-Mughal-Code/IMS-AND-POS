@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Product } from '../../types';
+import { Product, InventoryAdjustment } from '../../types';
 import { useAppContext } from '../context/AppContext';
 import { Modal } from '../common/Modal';
 import { Pagination } from '../common/Pagination';
-import { SearchIcon, PlusIcon, PencilIcon, TrashIcon, AdjustIcon, HistoryIcon, ChevronUpIcon, ChevronDownIcon } from '../Icons';
+import { SearchIcon, PlusIcon, PencilIcon, TrashIcon, AdjustIcon, HistoryIcon, ChevronUpIcon, ChevronDownIcon, ReceiveIcon } from '../Icons';
 import { FilterMenu, FilterSelectItem } from '../common/FilterMenu';
 
 const ProductForm: React.FC<{ product?: Product | null; onSubmit: (data: Omit<Product, 'id' | 'stock'>) => void; onCancel: () => void; }> = ({ product, onSubmit, onCancel }) => {
@@ -41,13 +41,97 @@ const ProductForm: React.FC<{ product?: Product | null; onSubmit: (data: Omit<Pr
     );
 };
 
+const ReceiveStockModal: React.FC<{ product: Product, onClose: () => void }> = ({ product, onClose }) => {
+    const { receiveStock } = useAppContext();
+    const [quantity, setQuantity] = useState(1);
+    const handleSubmit = () => {
+        if (quantity > 0) {
+            receiveStock(product.id, quantity);
+        }
+        onClose();
+    };
+    return (
+        <div className="space-y-4">
+            <p>Current stock for <strong>{product.name}</strong> is {product.stock}.</p>
+            <div>
+                <label className="block text-sm font-medium">Quantity to Receive</label>
+                <input type="number" value={quantity} onChange={e => setQuantity(parseInt(e.target.value))} min="1" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700" />
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+                <button onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
+                <button onClick={handleSubmit} className="px-4 py-2 bg-blue-600 text-white rounded-md">Receive Stock</button>
+            </div>
+        </div>
+    );
+};
+
+const AdjustStockModal: React.FC<{ product: Product, onClose: () => void }> = ({ product, onClose }) => {
+    const { adjustStock } = useAppContext();
+    const [newStock, setNewStock] = useState(product.stock);
+    const [reason, setReason] = useState('');
+    const handleSubmit = () => {
+        if (newStock !== product.stock) {
+            adjustStock(product.id, newStock, reason || 'Manual Adjustment');
+        }
+        onClose();
+    };
+    return (
+        <div className="space-y-4">
+             <p>Current stock for <strong>{product.name}</strong> is {product.stock}.</p>
+            <div>
+                <label className="block text-sm font-medium">New Stock Level</label>
+                <input type="number" value={newStock} onChange={e => setNewStock(parseInt(e.target.value))} min="0" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700" />
+            </div>
+            <div>
+                <label className="block text-sm font-medium">Reason for Adjustment</label>
+                <input type="text" value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g., Cycle Count" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700" />
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+                <button onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
+                <button onClick={handleSubmit} className="px-4 py-2 bg-blue-600 text-white rounded-md">Adjust Stock</button>
+            </div>
+        </div>
+    );
+};
+
+const HistoryModal: React.FC<{ product: Product, onClose: () => void }> = ({ product, onClose }) => {
+    const { inventoryAdjustments } = useAppContext();
+    const productHistory = inventoryAdjustments.filter(adj => adj.productId === product.id).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return (
+        <div>
+            <div className="max-h-96 overflow-y-auto">
+                <table className="w-full text-sm text-left">
+                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 text-xs uppercase">
+                        <tr><th className="p-2">Date</th><th className="p-2">Change</th><th className="p-2">Reason</th></tr>
+                    </thead>
+                    <tbody>
+                        {productHistory.map((adj, i) => (
+                             <tr key={i} className="border-b dark:border-gray-700">
+                                <td className="p-2 whitespace-nowrap">{new Date(adj.date).toLocaleString()}</td>
+                                <td className={`p-2 font-semibold ${adj.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>{adj.quantity > 0 ? `+${adj.quantity}` : adj.quantity}</td>
+                                <td className="p-2">{adj.reason}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                 {productHistory.length === 0 && <p className="p-4 text-center text-gray-500">No adjustment history found.</p>}
+            </div>
+            <div className="flex justify-end pt-4 mt-4 border-t dark:border-gray-700">
+                 <button onClick={onClose} className="px-4 py-2 bg-blue-600 text-white rounded-md">Close</button>
+            </div>
+        </div>
+    );
+};
 
 export const ProductsView: React.FC = () => {
-    const { products, addProduct, updateProduct, deleteProduct, adjustStock, inventoryViewState, onInventoryViewUpdate, currency, isIntegerCurrency } = useAppContext();
+    const { products, addProduct, updateProduct, deleteProduct, adjustStock, receiveStock, inventoryAdjustments, inventoryViewState, onInventoryViewUpdate, currency, isIntegerCurrency } = useAppContext();
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [productToDelete, setProductToDelete] = useState<Product | null>(null);
     const [feedback, setFeedback] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [receivingProduct, setReceivingProduct] = useState<Product | null>(null);
+    const [adjustingProduct, setAdjustingProduct] = useState<Product | null>(null);
+    const [historyProduct, setHistoryProduct] = useState<Product | null>(null);
 
     const { searchTerm, stockFilter, sortConfig, currentPage, itemsPerPage } = inventoryViewState;
     
@@ -132,7 +216,7 @@ export const ProductsView: React.FC = () => {
                     </div>
                 </div>
             </div>
-            {feedback && <div className={`mx-4 mb-4 px-4 py-2 rounded-md text-sm ${feedback.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{feedback.text}</div>}
+            {feedback && <div className={`mx-4 mb-4 px-4 py-2 rounded-md text-sm ${feedback.type === 'success' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' : 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'}`}>{feedback.text}</div>}
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
                     <thead className="text-xs text-gray-700 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700">
@@ -150,9 +234,12 @@ export const ProductsView: React.FC = () => {
                             <tr key={p.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
                                 <td className="px-6 py-4 font-mono">{p.sku}</td><td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{p.name}</td>
                                 <td className="px-6 py-4">{p.stock}</td><td className="px-6 py-4">{formatCurrency(p.retailPrice)}</td><td className="px-6 py-4">{formatCurrency(p.costPrice)}</td>
-                                <td className="px-6 py-4 flex items-center gap-2">
-                                    <button onClick={() => { setEditingProduct(p); setIsProductModalOpen(true); }} className="p-1 text-blue-500 hover:text-blue-700"><PencilIcon /></button>
-                                    <button onClick={() => setProductToDelete(p)} className="p-1 text-red-500 hover:text-red-700"><TrashIcon /></button>
+                                <td className="px-6 py-4 flex items-center gap-1">
+                                    <button onClick={() => setReceivingProduct(p)} title="Receive Stock" className="p-2 text-green-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><ReceiveIcon /></button>
+                                    <button onClick={() => setAdjustingProduct(p)} title="Adjust Stock" className="p-2 text-yellow-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><AdjustIcon /></button>
+                                    <button onClick={() => setHistoryProduct(p)} title="View History" className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><HistoryIcon /></button>
+                                    <button onClick={() => { setEditingProduct(p); setIsProductModalOpen(true); }} title="Edit Product" className="p-2 text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><PencilIcon /></button>
+                                    <button onClick={() => setProductToDelete(p)} title="Delete Product" className="p-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><TrashIcon /></button>
                                 </td>
                             </tr>
                         ))}
@@ -164,6 +251,9 @@ export const ProductsView: React.FC = () => {
             <Modal isOpen={!!productToDelete} onClose={() => setProductToDelete(null)} title="Confirm Deletion">
                 {productToDelete && <div><p>Are you sure you want to delete {productToDelete.name}? This cannot be undone.</p><div className="flex justify-end gap-2 pt-4"><button onClick={() => setProductToDelete(null)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button><button onClick={confirmDelete} className="px-4 py-2 bg-red-600 text-white rounded-md">Delete</button></div></div>}
             </Modal>
+             {receivingProduct && <Modal isOpen={!!receivingProduct} onClose={() => setReceivingProduct(null)} title={`Receive Stock: ${receivingProduct.name}`}><ReceiveStockModal product={receivingProduct} onClose={() => setReceivingProduct(null)} /></Modal>}
+             {adjustingProduct && <Modal isOpen={!!adjustingProduct} onClose={() => setAdjustingProduct(null)} title={`Adjust Stock: ${adjustingProduct.name}`}><AdjustStockModal product={adjustingProduct} onClose={() => setAdjustingProduct(null)} /></Modal>}
+             {historyProduct && <Modal isOpen={!!historyProduct} onClose={() => setHistoryProduct(null)} title={`History: ${historyProduct.name}`}><HistoryModal product={historyProduct} onClose={() => setHistoryProduct(null)} /></Modal>}
         </div>
     );
 };

@@ -3,7 +3,7 @@ import { PurchaseOrder, POItem, Product } from '../../types';
 import { useAppContext } from '../context/AppContext';
 import { Modal } from '../common/Modal';
 import { Pagination } from '../common/Pagination';
-import { SearchIcon, ChevronUpIcon, ChevronDownIcon, PlusIcon, TrashIcon, PhotoIcon } from '../Icons';
+import { SearchIcon, ChevronUpIcon, ChevronDownIcon, PlusIcon, TrashIcon, PhotoIcon, EyeIcon, ReceiveIcon } from '../Icons';
 import { FilterMenu, FilterSelectItem } from '../common/FilterMenu';
 
 declare var html2canvas: any;
@@ -267,10 +267,12 @@ const CreatePOModal: React.FC<{ onClose: () => void; }> = ({ onClose }) => {
 };
 
 export const PurchaseOrdersView: React.FC = () => {
-    const { purchaseOrders, poViewState, onPOViewUpdate, currency, isIntegerCurrency } = useAppContext();
+    const { purchaseOrders, deletePurchaseOrder, poViewState, onPOViewUpdate, currency, isIntegerCurrency } = useAppContext();
     const [viewingPO, setViewingPO] = useState<PurchaseOrder | null>(null);
     const [receivingPO, setReceivingPO] = useState<PurchaseOrder | null>(null);
     const [isCreatePOModalOpen, setIsCreatePOModalOpen] = useState(false);
+    const [poToDelete, setPoToDelete] = useState<PurchaseOrder | null>(null);
+    const [feedback, setFeedback] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const printableAreaRef = useRef<HTMLDivElement>(null);
 
     const handleSaveAsImage = () => {
@@ -299,6 +301,14 @@ export const PurchaseOrdersView: React.FC = () => {
             });
         }
     };
+
+    const handleDelete = (po: PurchaseOrder) => {
+        const result = deletePurchaseOrder(po.id);
+        setFeedback({ type: result.success ? 'success' : 'error', text: result.message || `PO #${po.id} deleted.` });
+        if(result.success) {
+            setPoToDelete(null);
+        }
+    }
 
     const { searchTerm, statusFilter, sortConfig, currentPage, itemsPerPage } = poViewState;
     type SortablePOKeys = 'id' | 'supplierName' | 'dateCreated' | 'status' | 'totalCost';
@@ -386,6 +396,7 @@ export const PurchaseOrdersView: React.FC = () => {
                     </div>
                 </div>
             </div>
+            {feedback && <div className={`mx-4 mb-4 px-4 py-2 rounded-md text-sm ${feedback.type === 'success' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' : 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'}`}>{feedback.text}</div>}
             <div className="overflow-x-auto">
                  <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
                     <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
@@ -406,9 +417,10 @@ export const PurchaseOrdersView: React.FC = () => {
                                 <td className="px-6 py-4 text-gray-900 dark:text-white">{new Date(po.dateCreated).toLocaleDateString()}</td>
                                 <td className="px-6 py-4">{getStatusChip(po.status)}</td>
                                 <td className="px-6 py-4 text-gray-900 dark:text-white">{formatCurrency(po.totalCost)}</td>
-                                <td className="px-6 py-4 text-right">
-                                    <button onClick={() => setViewingPO(po)} className="px-2 py-1 text-sm text-blue-600 dark:text-blue-400 hover:underline">View</button>
-                                    {po.status !== 'Received' && <button onClick={() => setReceivingPO(po)} className="px-2 py-1 text-sm text-green-600 dark:text-green-400 hover:underline">Receive</button>}
+                                <td className="px-6 py-4 text-right flex items-center justify-end gap-1">
+                                    <button onClick={() => setViewingPO(po)} title="View PO" className="p-2 text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><EyeIcon /></button>
+                                    {po.status !== 'Received' && <button onClick={() => setReceivingPO(po)} title="Receive Items" className="p-2 text-green-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><ReceiveIcon /></button>}
+                                    <button onClick={() => setPoToDelete(po)} title="Delete PO" className="p-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><TrashIcon /></button>
                                 </td>
                             </tr>
                         ))}
@@ -438,6 +450,18 @@ export const PurchaseOrdersView: React.FC = () => {
                     <ReceivePOModal po={receivingPO} onClose={() => setReceivingPO(null)} />
                 </Modal>
              }
+              {poToDelete && (
+                <Modal isOpen={!!poToDelete} onClose={() => setPoToDelete(null)} title="Confirm Deletion">
+                    <div>
+                        <p className="mb-4">Are you sure you want to delete PO #{poToDelete.id}? This action cannot be undone.</p>
+                        {feedback && feedback.type === 'error' && <p className="text-red-500 text-sm mb-4">{feedback.text}</p>}
+                        <div className="flex justify-end gap-2 pt-4">
+                            <button onClick={() => { setPoToDelete(null); setFeedback(null); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
+                            <button onClick={() => handleDelete(poToDelete)} className="px-4 py-2 bg-red-600 text-white rounded-md">Delete</button>
+                        </div>
+                    </div>
+                </Modal>
+             )}
         </div>
     );
 };

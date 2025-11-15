@@ -52,6 +52,7 @@ interface AppContextType {
     factoryReset: () => void;
     addPurchaseOrder: (po: Omit<PurchaseOrder, 'id'>) => PurchaseOrder;
     updatePurchaseOrder: (po: PurchaseOrder) => void;
+    deletePurchaseOrder: (poId: string) => { success: boolean; message?: string };
     receivePOItems: (poId: string, receivedItems: { productId: string, quantity: number }[]) => void;
     setActiveView: (view: View) => void;
     setTheme: (theme: 'light' | 'dark' | 'system') => void;
@@ -260,11 +261,25 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
      const factoryReset = useCallback(() => { setProducts(INITIAL_PRODUCTS); setSales([]); setInventoryAdjustments([]); const admin = users.find(u => u.id === currentUser?.id); setUsers(admin ? [admin] : []); }, [setProducts, setSales, setInventoryAdjustments, setUsers, users, currentUser]);
      const addPurchaseOrder = useCallback((poData: Omit<PurchaseOrder, 'id'>): PurchaseOrder => { const newPO: PurchaseOrder = { ...poData, id: `po_${Date.now()}` }; setPurchaseOrders(prev => [newPO, ...prev]); return newPO; }, [setPurchaseOrders]);
      const updatePurchaseOrder = useCallback((updatedPO: PurchaseOrder) => setPurchaseOrders(prev => prev.map(po => po.id === updatedPO.id ? updatedPO : po)), [setPurchaseOrders]);
+     
+     const deletePurchaseOrder = useCallback((poId: string): { success: boolean; message?: string } => {
+        const poToDelete = purchaseOrders.find(po => po.id === poId);
+        if (!poToDelete) {
+            return { success: false, message: 'Purchase Order not found.' };
+        }
+        const hasReceivedItems = poToDelete.items.some(item => item.quantityReceived > 0);
+        if (hasReceivedItems) {
+            return { success: false, message: 'Cannot delete a Purchase Order that has received items.' };
+        }
+        setPurchaseOrders(prev => prev.filter(po => po.id !== poId));
+        return { success: true };
+     }, [purchaseOrders, setPurchaseOrders]);
+
      const receivePOItems = useCallback((poId: string, receivedItems: { productId: string, quantity: number }[]) => {
         const po = purchaseOrders.find(p => p.id === poId);
         if(!po) return;
         const updatedItems = po.items.map(item => { const r = receivedItems.find(i => i.productId === item.productId); return r ? { ...item, quantityReceived: Math.min(item.quantityReceived + r.quantity, item.quantityOrdered) } : item; });
-        const newStatus = updatedItems.every(i => i.quantityReceived >= i.quantityOrdered) ? 'Received' : 'Partial';
+        const newStatus = updatedItems.every(i => i.quantityReceived >= i.quantityOrdered) ? 'Received' : updatedItems.some(i => i.quantityReceived > 0) ? 'Partial' : 'Pending';
         setPurchaseOrders(prev => prev.map(p => p.id === poId ? { ...p, items: updatedItems, status: newStatus } : p));
         setProducts(prevProds => prevProds.map(prod => { const r = receivedItems.find(i => i.productId === prod.id); return r ? { ...prod, stock: prod.stock + r.quantity } : prod; }));
         setInventoryAdjustments(prev => [...prev, ...receivedItems.map(r => ({ productId: r.productId, date: new Date().toISOString(), quantity: r.quantity, reason: `PO #${po.id}` }))]);
@@ -286,7 +301,7 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
         analysisViewState, poViewState,
         login, signup, onLogout, addUser, updateUser, deleteUser, addProduct, updateProduct, deleteProduct, receiveStock,
         adjustStock, processSale, importProducts, clearSales, factoryReset, addPurchaseOrder, updatePurchaseOrder,
-        receivePOItems, setActiveView, setTheme, setItemsPerPage, setCurrency, setIsSplitPaymentEnabled,
+        deletePurchaseOrder, receivePOItems, setActiveView, setTheme, setItemsPerPage, setCurrency, setIsSplitPaymentEnabled,
         setIsChangeDueEnabled, setIsIntegerCurrency, setIsTaxEnabled, setTaxRate, setIsDiscountEnabled, setDiscountRate,
         setDiscountThreshold, onInventoryViewUpdate, onReportsSalesViewUpdate, onReportsProductsViewUpdate,
         onReportsInventoryValuationViewUpdate, onUsersViewUpdate, onAnalysisViewUpdate, onPOViewUpdate
