@@ -113,10 +113,10 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
     
     // States for individual views
     const [inventoryViewState, setInventoryViewState] = useState<InventoryViewState>({ searchTerm: '', stockFilter: 'All', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1, itemsPerPage: 10 });
-    const [reportsViewState, setReportsViewState] = useState<ReportsViewState>({ sales: { searchTerm: '', typeFilter: 'All', statusFilter: 'All', timeRange: 'all', sortConfig: { key: 'date', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 }, products: { searchTerm: '', stockFilter: 'All', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1, itemsPerPage: 10 }, inventoryValuation: { searchTerm: '', sortConfig: { key: 'totalRetailValue', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 }});
+    const [reportsViewState, setReportsViewState] = useState<ReportsViewState>({ sales: { searchTerm: '', typeFilter: 'All', statusFilter: 'All', timeRange: 'all', sortConfig: { key: 'id', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 }, products: { searchTerm: '', stockFilter: 'All', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1, itemsPerPage: 10 }, inventoryValuation: { searchTerm: '', sortConfig: { key: 'totalRetailValue', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 }});
     const [usersViewState, setUsersViewState] = useState<UsersViewState>({ searchTerm: '', sortConfig: { key: 'username', direction: 'ascending' }, currentPage: 1, itemsPerPage: 10 });
     const [analysisViewState, setAnalysisViewState] = useState<AnalysisViewState>({ timeRange: 'all', searchTerm: '', sortConfig: { key: 'profit', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 });
-    const [poViewState, setPOViewState] = useState<POViewState>({ searchTerm: '', statusFilter: 'All', sortConfig: { key: 'dateCreated', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 });
+    const [poViewState, setPOViewState] = useState<POViewState>({ searchTerm: '', statusFilter: 'All', sortConfig: { key: 'id', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 });
 
     const login = (username: string, pass: string): boolean => {
         const user = users.find(u => u.username === username && u.password === pass);

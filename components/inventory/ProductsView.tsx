@@ -101,15 +101,15 @@ const HistoryModal: React.FC<{ product: Product, onClose: () => void }> = ({ pro
         <div>
             <div className="max-h-96 overflow-y-auto">
                 <table className="w-full text-sm text-left">
-                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 text-xs uppercase">
+                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 text-xs uppercase dark:text-gray-400">
                         <tr><th className="p-2">Date</th><th className="p-2">Change</th><th className="p-2">Reason</th></tr>
                     </thead>
                     <tbody>
                         {productHistory.map((adj, i) => (
-                             <tr key={i} className="border-b dark:border-gray-700">
-                                <td className="p-2 whitespace-nowrap">{new Date(adj.date).toLocaleString()}</td>
+                             <tr key={i} className="border-b dark:border-gray-200 dark:bg-white">
+                                <td className="p-2 whitespace-nowrap dark:text-gray-900">{new Date(adj.date).toLocaleString()}</td>
                                 <td className={`p-2 font-semibold ${adj.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>{adj.quantity > 0 ? `+${adj.quantity}` : adj.quantity}</td>
-                                <td className="p-2">{adj.reason}</td>
+                                <td className="p-2 dark:text-gray-900">{adj.reason}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -193,7 +193,7 @@ export const ProductsView: React.FC = () => {
                     {isSorted ? (
                         sortConfig.direction === 'ascending' ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />
                     ) : (
-                        <ChevronDownIcon className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100" />
+                        <ChevronDownIcon className="h-4 w-4 invisible" />
                     )}
                 </button>
             </th>

@@ -75,7 +75,7 @@ export const InventoryValuationView: React.FC = () => {
             <th scope="col" className="px-6 py-3">
                 <button onClick={() => requestSort(sortKey)} className="flex items-center gap-1.5 group">
                     <span>{children}</span>
-                    {isSorted ? (sortConfig.direction === 'ascending' ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />) : <ChevronDownIcon className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100" />}
+                    {isSorted ? (sortConfig.direction === 'ascending' ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />) : <ChevronDownIcon className="h-4 w-4 invisible" />}
                 </button>
             </th>
         );

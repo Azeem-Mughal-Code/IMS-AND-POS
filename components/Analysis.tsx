@@ -200,7 +200,7 @@ export const Analysis: React.FC = () => {
                     <span className="group-hover:text-gray-900 dark:group-hover:text-white transition-colors">{children}</span>
                     {isSorted ? (
                         sortConfig.direction === 'ascending' ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />
-                    ) : <ChevronDownIcon className="h-4 w-4 text-gray-400 group-hover:text-gray-500 transition-colors" />}
+                    ) : <ChevronDownIcon className="h-4 w-4 invisible" />}
                 </button>
             </th>
         );

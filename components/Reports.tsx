@@ -10,7 +10,7 @@ import { PrintableReceipt } from './common/PrintableReceipt';
 declare var html2canvas: any;
 
 type SortableSaleKeys = 'id' | 'date' | 'type' | 'salespersonName' | 'total' | 'profit';
-type SortableProductKeys = 'sku' | 'name' | 'stock';
+type SortableProductKeys = 'sku' | 'name' | 'stock' | 'lowStockThreshold';
 
 type TimeRange = 'today' | 'weekly' | 'monthly' | 'yearly' | 'all';
 
@@ -259,8 +259,8 @@ export const Reports: React.FC = () => {
         );
 
     return filtered.sort((a, b) => {
-        const valA = a[productSortConfig.key];
-        const valB = b[productSortConfig.key];
+        const valA = a[productSortConfig.key as keyof typeof a];
+        const valB = b[productSortConfig.key as keyof typeof b];
         let comparison = 0;
 
         if (typeof valA === 'string' && typeof valB === 'string') {
@@ -290,7 +290,7 @@ export const Reports: React.FC = () => {
                 <span className="group-hover:text-gray-900 dark:group-hover:text-white transition-colors">{children}</span>
                 {isSorted ? (
                     saleSortConfig.direction === 'ascending' ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />
-                ) : <ChevronDownIcon className="h-4 w-4 text-gray-400 group-hover:text-gray-500 transition-colors" />}
+                ) : <ChevronDownIcon className="h-4 w-4 invisible" />}
             </button>
         </th>
     );
@@ -304,7 +304,7 @@ export const Reports: React.FC = () => {
                 <span className="group-hover:text-gray-900 dark:group-hover:text-white transition-colors">{children}</span>
                 {isSorted ? (
                     productSortConfig.direction === 'ascending' ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />
-                ) : <ChevronDownIcon className="h-4 w-4 text-gray-400 group-hover:text-gray-500 transition-colors" />}
+                ) : <ChevronDownIcon className="h-4 w-4 invisible" />}
             </button>
         </th>
     );
@@ -448,7 +448,7 @@ export const Reports: React.FC = () => {
                 <SortableProductHeader sortKey="sku">SKU</SortableProductHeader>
                 <SortableProductHeader sortKey="name">Name</SortableProductHeader>
                 <SortableProductHeader sortKey="stock">Stock</SortableProductHeader>
-                <th scope="col" className="px-6 py-3">Low Stock Threshold</th>
+                <SortableProductHeader sortKey="lowStockThreshold">Low Stock Threshold</SortableProductHeader>
                 <th scope="col" className="px-6 py-3">Status</th>
               </tr>
             </thead>

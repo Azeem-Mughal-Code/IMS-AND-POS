@@ -371,7 +371,7 @@ export const PurchaseOrdersView: React.FC = () => {
                     {isSorted ? (
                         sortConfig.direction === 'ascending' ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />
                     ) : (
-                        <ChevronDownIcon className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100" />
+                        <ChevronDownIcon className="h-4 w-4 invisible" />
                     )}
                 </button>
             </th>
@@ -420,7 +420,15 @@ export const PurchaseOrdersView: React.FC = () => {
                                 <td className="px-6 py-4 text-right flex items-center justify-end gap-1">
                                     <button onClick={() => setViewingPO(po)} title="View PO" className="p-2 text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><EyeIcon /></button>
                                     {po.status !== 'Received' && <button onClick={() => setReceivingPO(po)} title="Receive Items" className="p-2 text-green-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><ReceiveIcon /></button>}
-                                    <button onClick={() => setPoToDelete(po)} title="Delete PO" className="p-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><TrashIcon /></button>
+                                    {po.status === 'Pending' && (
+                                        <button
+                                            onClick={() => setPoToDelete(po)}
+                                            title="Delete PO"
+                                            className="p-2 rounded-full text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                        >
+                                            <TrashIcon />
+                                        </button>
+                                    )}
                                 </td>
                             </tr>
                         ))}
