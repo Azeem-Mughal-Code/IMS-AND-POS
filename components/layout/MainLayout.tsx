@@ -8,9 +8,10 @@ import { Settings } from '../Settings';
 import { Analysis } from '../Analysis';
 import { DashboardIcon, POSIcon, InventoryIcon, ReportsIcon, SettingsIcon, AnalysisIcon, UserIcon, ChevronDownIcon, LogoutIcon } from '../Icons';
 import { useAppContext } from '../context/AppContext';
+import { ToastContainer } from '../common/ToastContainer';
 
 export const MainLayout: React.FC = () => {
-    const { currentUser, businessName, activeView, setActiveView, onLogout, cashierPermissions } = useAppContext();
+    const { currentUser, businessName, activeView, setActiveView, onLogout, cashierPermissions, toasts, dismissToast } = useAppContext();
     
     const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
     const profileDropdownRef = useRef<HTMLDivElement>(null);
@@ -129,6 +130,7 @@ export const MainLayout: React.FC = () => {
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewAnalysis) && <BottomNavItem view="analysis" icon={<AnalysisIcon />} label="Analysis" />}
             <BottomNavItem view="settings" icon={<SettingsIcon />} label="Settings" />
         </nav>
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
         </div>
     );
 };

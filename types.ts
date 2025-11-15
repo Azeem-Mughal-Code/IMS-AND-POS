@@ -127,6 +127,7 @@ export interface ReportsViewState {
         searchTerm: string;
         typeFilter: string;
         statusFilter: string;
+        salespersonFilter: string;
         timeRange: 'today' | 'weekly' | 'monthly' | 'yearly' | 'all';
         sortConfig: SortConfig<SaleSortKeys>;
         currentPage: number;
@@ -185,6 +186,8 @@ export interface ProcurementViewState {
     purchaseOrders: POViewState;
 }
 
+export type PruneTarget = 'sales' | 'purchaseOrders' | 'stockHistory' | 'notifications';
+
 export enum NotificationType {
     STOCK = 'STOCK',
     USER = 'USER',
@@ -204,4 +207,10 @@ export interface Currency {
     code: string;
     name: string;
     symbol: string;
+}
+
+export interface Toast {
+  id: string;
+  message: string;
+  type: 'success' | 'error';
 }

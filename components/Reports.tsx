@@ -3,7 +3,7 @@ import { Sale, UserRole, ReportsViewState, PaymentType } from '../types';
 import { Modal } from './common/Modal';
 import { FilterMenu, FilterSelectItem } from './common/FilterMenu';
 import { Pagination } from './common/Pagination';
-import { SearchIcon, ChevronUpIcon, ChevronDownIcon, PhotoIcon } from './Icons';
+import { SearchIcon, ChevronUpIcon, ChevronDownIcon, PhotoIcon, DangerIcon, TrashIcon } from './Icons';
 import { useAppContext } from './context/AppContext';
 import { PrintableReceipt } from './common/PrintableReceipt';
 
@@ -42,12 +42,13 @@ const getStartOfWeek = (date: Date): Date => {
 
 export const Reports: React.FC = () => {
   const { 
-    sales, products, currentUser, processSale, reportsViewState, 
+    sales, products, currentUser, users, processSale, deleteSale, reportsViewState, 
     onReportsSalesViewUpdate, onReportsProductsViewUpdate, 
     formatCurrency
   } = useAppContext();
     
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const printableAreaRef = useRef<HTMLDivElement>(null);
 
@@ -78,10 +79,10 @@ export const Reports: React.FC = () => {
     }
   };
 
-  const { searchTerm: saleSearch, typeFilter, statusFilter, timeRange: saleTimeRange, sortConfig: saleSortConfig, currentPage: saleCurrentPage, itemsPerPage: saleItemsPerPage } = reportsViewState.sales;
+  const { searchTerm: saleSearch, typeFilter, statusFilter, salespersonFilter, timeRange: saleTimeRange, sortConfig: saleSortConfig, currentPage: saleCurrentPage, itemsPerPage: saleItemsPerPage } = reportsViewState.sales;
   const { searchTerm: productSearch, stockFilter, sortConfig: productSortConfig, currentPage: productCurrentPage, itemsPerPage: productItemsPerPage } = reportsViewState.products;
 
-  const salesActiveFilterCount = (typeFilter !== 'All' ? 1 : 0) + (statusFilter !== 'All' ? 1 : 0) + (saleTimeRange !== 'all' ? 1 : 0);
+  const salesActiveFilterCount = (typeFilter !== 'All' ? 1 : 0) + (statusFilter !== 'All' ? 1 : 0) + (salespersonFilter !== 'All' ? 1 : 0) + (saleTimeRange !== 'all' ? 1 : 0);
   const productsActiveFilterCount = stockFilter !== 'All' ? 1 : 0;
   
   const transactionTypeOptions = [
@@ -95,6 +96,12 @@ export const Reports: React.FC = () => {
     { value: 'Partially Refunded', label: 'Partially Refunded' },
     { value: 'Refunded', label: 'Refunded' },
   ];
+
+  const salespersonOptions = useMemo(() => {
+    const salespeople = users.map(u => ({ value: u.id, label: u.username }));
+    return [{ value: 'All', label: 'All Salespeople' }, ...salespeople];
+  }, [users]);
+
   const productStockFilterOptions = [
     { value: 'All', label: 'All Stock Status' },
     { value: 'In Stock', label: 'In Stock' },
@@ -176,6 +183,14 @@ export const Reports: React.FC = () => {
         setViewingSale(null);
     }
   };
+  
+  const handleDeleteSale = () => {
+    if (!viewingSale) return;
+    const result = deleteSale(viewingSale.id);
+    setStatusMessage({type: result.success ? 'success' : 'error', text: result.message || 'An error occurred.'});
+    setIsDeleteConfirmOpen(false);
+    setViewingSale(null);
+  };
 
   const requestSaleSort = (key: SortableSaleKeys) => {
     let direction: 'ascending' | 'descending' = 'ascending';
@@ -227,6 +242,7 @@ export const Reports: React.FC = () => {
 
         if(typeFilter !== 'All' && s.type !== typeFilter) return false;
         if(statusFilter !== 'All' && s.type === 'Sale' && s.status !== statusFilter) return false;
+        if(salespersonFilter !== 'All' && s.salespersonId !== salespersonFilter) return false;
         if(saleSearch && !s.id.toLowerCase().includes(saleSearch.toLowerCase()) && !s.salespersonName.toLowerCase().includes(saleSearch.toLowerCase())) return false;
         return true;
       });
@@ -245,7 +261,7 @@ export const Reports: React.FC = () => {
         return saleSortConfig.direction === 'ascending' ? comparison : -comparison;
     });
 
-  }, [sales, saleSearch, typeFilter, statusFilter, saleSortConfig, saleTimeRange]);
+  }, [sales, saleSearch, typeFilter, statusFilter, salespersonFilter, saleSortConfig, saleTimeRange]);
 
   const saleTotalItems = filteredAndSortedSales.length;
   const saleTotalPages = Math.ceil(saleTotalItems / saleItemsPerPage);
@@ -373,6 +389,12 @@ export const Reports: React.FC = () => {
                         onChange={(value) => onReportsSalesViewUpdate({ statusFilter: value })}
                         options={transactionStatusOptions}
                     />
+                    <FilterSelectItem
+                        label="Salesperson"
+                        value={salespersonFilter}
+                        onChange={(value) => onReportsSalesViewUpdate({ salespersonFilter: value })}
+                        options={salespersonOptions}
+                    />
                 </FilterMenu>
             </div>
         </div>
@@ -497,6 +519,15 @@ export const Reports: React.FC = () => {
             <div>
                 <PrintableReceipt ref={printableAreaRef} sale={viewingSale} />
                  <div className="flex justify-end items-center gap-2 pt-4 no-print">
+                    {currentUser.role === UserRole.Admin && viewingSale.type === 'Sale' && (
+                         <button
+                            onClick={() => setIsDeleteConfirmOpen(true)}
+                            title="Delete Sale"
+                            className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-gray-700 rounded-full transition-colors mr-auto"
+                        >
+                            <TrashIcon className="h-5 w-5" />
+                        </button>
+                    )}
                     {viewingSale.type === 'Sale' && (viewingSale.status === 'Completed' || viewingSale.status === 'Partially Refunded') ? (
                         <button onClick={handleRefund} className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600">
                             {viewingSale.status === 'Completed' ? 'Full Refund' : 'Refund Remaining'}
@@ -514,6 +545,42 @@ export const Reports: React.FC = () => {
             </div>
         )}
       </Modal>
+
+        <Modal isOpen={isDeleteConfirmOpen} onClose={() => setIsDeleteConfirmOpen(false)} title="Confirm Sale Deletion" size="md">
+            {viewingSale && (
+                <div className="space-y-4">
+                    <div className="flex items-start gap-4">
+                        <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                            <DangerIcon className="h-6 w-6 text-red-600" />
+                        </div>
+                        <div className="mt-3 text-center sm:mt-0 sm:ml-2 sm:text-left">
+                            <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white" id="modal-title">
+                                Delete Sale Transaction
+                            </h3>
+                            <div className="mt-2">
+                                <p className="text-sm text-gray-500 dark:text-gray-400">
+                                    Are you sure you want to permanently delete this sale (ID: <span className="font-mono">{viewingSale.id}</span>)?
+                                </p>
+                                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                    This will also delete any associated return transactions and all related stock history. <strong className="text-gray-800 dark:text-gray-200">Product stock levels will NOT be changed.</strong>
+                                </p>
+                                <p className="mt-2 font-semibold text-red-600 dark:text-red-400">
+                                    This action cannot be undone.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                     <div className="flex justify-end gap-2 pt-4">
+                        <button type="button" onClick={() => setIsDeleteConfirmOpen(false)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">
+                            Cancel
+                        </button>
+                        <button type="button" onClick={handleDeleteSale} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                            Confirm Delete
+                        </button>
+                    </div>
+                </div>
+            )}
+        </Modal>
     </div>
   );
 };

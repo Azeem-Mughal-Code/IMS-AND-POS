@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useCallback, ReactNode, use
 import { 
     Product, Sale, User, UserRole, View, InventoryAdjustment, InventoryViewState, ReportsViewState, 
     UsersViewState, AnalysisViewState, PurchaseOrder, POViewState, PaymentType, CashierPermissions,
-    Notification, NotificationType, Currency
+    Notification, NotificationType, Currency, PruneTarget, Toast
 } from '../../types';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { INITIAL_PRODUCTS, DEFAULT_CURRENCIES } from '../../constants';
@@ -19,6 +19,7 @@ interface AppContextType {
     purchaseOrders: PurchaseOrder[];
     currentUser: User | null;
     notifications: Notification[];
+    toasts: Toast[];
     itemsPerPage: number;
     currency: string; // The currency CODE
     currencies: Currency[];
@@ -50,13 +51,14 @@ interface AppContextType {
     addProduct: (product: Omit<Product, 'id'>) => void;
     updateProduct: (updatedProduct: Product) => void;
     deleteProduct: (productId: string) => { success: boolean; message?: string };
+    deleteSale: (saleId: string) => { success: boolean, message?: string };
     receiveStock: (productId: string, quantity: number) => void;
     adjustStock: (productId: string, newStockLevel: number, reason: string) => void;
     processSale: (saleData: Omit<Sale, 'id' | 'date'>) => Sale;
     importProducts: (newProducts: Omit<Product, 'id'>[]) => { success: boolean; message: string };
-    clearSales: () => void;
+    clearSales: (config?: { statuses?: (Sale['status'])[] }) => void;
     factoryReset: () => void;
-    pruneData: (target: 'sales' | 'purchaseOrders' | 'stockHistory' | 'notifications', days: number) => { success: boolean; message: string };
+    pruneData: (target: PruneTarget, options: { days: number; statuses?: (Sale['status'])[] }) => { success: boolean; message: string };
     addPurchaseOrder: (po: Omit<PurchaseOrder, 'id'>) => PurchaseOrder;
     updatePurchaseOrder: (po: PurchaseOrder) => void;
     deletePurchaseOrder: (poId: string) => { success: boolean; message?: string };
@@ -65,6 +67,9 @@ interface AppContextType {
     markNotificationAsRead: (notificationId: string) => void;
     markAllNotificationsAsRead: () => void;
     clearNotifications: () => void;
+    showToast: (message: string, type: 'success' | 'error') => void;
+    dismissToast: (id: string) => void;
+    restoreBackup: (backupData: any) => { success: boolean, message: string };
     setActiveView: (view: View) => void;
     setTheme: (theme: 'light' | 'dark' | 'system') => void;
     setItemsPerPage: (size: number) => void;
@@ -139,13 +144,22 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
 
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [theme, setTheme] = useLocalStorage<'light' | 'dark' | 'system'>('ims-theme', 'system');
+    const [toasts, setToasts] = useState<Toast[]>([]);
     
     // States for individual views
     const [inventoryViewState, setInventoryViewState] = useState<InventoryViewState>({ searchTerm: '', stockFilter: 'All', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1, itemsPerPage: 10 });
-    const [reportsViewState, setReportsViewState] = useState<ReportsViewState>({ sales: { searchTerm: '', typeFilter: 'All', statusFilter: 'All', timeRange: 'all', sortConfig: { key: 'id', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 }, products: { searchTerm: '', stockFilter: 'All', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1, itemsPerPage: 10 }, inventoryValuation: { searchTerm: '', sortConfig: { key: 'totalRetailValue', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 }});
+    const [reportsViewState, setReportsViewState] = useState<ReportsViewState>({ sales: { searchTerm: '', typeFilter: 'All', statusFilter: 'All', salespersonFilter: 'All', timeRange: 'all', sortConfig: { key: 'id', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 }, products: { searchTerm: '', stockFilter: 'All', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1, itemsPerPage: 10 }, inventoryValuation: { searchTerm: '', sortConfig: { key: 'totalRetailValue', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 }});
     const [usersViewState, setUsersViewState] = useState<UsersViewState>({ searchTerm: '', sortConfig: { key: 'username', direction: 'ascending' }, currentPage: 1, itemsPerPage: 10 });
     const [analysisViewState, setAnalysisViewState] = useState<AnalysisViewState>({ timeRange: 'all', searchTerm: '', sortConfig: { key: 'profit', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 });
     const [poViewState, setPOViewState] = useState<POViewState>({ searchTerm: '', statusFilter: 'All', sortConfig: { key: 'id', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 });
+
+    const showToast = useCallback((message: string, type: 'success' | 'error') => {
+        setToasts(prev => [...prev, { id: `toast_${Date.now()}`, message, type }]);
+    }, []);
+
+    const dismissToast = useCallback((id: string) => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+    }, []);
 
     const addCurrency = (newCurrency: Currency): { success: boolean, message?: string } => {
         if (currencies.some(c => c.code.toUpperCase() === newCurrency.code.toUpperCase())) {
@@ -303,6 +317,30 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
        setProducts(prev => prev.filter(p => p.id !== productId));
        return { success: true };
      }, [sales, setProducts]);
+
+     const deleteSale = useCallback((saleId: string): { success: boolean, message?: string } => {
+        const saleToDelete = sales.find(s => s.id === saleId);
+        if (!saleToDelete) {
+            return { success: false, message: 'Sale not found.' };
+        }
+    
+        // Find related returns to delete them as well
+        const relatedReturnIds = sales
+            .filter(s => s.type === 'Return' && s.originalSaleId === saleId)
+            .map(s => s.id);
+        
+        const idsToDelete = [saleId, ...relatedReturnIds];
+    
+        // Delete sales and returns
+        setSales(prevSales => prevSales.filter(s => !idsToDelete.includes(s.id)));
+    
+        // Delete related stock history, but do not revert stock levels
+        setInventoryAdjustments(prev => prev.filter(adj => 
+            !idsToDelete.some(id => adj.reason.includes(`#${id}`))
+        ));
+    
+        return { success: true, message: `Sale ${saleId} and associated data have been deleted. Stock levels were not changed.` };
+    }, [sales, setSales, setInventoryAdjustments]);
    
      const receiveStock = useCallback((productId: string, quantity: number) => {
        if (quantity <= 0) return;
@@ -384,10 +422,43 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
         return { success: true, message: `Imported ${importedCount} products. Skipped ${skippedCount}.` };
      }, [products, setProducts]);
    
-     const clearSales = useCallback(() => { setSales([]); setInventoryAdjustments(prev => prev.filter(adj => !adj.reason.startsWith('Sale #') && !adj.reason.startsWith('Return #'))); }, [setSales, setInventoryAdjustments]);
+    const clearSales = useCallback((config?: { statuses?: (Sale['status'])[] }) => {
+        const statuses = config?.statuses;
+
+        // If no config is provided, clear all sales.
+        if (!statuses) {
+            setSales([]);
+            setInventoryAdjustments(prev => prev.filter(adj => !adj.reason.startsWith('Sale #') && !adj.reason.startsWith('Return #')));
+            return;
+        }
+        
+        // If an empty array of statuses is passed, do nothing.
+        if (statuses.length === 0) {
+            return;
+        }
+
+        // Filter sales by the provided statuses.
+        const targetSaleIds = new Set(sales
+            .filter(s => s.type === 'Sale' && s.status && statuses.includes(s.status))
+            .map(s => s.id));
+        
+        if (targetSaleIds.size === 0) return;
+
+        // Find all related transaction IDs (original sales + their returns)
+        const idsToDelete = new Set(sales
+            .filter(s => (s.type === 'Sale' && targetSaleIds.has(s.id)) || (s.type === 'Return' && s.originalSaleId && targetSaleIds.has(s.originalSaleId)))
+            .map(s => s.id));
+        
+        setSales(prev => prev.filter(s => !idsToDelete.has(s.id)));
+        setInventoryAdjustments(prev => prev.filter(adj => 
+            !Array.from(idsToDelete).some(id => adj.reason.includes(`#${id}`))
+        ));
+    }, [sales, setSales, setInventoryAdjustments]);
+     
      const factoryReset = useCallback(() => { setProducts(INITIAL_PRODUCTS); setSales([]); setInventoryAdjustments([]); const admin = users.find(u => u.id === currentUser?.id); setUsers(admin ? [admin] : []); setNotifications([]); }, [setProducts, setSales, setInventoryAdjustments, setUsers, users, currentUser, setNotifications]);
      
-    const pruneData = useCallback((target: 'sales' | 'purchaseOrders' | 'stockHistory' | 'notifications', days: number): { success: boolean; message: string } => {
+    const pruneData = useCallback((target: PruneTarget, options: { days: number; statuses?: (Sale['status'])[] }): { success: boolean; message: string } => {
+        const { days, statuses } = options;
         if (days <= 0) {
             return { success: false, message: 'Please provide a positive number of days.' };
         }
@@ -397,11 +468,40 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
         let count = 0;
 
         switch (target) {
-            case 'sales':
-                const salesToKeep = sales.filter(s => new Date(s.date) >= cutoffDate);
-                count = sales.length - salesToKeep.length;
-                if (count > 0) setSales(salesToKeep);
-                return { success: true, message: `Successfully deleted ${count} sales records older than ${days} days.` };
+            case 'sales': {
+                const salesToPrune = sales.filter(s => {
+                    if (s.type !== 'Sale' || new Date(s.date) >= cutoffDate) {
+                        return false;
+                    }
+                    // If no statuses are specified, prune all old sales.
+                    if (!statuses || statuses.length === 0) {
+                        return true;
+                    }
+                    // Otherwise, only prune sales with matching statuses.
+                    return s.status && statuses.includes(s.status);
+                });
+                
+                const oldSaleIds = new Set(salesToPrune.map(s => s.id));
+
+                if (oldSaleIds.size === 0) {
+                    return { success: true, message: `No matching sales records older than ${days} days found to delete.` };
+                }
+
+                const relatedReturns = sales.filter(s => s.type === 'Return' && s.originalSaleId && oldSaleIds.has(s.originalSaleId));
+                
+                const allIdsToDelete = new Set([
+                    ...salesToPrune.map(s => s.id),
+                    ...relatedReturns.map(s => s.id)
+                ]);
+
+                setSales(prevSales => prevSales.filter(s => !allIdsToDelete.has(s.id)));
+                
+                setInventoryAdjustments(prev => prev.filter(adj => 
+                    !Array.from(allIdsToDelete).some(id => adj.reason.includes(`#${id}`))
+                ));
+                
+                return { success: true, message: `Successfully deleted ${salesToPrune.length} sales and ${relatedReturns.length} associated returns older than ${days} days. Stock levels were not changed.` };
+            }
 
             case 'purchaseOrders':
                 const posToKeep = purchaseOrders.filter(po => {
@@ -467,8 +567,48 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
         setNotifications([]);
     }, [setNotifications]);
 
+    const restoreBackup = (backupData: any): { success: boolean; message: string } => {
+        if (backupData.businessName !== businessName) {
+            return { success: false, message: `Backup is for a different business ('${backupData.businessName}'). Current business is '${businessName}'.` };
+        }
+
+        const restore = (setter: Function, data: any, defaultValue: any) => {
+            setter(data !== undefined ? data : defaultValue);
+        };
+        
+        restore(setProducts, backupData.products, INITIAL_PRODUCTS);
+        restore(setSales, backupData.sales, []);
+        restore(setInventoryAdjustments, backupData.inventoryAdjustments, []);
+        restore(setUsers, backupData.users, []);
+        restore(setPurchaseOrders, backupData.purchaseOrders, []);
+        restore(setNotifications, backupData.notifications, []);
+        restore(setItemsPerPage, backupData.itemsPerPage, 10);
+        restore(setCurrency, backupData.currency, 'USD');
+        restore(setCurrencies, backupData.currencies, DEFAULT_CURRENCIES);
+        restore(setCurrencyDisplay, backupData.currencyDisplay, 'symbol');
+        restore(setIsSplitPaymentEnabled, backupData.isSplitPaymentEnabled, false);
+        restore(setIsChangeDueEnabled, backupData.isChangeDueEnabled, true);
+        restore(setIsIntegerCurrency, backupData.isIntegerCurrency, false);
+        restore(setIsTaxEnabled, backupData.isTaxEnabled, true);
+        restore(setTaxRate, backupData.taxRate, 0.08);
+        restore(setIsDiscountEnabled, backupData.isDiscountEnabled, true);
+        restore(setDiscountRate, backupData.discountRate, 0.05);
+        restore(setDiscountThreshold, backupData.discountThreshold, 100);
+        restore(setTheme, backupData.theme, 'system');
+        restore(setCashierPermissions, backupData.cashierPermissions, {
+            canProcessReturns: true, canViewReports: true, canViewAnalysis: false, canEditOwnProfile: true,
+            canViewDashboard: false, canViewInventory: false, canEditBehaviorSettings: false,
+        });
+
+        const restoredUsers = backupData.users || [];
+        const newCurrentUser = restoredUsers.find((u: User) => u.id === currentUser?.id);
+        setCurrentUser(newCurrentUser || null);
+
+        return { success: true, message: 'Restore successful! The application will now reload.' };
+    };
+
     const onInventoryViewUpdate = useCallback((updates: Partial<InventoryViewState>) => setInventoryViewState(prev => ({...prev, ...updates, currentPage: (updates.searchTerm !== undefined || updates.stockFilter !== undefined || updates.itemsPerPage !== undefined) ? 1 : prev.currentPage})), []);
-    const onReportsSalesViewUpdate = useCallback((updates: Partial<ReportsViewState['sales']>) => setReportsViewState(prev => ({...prev, sales: {...prev.sales, ...updates, currentPage: (updates.searchTerm !== undefined || updates.typeFilter !== undefined || updates.statusFilter !== undefined || updates.timeRange !== undefined || updates.itemsPerPage !== undefined) ? 1 : prev.sales.currentPage}})), []);
+    const onReportsSalesViewUpdate = useCallback((updates: Partial<ReportsViewState['sales']>) => setReportsViewState(prev => ({...prev, sales: {...prev.sales, ...updates, currentPage: (updates.searchTerm !== undefined || updates.typeFilter !== undefined || updates.statusFilter !== undefined || updates.salespersonFilter !== undefined || updates.timeRange !== undefined || updates.itemsPerPage !== undefined) ? 1 : prev.sales.currentPage}})), []);
     const onReportsProductsViewUpdate = useCallback((updates: Partial<ReportsViewState['products']>) => setReportsViewState(prev => ({...prev, products: {...prev.products, ...updates, currentPage: (updates.searchTerm !== undefined || updates.stockFilter !== undefined || updates.itemsPerPage !== undefined) ? 1 : prev.products.currentPage}})), []);
     const onReportsInventoryValuationViewUpdate = useCallback((updates: Partial<ReportsViewState['inventoryValuation']>) => setReportsViewState(prev => ({...prev, inventoryValuation: {...prev.inventoryValuation, ...updates, currentPage: (updates.searchTerm !== undefined || updates.itemsPerPage !== undefined) ? 1 : prev.inventoryValuation.currentPage}})), []);
     const onUsersViewUpdate = useCallback((updates: Partial<UsersViewState>) => setUsersViewState(prev => ({...prev, ...updates, currentPage: (updates.searchTerm !== undefined || updates.itemsPerPage !== undefined) ? 1 : prev.currentPage})), []);
@@ -477,13 +617,13 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
 
     // Provide all state and functions
     const value: AppContextType = {
-        businessName, products, sales, inventoryAdjustments, users, purchaseOrders, currentUser, notifications, itemsPerPage, currency,
+        businessName, products, sales, inventoryAdjustments, users, purchaseOrders, currentUser, notifications, toasts, itemsPerPage, currency,
         currencies, currencyDisplay, isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled,
         discountRate, discountThreshold, activeView, theme, inventoryViewState, reportsViewState, usersViewState,
         analysisViewState, poViewState, cashierPermissions,
-        login, signup, onLogout, addUser, updateUser, deleteUser, addProduct, updateProduct, deleteProduct, receiveStock,
+        login, signup, onLogout, addUser, updateUser, deleteUser, addProduct, updateProduct, deleteProduct, deleteSale, receiveStock,
         adjustStock, processSale, importProducts, clearSales, factoryReset, pruneData, addPurchaseOrder, updatePurchaseOrder,
-        deletePurchaseOrder, receivePOItems, addNotification, markNotificationAsRead, markAllNotificationsAsRead, clearNotifications, setActiveView, setTheme, setItemsPerPage, setCurrency, addCurrency, updateCurrency, deleteCurrency, setCurrencyDisplay, formatCurrency, setIsSplitPaymentEnabled,
+        deletePurchaseOrder, receivePOItems, addNotification, markNotificationAsRead, markAllNotificationsAsRead, clearNotifications, showToast, dismissToast, restoreBackup, setActiveView, setTheme, setItemsPerPage, setCurrency, addCurrency, updateCurrency, deleteCurrency, setCurrencyDisplay, formatCurrency, setIsSplitPaymentEnabled,
         setIsChangeDueEnabled, setIsIntegerCurrency, setIsTaxEnabled, setTaxRate, setIsDiscountEnabled, setDiscountRate,
         setDiscountThreshold, setCashierPermissions, onInventoryViewUpdate, onReportsSalesViewUpdate, onReportsProductsViewUpdate,
         onReportsInventoryValuationViewUpdate, onUsersViewUpdate, onAnalysisViewUpdate, onPOViewUpdate
