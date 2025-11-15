@@ -1,11 +1,12 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
+// FIX: Added 'useMemo' to the import statement.
+import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useMemo } from 'react';
 import { 
     Product, Sale, User, UserRole, View, InventoryAdjustment, InventoryViewState, ReportsViewState, 
     UsersViewState, AnalysisViewState, PurchaseOrder, POViewState, PaymentType, CashierPermissions,
-    Notification, NotificationType
+    Notification, NotificationType, Currency
 } from '../../types';
 import useLocalStorage from '../../hooks/useLocalStorage';
-import { INITIAL_PRODUCTS } from '../../constants';
+import { INITIAL_PRODUCTS, DEFAULT_CURRENCIES } from '../../constants';
 
 // Define the shape of the context value
 interface AppContextType {
@@ -19,7 +20,9 @@ interface AppContextType {
     currentUser: User | null;
     notifications: Notification[];
     itemsPerPage: number;
-    currency: string;
+    currency: string; // The currency CODE
+    currencies: Currency[];
+    currencyDisplay: 'code' | 'symbol';
     isSplitPaymentEnabled: boolean;
     isChangeDueEnabled: boolean;
     isIntegerCurrency: boolean;
@@ -64,7 +67,12 @@ interface AppContextType {
     setActiveView: (view: View) => void;
     setTheme: (theme: 'light' | 'dark' | 'system') => void;
     setItemsPerPage: (size: number) => void;
-    setCurrency: (currency: string) => void;
+    setCurrency: (currencyCode: string) => void;
+    addCurrency: (currency: Currency) => { success: boolean, message?: string };
+    updateCurrency: (code: string, updates: Partial<Omit<Currency, 'code'>>) => { success: boolean, message?: string };
+    deleteCurrency: (code: string) => { success: boolean, message?: string };
+    setCurrencyDisplay: (display: 'code' | 'symbol') => void;
+    formatCurrency: (amount: number) => string;
     setIsSplitPaymentEnabled: (enabled: boolean) => void;
     setIsChangeDueEnabled: (enabled: boolean) => void;
     setIsIntegerCurrency: (enabled: boolean) => void;
@@ -108,6 +116,8 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
     
     const [itemsPerPage, setItemsPerPage] = useLocalStorage<number>(`${ls_prefix}-itemsPerPage`, 10);
     const [currency, setCurrency] = useLocalStorage<string>(`${ls_prefix}-currency`, 'USD');
+    const [currencies, setCurrencies] = useLocalStorage<Currency[]>(`${ls_prefix}-currencies`, DEFAULT_CURRENCIES);
+    const [currencyDisplay, setCurrencyDisplay] = useLocalStorage<'code' | 'symbol'>(`${ls_prefix}-currencyDisplay`, 'symbol');
     const [isSplitPaymentEnabled, setIsSplitPaymentEnabled] = useLocalStorage<boolean>(`${ls_prefix}-splitPaymentEnabled`, false);
     const [isChangeDueEnabled, setIsChangeDueEnabled] = useLocalStorage<boolean>(`${ls_prefix}-changeDueEnabled`, true);
     const [isIntegerCurrency, setIsIntegerCurrency] = useLocalStorage<boolean>(`${ls_prefix}-isIntegerCurrency`, false);
@@ -135,6 +145,46 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
     const [usersViewState, setUsersViewState] = useState<UsersViewState>({ searchTerm: '', sortConfig: { key: 'username', direction: 'ascending' }, currentPage: 1, itemsPerPage: 10 });
     const [analysisViewState, setAnalysisViewState] = useState<AnalysisViewState>({ timeRange: 'all', searchTerm: '', sortConfig: { key: 'profit', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 });
     const [poViewState, setPOViewState] = useState<POViewState>({ searchTerm: '', statusFilter: 'All', sortConfig: { key: 'id', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 });
+
+    const addCurrency = (newCurrency: Currency): { success: boolean, message?: string } => {
+        if (currencies.some(c => c.code.toUpperCase() === newCurrency.code.toUpperCase())) {
+            return { success: false, message: 'A currency with this code already exists.' };
+        }
+        setCurrencies(prev => [...prev, { ...newCurrency, code: newCurrency.code.toUpperCase() }]);
+        return { success: true };
+    };
+
+    const updateCurrency = (code: string, updates: Partial<Omit<Currency, 'code'>>): { success: boolean, message?: string } => {
+        setCurrencies(prev => prev.map(c => c.code === code ? { ...c, ...updates } : c));
+        return { success: true };
+    };
+
+    const deleteCurrency = (code: string): { success: boolean, message?: string } => {
+        if (code === currency) {
+            return { success: false, message: 'Cannot delete the currently active currency.' };
+        }
+        setCurrencies(prev => prev.filter(c => c.code !== code));
+        return { success: true };
+    };
+
+    const formatCurrency = useCallback((amount: number) => {
+        const currentCurrencyInfo = currencies.find(c => c.code === currency) || DEFAULT_CURRENCIES[0];
+        
+        const formatter = new Intl.NumberFormat('en-US', {
+            style: 'decimal',
+            minimumFractionDigits: isIntegerCurrency ? 0 : 2,
+            maximumFractionDigits: isIntegerCurrency ? 0 : 2,
+        });
+
+        const formattedAmount = formatter.format(amount);
+
+        if (currencyDisplay === 'symbol') {
+            // Very basic placement, real-world would need locale info
+            return `${currentCurrencyInfo.symbol}${formattedAmount}`;
+        } else {
+            return `${formattedAmount} ${currentCurrencyInfo.code}`;
+        }
+    }, [currency, currencies, currencyDisplay, isIntegerCurrency]);
 
     const addNotification = useCallback((message: string, type: NotificationType, relatedId?: string) => {
         const newNotification: Notification = {
@@ -384,12 +434,12 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
     // Provide all state and functions
     const value: AppContextType = {
         businessName, products, sales, inventoryAdjustments, users, purchaseOrders, currentUser, notifications, itemsPerPage, currency,
-        isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled,
+        currencies, currencyDisplay, isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled,
         discountRate, discountThreshold, activeView, theme, inventoryViewState, reportsViewState, usersViewState,
         analysisViewState, poViewState, cashierPermissions,
         login, signup, onLogout, addUser, updateUser, deleteUser, addProduct, updateProduct, deleteProduct, receiveStock,
         adjustStock, processSale, importProducts, clearSales, factoryReset, addPurchaseOrder, updatePurchaseOrder,
-        deletePurchaseOrder, receivePOItems, addNotification, markNotificationAsRead, markAllNotificationsAsRead, clearNotifications, setActiveView, setTheme, setItemsPerPage, setCurrency, setIsSplitPaymentEnabled,
+        deletePurchaseOrder, receivePOItems, addNotification, markNotificationAsRead, markAllNotificationsAsRead, clearNotifications, setActiveView, setTheme, setItemsPerPage, setCurrency, addCurrency, updateCurrency, deleteCurrency, setCurrencyDisplay, formatCurrency, setIsSplitPaymentEnabled,
         setIsChangeDueEnabled, setIsIntegerCurrency, setIsTaxEnabled, setTaxRate, setIsDiscountEnabled, setDiscountRate,
         setDiscountThreshold, setCashierPermissions, onInventoryViewUpdate, onReportsSalesViewUpdate, onReportsProductsViewUpdate,
         onReportsInventoryValuationViewUpdate, onUsersViewUpdate, onAnalysisViewUpdate, onPOViewUpdate

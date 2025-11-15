@@ -7,14 +7,7 @@ interface PrintableReceiptProps {
 }
 
 export const PrintableReceipt = forwardRef<HTMLDivElement, PrintableReceiptProps>(({ sale }, ref) => {
-    const { businessName, currency, isIntegerCurrency, isChangeDueEnabled } = useAppContext();
-    
-    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency,
-        minimumFractionDigits: isIntegerCurrency ? 0 : 2,
-        maximumFractionDigits: isIntegerCurrency ? 0 : 2,
-    }).format(amount);
+    const { businessName, isChangeDueEnabled, formatCurrency } = useAppContext();
     
     return (
         <div className="printable-area" ref={ref}>

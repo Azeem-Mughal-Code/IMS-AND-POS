@@ -8,11 +8,8 @@ import { FilterMenu, FilterSelectItem } from '../common/FilterMenu';
 
 declare var html2canvas: any;
 
-const PrintablePO = forwardRef<HTMLDivElement, { po: PurchaseOrder, currency: string, isIntegerCurrency: boolean }>(({ po, currency, isIntegerCurrency }, ref) => {
-    const { businessName } = useAppContext();
-    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
-        style: 'currency', currency, minimumFractionDigits: isIntegerCurrency ? 0 : 2, maximumFractionDigits: isIntegerCurrency ? 0 : 2,
-    }).format(amount);
+const PrintablePO = forwardRef<HTMLDivElement, { po: PurchaseOrder }>(({ po }, ref) => {
+    const { businessName, formatCurrency } = useAppContext();
 
     return (
         <div className="printable-area text-gray-900 dark:text-white" ref={ref}>
@@ -133,16 +130,12 @@ const ReceivePOModal: React.FC<{ po: PurchaseOrder; onClose: () => void; }> = ({
 };
 
 const CreatePOModal: React.FC<{ onClose: () => void; }> = ({ onClose }) => {
-    const { products, addPurchaseOrder, currency, isIntegerCurrency } = useAppContext();
+    const { products, addPurchaseOrder, formatCurrency } = useAppContext();
     const [supplierName, setSupplierName] = useState('');
     const [items, setItems] = useState<POItem[]>([]);
     const [expectedDate, setExpectedDate] = useState<string>(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]); // Default to 1 week from now
     const [notes, setNotes] = useState('');
     const [productSearch, setProductSearch] = useState('');
-
-    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
-        style: 'currency', currency, minimumFractionDigits: isIntegerCurrency ? 0 : 2, maximumFractionDigits: isIntegerCurrency ? 0 : 2,
-    }).format(amount);
 
     const filteredProducts = useMemo(() => {
         if (!productSearch) return [];
@@ -267,7 +260,7 @@ const CreatePOModal: React.FC<{ onClose: () => void; }> = ({ onClose }) => {
 };
 
 export const PurchaseOrdersView: React.FC = () => {
-    const { purchaseOrders, deletePurchaseOrder, poViewState, onPOViewUpdate, currency, isIntegerCurrency } = useAppContext();
+    const { purchaseOrders, deletePurchaseOrder, poViewState, onPOViewUpdate, formatCurrency } = useAppContext();
     const [viewingPO, setViewingPO] = useState<PurchaseOrder | null>(null);
     const [receivingPO, setReceivingPO] = useState<PurchaseOrder | null>(null);
     const [isCreatePOModalOpen, setIsCreatePOModalOpen] = useState(false);
@@ -358,10 +351,6 @@ export const PurchaseOrdersView: React.FC = () => {
         return <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${styles[status]}`}>{status}</span>;
     };
     
-    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
-        style: 'currency', currency, minimumFractionDigits: isIntegerCurrency ? 0 : 2, maximumFractionDigits: isIntegerCurrency ? 0 : 2,
-    }).format(amount);
-
     const SortableHeader: React.FC<{ children: React.ReactNode, sortKey: SortablePOKeys }> = ({ children, sortKey }) => {
         const isSorted = sortConfig.key === sortKey;
         return (
@@ -443,7 +432,7 @@ export const PurchaseOrdersView: React.FC = () => {
 
              {viewingPO &&
                 <Modal isOpen={!!viewingPO} onClose={() => setViewingPO(null)} title={`Purchase Order - ${viewingPO.id}`}>
-                    <PrintablePO ref={printableAreaRef} po={viewingPO} currency={currency} isIntegerCurrency={isIntegerCurrency} />
+                    <PrintablePO ref={printableAreaRef} po={viewingPO} />
                     <div className="flex justify-end items-center gap-2 pt-4 no-print">
                          <button onClick={handleSaveAsImage} title="Save as Image" className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                             <PhotoIcon className="h-5 w-5" />

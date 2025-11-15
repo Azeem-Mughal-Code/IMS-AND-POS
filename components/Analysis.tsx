@@ -61,15 +61,8 @@ const getStartOfWeek = (date: Date): Date => {
 
 
 export const Analysis: React.FC = () => {
-    const { products, sales, analysisViewState, onAnalysisViewUpdate, currency, isIntegerCurrency } = useAppContext();
+    const { products, sales, analysisViewState, onAnalysisViewUpdate, formatCurrency } = useAppContext();
     const { searchTerm, sortConfig, currentPage, itemsPerPage, timeRange } = analysisViewState;
-
-    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency,
-        minimumFractionDigits: isIntegerCurrency ? 0 : 2,
-        maximumFractionDigits: isIntegerCurrency ? 0 : 2,
-    }).format(amount);
 
     const filteredSales = useMemo(() => {
         const now = new Date();

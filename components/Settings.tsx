@@ -9,10 +9,12 @@ import { ToggleSwitch } from './common/ToggleSwitch';
 import { Dropdown } from './common/Dropdown';
 import { ThemeSelector } from './settings/ThemeSelector';
 import { DataManagement } from './settings/DataManagement';
+import { CurrencyDisplaySelector } from './settings/CurrencyDisplaySelector';
+import { CurrencyManager } from './settings/CurrencyManager';
 
 export const Settings: React.FC = () => {
     const { 
-        currentUser, updateUser, onLogout, theme, itemsPerPage, setItemsPerPage, currency, setCurrency,
+        currentUser, updateUser, onLogout, theme, itemsPerPage, setItemsPerPage,
         isSplitPaymentEnabled, setIsSplitPaymentEnabled, isChangeDueEnabled, setIsChangeDueEnabled,
         isIntegerCurrency, setIsIntegerCurrency, isTaxEnabled, setIsTaxEnabled, taxRate, setTaxRate,
         isDiscountEnabled, setIsDiscountEnabled, discountRate, setDiscountRate, discountThreshold, setDiscountThreshold,
@@ -115,16 +117,13 @@ export const Settings: React.FC = () => {
                             ]}
                         />
                     </div>
+                     <div>
+                        <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Currency Management</h3>
+                        <CurrencyManager />
+                    </div>
                     <div>
-                        <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Currency</h3>
-                        <Dropdown
-                            value={currency}
-                            onChange={setCurrency}
-                            options={[
-                                { value: 'USD', label: 'USD - United States Dollar' },
-                                { value: 'PKR', label: 'PKR - Pakistani Rupee' },
-                            ]}
-                        />
+                        <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Currency Display Style</h3>
+                        <CurrencyDisplaySelector />
                     </div>
                 </div>
             </AccordionSection>

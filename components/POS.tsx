@@ -16,19 +16,12 @@ const SimplePaymentModalContent: React.FC<{
     onCompleteSale: (payments: Payment[]) => void;
     onClose: () => void;
 }> = ({ total, onCompleteSale, onClose }) => {
-    const { currency, isChangeDueEnabled, isIntegerCurrency } = useAppContext();
+    const { isChangeDueEnabled, isIntegerCurrency, formatCurrency } = useAppContext();
     const [amountTendered, setAmountTendered] = useState(total.toFixed(isIntegerCurrency ? 0 : 2));
 
     useEffect(() => {
         setAmountTendered(total.toFixed(isIntegerCurrency ? 0 : 2));
     }, [total, isIntegerCurrency]);
-
-    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: isIntegerCurrency ? 0 : 2,
-      maximumFractionDigits: isIntegerCurrency ? 0 : 2,
-    }).format(amount);
 
     const numericAmountTendered = parseFloat(amountTendered) || 0;
     const changeDue = isChangeDueEnabled && numericAmountTendered > total ? numericAmountTendered - total : 0;
@@ -90,16 +83,9 @@ const PaymentModalContent: React.FC<{
     onCompleteSale: (payments: Payment[]) => void,
     onClose: () => void,
 }> = ({ total, onCompleteSale, onClose }) => {
-    const { currency, isChangeDueEnabled, isIntegerCurrency } = useAppContext();
+    const { isChangeDueEnabled, isIntegerCurrency, formatCurrency } = useAppContext();
     const [payments, setPayments] = useState<Payment[]>([]);
     const [currentAmount, setCurrentAmount] = useState('');
-
-    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: isIntegerCurrency ? 0 : 2,
-      maximumFractionDigits: isIntegerCurrency ? 0 : 2,
-    }).format(amount);
 
     const totalPaid = useMemo(() => payments.reduce((sum, p) => sum + p.amount, 0), [payments]);
     const remaining = total - totalPaid;
@@ -202,7 +188,7 @@ const PaymentModalContent: React.FC<{
 
 
 export const POS: React.FC<POSProps> = () => {
-  const { products, sales, processSale, currentUser, isSplitPaymentEnabled, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, currency, isIntegerCurrency, cashierPermissions } = useAppContext();
+  const { products, sales, processSale, currentUser, isSplitPaymentEnabled, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, isIntegerCurrency, cashierPermissions, formatCurrency } = useAppContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -215,13 +201,6 @@ export const POS: React.FC<POSProps> = () => {
   const printableAreaRef = useRef<HTMLDivElement>(null);
 
   const canProcessReturns = currentUser.role === UserRole.Admin || cashierPermissions.canProcessReturns;
-
-  const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: isIntegerCurrency ? 0 : 2,
-    maximumFractionDigits: isIntegerCurrency ? 0 : 2,
-  }).format(amount);
 
   const handleSaveAsImage = () => {
     if (printableAreaRef.current) {

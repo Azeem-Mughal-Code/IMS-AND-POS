@@ -41,18 +41,11 @@ const toLocalDateKey = (date: Date): string => {
 };
 
 export const Dashboard: React.FC = () => {
-  const { products, sales, currency, isIntegerCurrency, notifications } = useAppContext();
+  const { products, sales, notifications, formatCurrency } = useAppContext();
   const [timeRange, setTimeRange] = useState<TimeRange>('weekly');
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   const unreadCount = useMemo(() => notifications.filter(n => !n.isRead).length, [notifications]);
-
-  const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: isIntegerCurrency ? 0 : 2,
-    maximumFractionDigits: isIntegerCurrency ? 0 : 2,
-  }).format(amount);
 
   const filteredSales = useMemo(() => {
     const now = new Date();

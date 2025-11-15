@@ -44,7 +44,7 @@ export const Reports: React.FC = () => {
   const { 
     sales, products, currentUser, processSale, reportsViewState, 
     onReportsSalesViewUpdate, onReportsProductsViewUpdate, 
-    currency, isIntegerCurrency
+    formatCurrency
   } = useAppContext();
     
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
@@ -77,13 +77,6 @@ export const Reports: React.FC = () => {
         });
     }
   };
-
-  const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: isIntegerCurrency ? 0 : 2,
-    maximumFractionDigits: isIntegerCurrency ? 0 : 2,
-  }).format(amount);
 
   const { searchTerm: saleSearch, typeFilter, statusFilter, timeRange: saleTimeRange, sortConfig: saleSortConfig, currentPage: saleCurrentPage, itemsPerPage: saleItemsPerPage } = reportsViewState.sales;
   const { searchTerm: productSearch, stockFilter, sortConfig: productSortConfig, currentPage: productCurrentPage, itemsPerPage: productItemsPerPage } = reportsViewState.products;

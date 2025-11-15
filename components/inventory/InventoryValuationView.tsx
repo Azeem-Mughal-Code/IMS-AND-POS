@@ -14,12 +14,8 @@ type ValuationData = {
 type SortableValuationKeys = 'sku' | 'name' | 'stock' | 'totalCostValue' | 'totalRetailValue' | 'potentialProfit';
 
 export const InventoryValuationView: React.FC = () => {
-    const { products, reportsViewState, onReportsInventoryValuationViewUpdate, currency, isIntegerCurrency } = useAppContext();
+    const { products, reportsViewState, onReportsInventoryValuationViewUpdate, formatCurrency } = useAppContext();
     const { searchTerm, sortConfig, currentPage, itemsPerPage } = reportsViewState.inventoryValuation;
-
-    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
-        style: 'currency', currency, minimumFractionDigits: isIntegerCurrency ? 0 : 2, maximumFractionDigits: isIntegerCurrency ? 0 : 2,
-    }).format(amount);
 
     const requestSort = (key: SortableValuationKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';

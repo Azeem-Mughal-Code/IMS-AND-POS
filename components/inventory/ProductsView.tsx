@@ -124,7 +124,7 @@ const HistoryModal: React.FC<{ product: Product, onClose: () => void }> = ({ pro
 };
 
 export const ProductsView: React.FC = () => {
-    const { products, addProduct, updateProduct, deleteProduct, adjustStock, receiveStock, inventoryAdjustments, inventoryViewState, onInventoryViewUpdate, currency, isIntegerCurrency } = useAppContext();
+    const { products, addProduct, updateProduct, deleteProduct, inventoryViewState, onInventoryViewUpdate, formatCurrency } = useAppContext();
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [productToDelete, setProductToDelete] = useState<Product | null>(null);
@@ -136,10 +136,6 @@ export const ProductsView: React.FC = () => {
     const { searchTerm, stockFilter, sortConfig, currentPage, itemsPerPage } = inventoryViewState;
     
     type SortableProductKeys = 'sku' | 'name' | 'stock' | 'retailPrice' | 'costPrice';
-
-    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
-        style: 'currency', currency, minimumFractionDigits: isIntegerCurrency ? 0 : 2, maximumFractionDigits: isIntegerCurrency ? 0 : 2,
-    }).format(amount);
 
     useEffect(() => { if (feedback) { const timer = setTimeout(() => setFeedback(null), 5000); return () => clearTimeout(timer); } }, [feedback]);
 
