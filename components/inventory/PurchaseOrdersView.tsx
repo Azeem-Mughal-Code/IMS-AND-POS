@@ -15,7 +15,7 @@ const PrintablePO = forwardRef<HTMLDivElement, { po: PurchaseOrder, currency: st
     }).format(amount);
 
     return (
-        <div className="printable-area p-4 text-gray-900 dark:text-white" ref={ref}>
+        <div className="printable-area text-gray-900 dark:text-white" ref={ref}>
             <div className="text-center mb-4">
                 <h2 className="text-2xl font-bold">{businessName}</h2>
                 <p className="text-lg">Purchase Order</p>
