@@ -184,3 +184,18 @@ export interface ProcurementViewState {
     };
     purchaseOrders: POViewState;
 }
+
+export enum NotificationType {
+    STOCK = 'STOCK',
+    USER = 'USER',
+    PO = 'PO',
+}
+
+export interface Notification {
+  id: string;
+  timestamp: string;
+  type: NotificationType;
+  message: string;
+  isRead: boolean;
+  relatedId?: string;
+}

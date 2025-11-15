@@ -2,6 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { Card } from './common/Card';
 import { useAppContext } from './context/AppContext';
+import { BellIcon } from './Icons';
+import { Modal } from './common/Modal';
+import { NotificationsPanel } from './common/NotificationsPanel';
 
 type TimeRange = 'today' | 'weekly' | 'monthly' | 'yearly' | 'all';
 
@@ -38,8 +41,11 @@ const toLocalDateKey = (date: Date): string => {
 };
 
 export const Dashboard: React.FC = () => {
-  const { products, sales, currency, isIntegerCurrency } = useAppContext();
+  const { products, sales, currency, isIntegerCurrency, notifications } = useAppContext();
   const [timeRange, setTimeRange] = useState<TimeRange>('weekly');
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+  const unreadCount = useMemo(() => notifications.filter(n => !n.isRead).length, [notifications]);
 
   const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -174,7 +180,21 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Dashboard</h1>
+        <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Dashboard</h1>
+            <button
+              onClick={() => setIsNotificationsOpen(true)}
+              className="relative text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              aria-label="Notifications"
+            >
+              <BellIcon className="h-7 w-7" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+        </div>
         <div className="flex-shrink-0 bg-gray-200 dark:bg-gray-700 p-1 rounded-lg overflow-x-auto">
             <div className="flex items-center space-x-1">
                 <TimeRangeButton label="Today" range="today" currentTimeRange={timeRange} setTimeRange={setTimeRange} />
@@ -219,6 +239,9 @@ export const Dashboard: React.FC = () => {
           </ResponsiveContainer>
         </div>
       </div>
+       <Modal isOpen={isNotificationsOpen} onClose={() => setIsNotificationsOpen(false)} title="Notifications" size="md">
+        <NotificationsPanel onClose={() => setIsNotificationsOpen(false)} />
+      </Modal>
     </div>
   );
 };

@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { 
     Product, Sale, User, UserRole, View, InventoryAdjustment, InventoryViewState, ReportsViewState, 
-    UsersViewState, AnalysisViewState, PurchaseOrder, POViewState, PaymentType, CashierPermissions
+    UsersViewState, AnalysisViewState, PurchaseOrder, POViewState, PaymentType, CashierPermissions,
+    Notification, NotificationType
 } from '../../types';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { INITIAL_PRODUCTS } from '../../constants';
@@ -16,6 +17,7 @@ interface AppContextType {
     users: User[];
     purchaseOrders: PurchaseOrder[];
     currentUser: User | null;
+    notifications: Notification[];
     itemsPerPage: number;
     currency: string;
     isSplitPaymentEnabled: boolean;
@@ -38,7 +40,7 @@ interface AppContextType {
     // Setters & Functions
     login: (username: string, pass: string) => boolean;
     signup: (username: string, pass: string) => { success: boolean, message?: string };
-    onLogout: () => void;
+    onLogout: (user: User) => void;
     addUser: (username: string, pass: string, role: UserRole) => { success: boolean, message?: string };
     updateUser: (userId: string, newUsername: string, newPassword?: string) => { success: boolean, message?: string };
     deleteUser: (userId: string) => { success: boolean; message?: string };
@@ -55,6 +57,10 @@ interface AppContextType {
     updatePurchaseOrder: (po: PurchaseOrder) => void;
     deletePurchaseOrder: (poId: string) => { success: boolean; message?: string };
     receivePOItems: (poId: string, receivedItems: { productId: string, quantity: number }[]) => void;
+    addNotification: (message: string, type: NotificationType, relatedId?: string) => void;
+    markNotificationAsRead: (notificationId: string) => void;
+    markAllNotificationsAsRead: () => void;
+    clearNotifications: () => void;
     setActiveView: (view: View) => void;
     setTheme: (theme: 'light' | 'dark' | 'system') => void;
     setItemsPerPage: (size: number) => void;
@@ -98,6 +104,7 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
     const [users, setUsers] = useLocalStorage<User[]>(`${ls_prefix}-users`, []);
     const [purchaseOrders, setPurchaseOrders] = useLocalStorage<PurchaseOrder[]>(`${ls_prefix}-purchaseOrders`, []);
     const [currentUser, setCurrentUser] = useLocalStorage<User | null>(`${ls_prefix}-currentUser`, null);
+    const [notifications, setNotifications] = useLocalStorage<Notification[]>(`${ls_prefix}-notifications`, []);
     
     const [itemsPerPage, setItemsPerPage] = useLocalStorage<number>(`${ls_prefix}-itemsPerPage`, 10);
     const [currency, setCurrency] = useLocalStorage<string>(`${ls_prefix}-currency`, 'USD');
@@ -129,11 +136,42 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
     const [analysisViewState, setAnalysisViewState] = useState<AnalysisViewState>({ timeRange: 'all', searchTerm: '', sortConfig: { key: 'profit', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 });
     const [poViewState, setPOViewState] = useState<POViewState>({ searchTerm: '', statusFilter: 'All', sortConfig: { key: 'id', direction: 'descending' }, currentPage: 1, itemsPerPage: 10 });
 
+    const addNotification = useCallback((message: string, type: NotificationType, relatedId?: string) => {
+        const newNotification: Notification = {
+            id: `notif_${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            type,
+            message,
+            relatedId,
+            isRead: false,
+        };
+        setNotifications(prev => [newNotification, ...prev]);
+    }, [setNotifications]);
+
+    useEffect(() => {
+        // Check for overdue POs on app load
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        purchaseOrders.forEach(po => {
+            if (po.status !== 'Received' && new Date(po.dateExpected) < today) {
+                const existingNotification = notifications.find(n => n.type === NotificationType.PO && n.relatedId === po.id && n.message.includes('overdue'));
+                if (!existingNotification) {
+                    addNotification(`PO #${po.id} from ${po.supplierName} is overdue.`, NotificationType.PO, po.id);
+                }
+            }
+        });
+    }, []); // Runs once on mount
+
+
     const login = (username: string, pass: string): boolean => {
         const user = users.find(u => u.username === username && u.password === pass);
         if (user) {
           setCurrentUser(user);
           setActiveView(user.role === UserRole.Admin ? 'dashboard' : 'pos');
+          if (user.role === UserRole.Cashier) {
+            addNotification(`Cashier '${user.username}' logged in.`, NotificationType.USER, user.id);
+          }
           return true;
         }
         return false;
@@ -150,7 +188,12 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
         return { success: true };
     };
 
-    const onLogout = () => setCurrentUser(null);
+    const onLogout = (user: User) => {
+        if (user.role === UserRole.Cashier) {
+            addNotification(`Cashier '${user.username}' logged out.`, NotificationType.USER, user.id);
+        }
+        setCurrentUser(null);
+    };
   
     // ... All other data manipulation functions from the original App.tsx's BusinessWorkspace ...
     const addUser = (username: string, pass: string, role: UserRole): { success: boolean, message?: string } => {
@@ -248,9 +291,31 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
         }));
         const adjustments: InventoryAdjustment[] = newSale.items.map(cartItem => ({ productId: cartItem.id, date: newSale.date, quantity: newSale.type === 'Return' ? cartItem.quantity : -cartItem.quantity, reason: `${newSale.type} #${newSale.id}` }));
         setInventoryAdjustments(prev => [...prev, ...adjustments]);
-        setProducts(prevProducts => prevProducts.map(p => { const item = newSale.items.find(i => i.id === p.id); return item ? { ...p, stock: p.stock + (item.quantity * (newSale.type === 'Return' ? 1 : -1)) } : p; }));
+        
+        setProducts(prevProducts => {
+            const updatedProducts = prevProducts.map(p => { 
+                const item = newSale.items.find(i => i.id === p.id); 
+                if (item) {
+                    const oldStock = p.stock;
+                    const newStock = p.stock + (item.quantity * (newSale.type === 'Return' ? 1 : -1));
+                    
+                    // Check for stock notifications
+                    if (newSale.type === 'Sale') {
+                        if (newStock <= 0 && oldStock > 0) {
+                            addNotification(`'${p.name}' is out of stock.`, NotificationType.STOCK, p.id);
+                        } else if (newStock <= p.lowStockThreshold && oldStock > p.lowStockThreshold) {
+                            addNotification(`'${p.name}' is low on stock (${newStock} remaining).`, NotificationType.STOCK, p.id);
+                        }
+                    }
+                    return { ...p, stock: newStock };
+                }
+                return p;
+            });
+            return updatedProducts;
+        });
+
         return newSale;
-    }, [sales, setSales, setProducts, setInventoryAdjustments]);
+    }, [sales, setSales, setProducts, setInventoryAdjustments, addNotification]);
    
      const importProducts = useCallback((newProducts: Omit<Product, 'id'>[]): { success: boolean; message: string } => {
         let importedCount = 0, skippedCount = 0;
@@ -269,7 +334,7 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
      }, [products, setProducts]);
    
      const clearSales = useCallback(() => { setSales([]); setInventoryAdjustments(prev => prev.filter(adj => !adj.reason.startsWith('Sale #') && !adj.reason.startsWith('Return #'))); }, [setSales, setInventoryAdjustments]);
-     const factoryReset = useCallback(() => { setProducts(INITIAL_PRODUCTS); setSales([]); setInventoryAdjustments([]); const admin = users.find(u => u.id === currentUser?.id); setUsers(admin ? [admin] : []); }, [setProducts, setSales, setInventoryAdjustments, setUsers, users, currentUser]);
+     const factoryReset = useCallback(() => { setProducts(INITIAL_PRODUCTS); setSales([]); setInventoryAdjustments([]); const admin = users.find(u => u.id === currentUser?.id); setUsers(admin ? [admin] : []); setNotifications([]); }, [setProducts, setSales, setInventoryAdjustments, setUsers, users, currentUser, setNotifications]);
      const addPurchaseOrder = useCallback((poData: Omit<PurchaseOrder, 'id'>): PurchaseOrder => { const newPO: PurchaseOrder = { ...poData, id: `po_${Date.now()}` }; setPurchaseOrders(prev => [newPO, ...prev]); return newPO; }, [setPurchaseOrders]);
      const updatePurchaseOrder = useCallback((updatedPO: PurchaseOrder) => setPurchaseOrders(prev => prev.map(po => po.id === updatedPO.id ? updatedPO : po)), [setPurchaseOrders]);
      
@@ -296,6 +361,18 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
         setInventoryAdjustments(prev => [...prev, ...receivedItems.map(r => ({ productId: r.productId, date: new Date().toISOString(), quantity: r.quantity, reason: `PO #${po.id}` }))]);
      }, [purchaseOrders, setPurchaseOrders, setProducts, setInventoryAdjustments]);
 
+    const markNotificationAsRead = useCallback((notificationId: string) => {
+        setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n));
+    }, [setNotifications]);
+
+    const markAllNotificationsAsRead = useCallback(() => {
+        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    }, [setNotifications]);
+    
+    const clearNotifications = useCallback(() => {
+        setNotifications([]);
+    }, [setNotifications]);
+
     const onInventoryViewUpdate = useCallback((updates: Partial<InventoryViewState>) => setInventoryViewState(prev => ({...prev, ...updates, currentPage: (updates.searchTerm !== undefined || updates.stockFilter !== undefined || updates.itemsPerPage !== undefined) ? 1 : prev.currentPage})), []);
     const onReportsSalesViewUpdate = useCallback((updates: Partial<ReportsViewState['sales']>) => setReportsViewState(prev => ({...prev, sales: {...prev.sales, ...updates, currentPage: (updates.searchTerm !== undefined || updates.typeFilter !== undefined || updates.statusFilter !== undefined || updates.timeRange !== undefined || updates.itemsPerPage !== undefined) ? 1 : prev.sales.currentPage}})), []);
     const onReportsProductsViewUpdate = useCallback((updates: Partial<ReportsViewState['products']>) => setReportsViewState(prev => ({...prev, products: {...prev.products, ...updates, currentPage: (updates.searchTerm !== undefined || updates.stockFilter !== undefined || updates.itemsPerPage !== undefined) ? 1 : prev.products.currentPage}})), []);
@@ -306,13 +383,13 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
 
     // Provide all state and functions
     const value: AppContextType = {
-        businessName, products, sales, inventoryAdjustments, users, purchaseOrders, currentUser, itemsPerPage, currency,
+        businessName, products, sales, inventoryAdjustments, users, purchaseOrders, currentUser, notifications, itemsPerPage, currency,
         isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled,
         discountRate, discountThreshold, activeView, theme, inventoryViewState, reportsViewState, usersViewState,
         analysisViewState, poViewState, cashierPermissions,
         login, signup, onLogout, addUser, updateUser, deleteUser, addProduct, updateProduct, deleteProduct, receiveStock,
         adjustStock, processSale, importProducts, clearSales, factoryReset, addPurchaseOrder, updatePurchaseOrder,
-        deletePurchaseOrder, receivePOItems, setActiveView, setTheme, setItemsPerPage, setCurrency, setIsSplitPaymentEnabled,
+        deletePurchaseOrder, receivePOItems, addNotification, markNotificationAsRead, markAllNotificationsAsRead, clearNotifications, setActiveView, setTheme, setItemsPerPage, setCurrency, setIsSplitPaymentEnabled,
         setIsChangeDueEnabled, setIsIntegerCurrency, setIsTaxEnabled, setTaxRate, setIsDiscountEnabled, setDiscountRate,
         setDiscountThreshold, setCashierPermissions, onInventoryViewUpdate, onReportsSalesViewUpdate, onReportsProductsViewUpdate,
         onReportsInventoryValuationViewUpdate, onUsersViewUpdate, onAnalysisViewUpdate, onPOViewUpdate

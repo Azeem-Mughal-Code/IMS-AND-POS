@@ -110,7 +110,7 @@ export const MainLayout: React.FC = () => {
                                     <SettingsIcon className="h-5 w-5" /> <span>Settings</span>
                                 </button>
                                 <div className="my-1 h-px bg-gray-200 dark:bg-gray-700"></div>
-                                <button onClick={onLogout} className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md text-red-600 hover:bg-red-50 dark:hover:bg-gray-700 dark:hover:bg-opacity-50">
+                                <button onClick={() => onLogout(currentUser)} className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md text-red-600 hover:bg-red-50 dark:hover:bg-gray-700 dark:hover:bg-opacity-50">
                                     <LogoutIcon className="h-5 w-5" /> <span>Logout</span>
                                 </button>
                             </div>

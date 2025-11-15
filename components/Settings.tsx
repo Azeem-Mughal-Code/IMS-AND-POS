@@ -257,7 +257,7 @@ export const Settings: React.FC = () => {
                 setExpandedSection={setExpandedSection}
             >
                  <button 
-                    onClick={onLogout} 
+                    onClick={() => onLogout(currentUser)} 
                     className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-medium transition-colors"
                 >
                     <LogoutIcon className="h-5 w-5" />
