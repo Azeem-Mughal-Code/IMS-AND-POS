@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Product, CartItem, PaymentType, Sale, Payment } from '../types';
 import { SearchIcon, PlusIcon, MinusIcon, TrashIcon, PhotoIcon } from './Icons';
 import { Modal } from './common/Modal';
@@ -16,7 +16,11 @@ const SimplePaymentModalContent: React.FC<{
     onClose: () => void;
 }> = ({ total, onCompleteSale, onClose }) => {
     const { currency, isChangeDueEnabled, isIntegerCurrency } = useAppContext();
-    const [amountTendered, setAmountTendered] = useState(total.toFixed(2));
+    const [amountTendered, setAmountTendered] = useState(total.toFixed(isIntegerCurrency ? 0 : 2));
+
+    useEffect(() => {
+        setAmountTendered(total.toFixed(isIntegerCurrency ? 0 : 2));
+    }, [total, isIntegerCurrency]);
 
     const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -102,10 +106,11 @@ const PaymentModalContent: React.FC<{
     const canComplete = totalPaid >= total;
     
     useEffect(() => {
-        if (total > 0) {
-            setCurrentAmount(total.toFixed(2));
-        }
-    }, [total]);
+        // When the total due changes (e.g., from a cart update), reset the current amount
+        // input to reflect the new remaining balance.
+        const newRemaining = total - totalPaid;
+        setCurrentAmount(newRemaining > 0 ? newRemaining.toFixed(isIntegerCurrency ? 0 : 2) : '');
+    }, [total, totalPaid, isIntegerCurrency]);
 
     const addPayment = (type: PaymentType) => {
         let amount = parseFloat(currentAmount);
@@ -118,7 +123,7 @@ const PaymentModalContent: React.FC<{
         if (amount > 0.005) {
             setPayments(prev => [...prev, { type, amount }]);
             const newRemaining = remaining - amount;
-            setCurrentAmount(newRemaining > 0 ? newRemaining.toFixed(2) : '');
+            setCurrentAmount(newRemaining > 0 ? newRemaining.toFixed(isIntegerCurrency ? 0 : 2) : '');
         }
     };
 
@@ -126,7 +131,7 @@ const PaymentModalContent: React.FC<{
         const newPayments = payments.filter((_, i) => i !== index);
         setPayments(newPayments);
         const newTotalPaid = newPayments.reduce((sum, p) => sum + p.amount, 0);
-        setCurrentAmount((total - newTotalPaid).toFixed(2));
+        setCurrentAmount((total - newTotalPaid).toFixed(isIntegerCurrency ? 0 : 2));
     };
 
     return (
@@ -175,7 +180,7 @@ const PaymentModalContent: React.FC<{
                         placeholder="Amount"
                         className="flex-grow block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
                      />
-                     <button onClick={() => setCurrentAmount(remaining.toFixed(2))} disabled={remaining <= 0} className="px-3 py-2 bg-gray-200 dark:bg-gray-600 rounded-md text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-500 disabled:opacity-50">
+                     <button onClick={() => setCurrentAmount(remaining.toFixed(isIntegerCurrency ? 0 : 2))} disabled={remaining <= 0} className="px-3 py-2 bg-gray-200 dark:bg-gray-600 rounded-md text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-500 disabled:opacity-50">
                          Full
                      </button>
                 </div>
@@ -319,32 +324,60 @@ export const POS: React.FC<POSProps> = () => {
   const totals = useMemo(() => {
     const subtotal = cart.reduce((sum, item) => sum + item.retailPrice * item.quantity, 0);
     
+    const roundCurrency = (amount: number) => {
+        if (isIntegerCurrency) {
+            return Math.round(amount);
+        }
+        return Math.round(amount * 100) / 100;
+    };
+    
     if (mode === 'Return') {
         let discount = 0;
-        // If there's an original sale with a discount, calculate the proportional discount for the returned items
         if (selectedSaleForReturn && selectedSaleForReturn.discount && selectedSaleForReturn.subtotal > 0) {
             const originalDiscountRate = selectedSaleForReturn.discount / selectedSaleForReturn.subtotal;
             discount = subtotal * originalDiscountRate;
         }
+        const roundedDiscount = roundCurrency(discount);
 
-        const taxableAmount = subtotal - discount;
-        const tax = isTaxEnabled ? taxableAmount * taxRate : 0;
-        const total = taxableAmount + tax;
+        const taxableAmount = subtotal - roundedDiscount;
         
-        // Return negative values for a refund, but a positive discount for display consistency
-        return { subtotal: -subtotal, tax: -tax, total: -total, discount: discount };
+        let tax = 0;
+        if (selectedSaleForReturn && selectedSaleForReturn.tax > 0) {
+            const originalTaxableAmount = selectedSaleForReturn.subtotal - (selectedSaleForReturn.discount || 0);
+            if (originalTaxableAmount > 0) {
+                const originalTaxRate = selectedSaleForReturn.tax / originalTaxableAmount;
+                tax = taxableAmount * originalTaxRate;
+            }
+        }
+        const roundedTax = roundCurrency(tax);
+
+        const total = subtotal - roundedDiscount + roundedTax;
+        
+        return { 
+            subtotal: -roundCurrency(subtotal), 
+            tax: -roundedTax, 
+            total: -roundCurrency(total), 
+            discount: roundedDiscount 
+        };
     }
 
     const discount = (isDiscountEnabled && subtotal >= discountThreshold)
         ? subtotal * discountRate
         : 0;
+    const roundedDiscount = roundCurrency(discount);
 
-    const taxableAmount = subtotal - discount;
-    const tax = isTaxEnabled ? taxableAmount * taxRate : 0;
-    const total = taxableAmount + tax;
+    const tax = isTaxEnabled ? (subtotal - roundedDiscount) * taxRate : 0;
+    const roundedTax = roundCurrency(tax);
 
-    return { subtotal, discount, tax, total };
-  }, [cart, mode, isTaxEnabled, taxRate, isDiscountEnabled, discountThreshold, discountRate, selectedSaleForReturn]);
+    const total = subtotal - roundedDiscount + roundedTax;
+
+    return { 
+        subtotal: roundCurrency(subtotal), 
+        discount: roundedDiscount, 
+        tax: roundedTax, 
+        total: roundCurrency(total) 
+    };
+  }, [cart, mode, isTaxEnabled, taxRate, isDiscountEnabled, discountThreshold, discountRate, selectedSaleForReturn, isIntegerCurrency]);
 
   const handleCompleteSale = (payments: Payment[]) => {
     const cogs = cart.reduce((sum, item) => sum + item.costPrice * item.quantity, 0);

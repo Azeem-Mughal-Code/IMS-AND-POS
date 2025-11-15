@@ -44,7 +44,7 @@ export const Reports: React.FC = () => {
   const { 
     sales, products, currentUser, processSale, reportsViewState, 
     onReportsSalesViewUpdate, onReportsProductsViewUpdate, 
-    currency, isIntegerCurrency, isTaxEnabled, taxRate 
+    currency, isIntegerCurrency
   } = useAppContext();
     
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
@@ -134,13 +134,31 @@ export const Reports: React.FC = () => {
     }
 
     const subtotal = itemsToRefund.reduce((sum, item) => sum + item.retailPrice * item.quantity, 0);
-    const tax = isTaxEnabled ? subtotal * taxRate : 0;
-    const total = subtotal + tax;
+
+    let discount = 0;
+    if (viewingSale.discount && viewingSale.subtotal > 0) {
+        const originalDiscountRate = viewingSale.discount / viewingSale.subtotal;
+        discount = subtotal * originalDiscountRate;
+    }
+    
+    const taxableAmount = subtotal - discount;
+
+    let tax = 0;
+    if (viewingSale.tax > 0) {
+        const originalTaxableAmount = viewingSale.subtotal - (viewingSale.discount || 0);
+        if (originalTaxableAmount > 0) {
+            const originalTaxRate = viewingSale.tax / originalTaxableAmount;
+            tax = taxableAmount * originalTaxRate;
+        }
+    }
+    
+    const total = taxableAmount + tax;
     const cogs = itemsToRefund.reduce((sum, item) => sum + item.costPrice * item.quantity, 0);
 
     const refundTransaction: Omit<Sale, 'id' | 'date'> = {
         items: itemsToRefund,
         subtotal: -subtotal,
+        discount: discount,
         tax: -tax,
         total: -total,
         cogs: -cogs,
