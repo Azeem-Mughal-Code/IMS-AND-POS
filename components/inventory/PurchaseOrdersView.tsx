@@ -30,28 +30,28 @@ const PrintablePO = forwardRef<HTMLDivElement, { po: PurchaseOrder, currency: st
             <table className="w-full text-sm text-left">
                 <thead className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
                     <tr>
-                        <th className="p-2">SKU</th>
-                        <th className="p-2">Product</th>
-                        <th className="p-2 text-right">Qty</th>
-                        <th className="p-2 text-right">Cost</th>
-                        <th className="p-2 text-right">Total</th>
+                        <th className="py-1 px-2">SKU</th>
+                        <th className="py-1 px-2">Product</th>
+                        <th className="py-1 px-2 text-right">Qty</th>
+                        <th className="py-1 px-2 text-right">Cost</th>
+                        <th className="py-1 px-2 text-right">Total</th>
                     </tr>
                 </thead>
                 <tbody className="text-gray-900 dark:text-white">
                     {po.items.map(item => (
                         <tr key={item.productId} className="border-b dark:border-gray-600">
-                            <td className="p-2">{item.sku}</td>
-                            <td className="p-2">{item.name}</td>
-                            <td className="p-2 text-right">{item.quantityOrdered}</td>
-                            <td className="p-2 text-right">{formatCurrency(item.costPrice)}</td>
-                            <td className="p-2 text-right">{formatCurrency(item.costPrice * item.quantityOrdered)}</td>
+                            <td className="py-1 px-2">{item.sku}</td>
+                            <td className="py-1 px-2">{item.name}</td>
+                            <td className="py-1 px-2 text-right">{item.quantityOrdered}</td>
+                            <td className="py-1 px-2 text-right">{formatCurrency(item.costPrice)}</td>
+                            <td className="py-1 px-2 text-right">{formatCurrency(item.costPrice * item.quantityOrdered)}</td>
                         </tr>
                     ))}
                 </tbody>
                 <tfoot className="text-gray-900 dark:text-white">
                     <tr className="font-bold">
-                        <td colSpan={4} className="p-2 text-right">Grand Total</td>
-                        <td className="p-2 text-right">{formatCurrency(po.totalCost)}</td>
+                        <td colSpan={4} className="py-1 px-2 text-right">Grand Total</td>
+                        <td className="py-1 px-2 text-right">{formatCurrency(po.totalCost)}</td>
                     </tr>
                 </tfoot>
             </table>

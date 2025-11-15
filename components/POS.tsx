@@ -223,7 +223,7 @@ export const POS: React.FC<POSProps> = () => {
                 clonedDoc.documentElement.classList.remove('dark');
             }
         }).then((canvas: HTMLCanvasElement) => {
-            const PADDING = 20;
+            const PADDING = 40;
             const newCanvas = document.createElement('canvas');
             newCanvas.width = canvas.width + PADDING * 2;
             newCanvas.height = canvas.height + PADDING * 2;
