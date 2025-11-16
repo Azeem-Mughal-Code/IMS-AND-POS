@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAppContext } from './context/AppContext';
 import { ProductsView } from './inventory/ProductsView';
 import { PurchaseOrdersView } from './inventory/PurchaseOrdersView';
@@ -6,8 +6,26 @@ import { InventoryValuationView } from './inventory/InventoryValuationView';
 import { UserRole } from '../types';
 
 export const Inventory: React.FC = () => {
-  const { currentUser } = useAppContext();
+  const { currentUser, verticalPadding, horizontalPadding } = useAppContext();
   const [activeTab, setActiveTab] = useState<'products' | 'purchaseOrders' | 'valuation'>('products');
+
+  const paddingClass = useMemo(() => {
+    const verticalPaddingMap = {
+        xs: 'py-2',
+        sm: 'py-3',
+        md: 'py-6',
+        lg: 'py-9',
+        xl: 'py-12',
+    };
+    const horizontalPaddingMap = {
+        xs: 'px-2',
+        sm: 'px-4',
+        md: 'px-6',
+        lg: 'px-8',
+        xl: 'px-10',
+    };
+    return `${verticalPaddingMap[verticalPadding]} ${horizontalPaddingMap[horizontalPadding]}`;
+  }, [verticalPadding, horizontalPadding]);
 
   const TabButton: React.FC<{ tabId: 'products' | 'purchaseOrders' | 'valuation', label: string }> = ({ tabId, label }) => (
     <button
@@ -23,7 +41,7 @@ export const Inventory: React.FC = () => {
   );
 
   return (
-    <div className="p-6">
+    <div className={paddingClass}>
       <div className="flex flex-col items-start gap-4 md:flex-row md:justify-between md:items-center mb-6">
         <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Inventory Management</h1>
       </div>

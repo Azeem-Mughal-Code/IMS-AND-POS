@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useCallback, ReactNode, use
 import { 
     Product, Sale, User, UserRole, View, InventoryAdjustment, InventoryViewState, ReportsViewState, 
     UsersViewState, AnalysisViewState, PurchaseOrder, POViewState, PaymentType, CashierPermissions,
-    Notification, NotificationType, Currency, PruneTarget, Toast
+    Notification, NotificationType, Currency, PruneTarget, Toast, PaddingLevel
 } from '../../types';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { INITIAL_PRODUCTS, DEFAULT_CURRENCIES } from '../../constants';
@@ -34,6 +34,8 @@ interface AppContextType {
     discountThreshold: number;
     activeView: View;
     theme: 'light' | 'dark' | 'system';
+    verticalPadding: PaddingLevel;
+    horizontalPadding: PaddingLevel;
     inventoryViewState: InventoryViewState;
     reportsViewState: ReportsViewState;
     usersViewState: UsersViewState;
@@ -72,6 +74,8 @@ interface AppContextType {
     restoreBackup: (backupData: any) => { success: boolean, message: string };
     setActiveView: (view: View) => void;
     setTheme: (theme: 'light' | 'dark' | 'system') => void;
+    setVerticalPadding: (padding: PaddingLevel) => void;
+    setHorizontalPadding: (padding: PaddingLevel) => void;
     setItemsPerPage: (size: number) => void;
     setCurrency: (currencyCode: string) => void;
     addCurrency: (currency: Currency) => { success: boolean, message?: string };
@@ -144,6 +148,22 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
 
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [theme, setTheme] = useLocalStorage<'light' | 'dark' | 'system'>('ims-theme', 'system');
+    
+    const [rawVerticalPadding, setRawVerticalPadding] = useLocalStorage<PaddingLevel | 'compact' | 'default' | 'spacious'>(`${ls_prefix}-verticalPadding`, 'md');
+    const verticalPadding = useMemo<PaddingLevel>(() => {
+        switch (rawVerticalPadding) {
+            case 'compact': return 'sm';
+            case 'default': return 'md';
+            case 'spacious': return 'lg';
+            default: return rawVerticalPadding;
+        }
+    }, [rawVerticalPadding]);
+    const setVerticalPadding = (padding: PaddingLevel) => {
+        setRawVerticalPadding(padding);
+    };
+
+    const [horizontalPadding, setHorizontalPadding] = useLocalStorage<PaddingLevel>(`${ls_prefix}-horizontalPadding`, 'md');
+    
     const [toasts, setToasts] = useState<Toast[]>([]);
     
     // States for individual views
@@ -619,11 +639,11 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
     const value: AppContextType = {
         businessName, products, sales, inventoryAdjustments, users, purchaseOrders, currentUser, notifications, toasts, itemsPerPage, currency,
         currencies, currencyDisplay, isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled,
-        discountRate, discountThreshold, activeView, theme, inventoryViewState, reportsViewState, usersViewState,
+        discountRate, discountThreshold, activeView, theme, verticalPadding, horizontalPadding, inventoryViewState, reportsViewState, usersViewState,
         analysisViewState, poViewState, cashierPermissions,
         login, signup, onLogout, addUser, updateUser, deleteUser, addProduct, updateProduct, deleteProduct, deleteSale, receiveStock,
         adjustStock, processSale, importProducts, clearSales, factoryReset, pruneData, addPurchaseOrder, updatePurchaseOrder,
-        deletePurchaseOrder, receivePOItems, addNotification, markNotificationAsRead, markAllNotificationsAsRead, clearNotifications, showToast, dismissToast, restoreBackup, setActiveView, setTheme, setItemsPerPage, setCurrency, addCurrency, updateCurrency, deleteCurrency, setCurrencyDisplay, formatCurrency, setIsSplitPaymentEnabled,
+        deletePurchaseOrder, receivePOItems, addNotification, markNotificationAsRead, markAllNotificationsAsRead, clearNotifications, showToast, dismissToast, restoreBackup, setActiveView, setTheme, setVerticalPadding, setHorizontalPadding, setItemsPerPage, setCurrency, addCurrency, updateCurrency, deleteCurrency, setCurrencyDisplay, formatCurrency, setIsSplitPaymentEnabled,
         setIsChangeDueEnabled, setIsIntegerCurrency, setIsTaxEnabled, setTaxRate, setIsDiscountEnabled, setDiscountRate,
         setDiscountThreshold, setCashierPermissions, onInventoryViewUpdate, onReportsSalesViewUpdate, onReportsProductsViewUpdate,
         onReportsInventoryValuationViewUpdate, onUsersViewUpdate, onAnalysisViewUpdate, onPOViewUpdate

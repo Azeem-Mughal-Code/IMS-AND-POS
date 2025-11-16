@@ -214,3 +214,5 @@ export interface Toast {
   message: string;
   type: 'success' | 'error';
 }
+
+export type PaddingLevel = 'xs' | 'sm' | 'md' | 'lg' | 'xl';

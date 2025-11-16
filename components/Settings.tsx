@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { UserRole } from '../types';
 import { UserSettings } from './UserSettings';
 import { Modal } from './common/Modal';
@@ -11,6 +11,7 @@ import { ThemeSelector } from './settings/ThemeSelector';
 import { DataManagement } from './settings/DataManagement';
 import { CurrencyDisplaySelector } from './settings/CurrencyDisplaySelector';
 import { CurrencyManager } from './settings/CurrencyManager';
+import { PaddingSelector } from './settings/PaddingSelector';
 
 export const Settings: React.FC = () => {
     const { 
@@ -18,7 +19,7 @@ export const Settings: React.FC = () => {
         isSplitPaymentEnabled, setIsSplitPaymentEnabled, isChangeDueEnabled, setIsChangeDueEnabled,
         isIntegerCurrency, setIsIntegerCurrency, isTaxEnabled, setIsTaxEnabled, taxRate, setTaxRate,
         isDiscountEnabled, setIsDiscountEnabled, discountRate, setDiscountRate, discountThreshold, setDiscountThreshold,
-        cashierPermissions
+        cashierPermissions, verticalPadding, horizontalPadding
     } = useAppContext();
 
     const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
@@ -33,6 +34,24 @@ export const Settings: React.FC = () => {
     
     const canEditProfile = currentUser.role === UserRole.Admin || cashierPermissions.canEditOwnProfile;
     const canEditBehavior = currentUser.role === UserRole.Admin || cashierPermissions.canEditBehaviorSettings;
+
+    const paddingClass = useMemo(() => {
+        const verticalPaddingMap = {
+            xs: 'py-2',
+            sm: 'py-3',
+            md: 'py-6',
+            lg: 'py-9',
+            xl: 'py-12',
+        };
+        const horizontalPaddingMap = {
+            xs: 'px-2',
+            sm: 'px-4',
+            md: 'px-6',
+            lg: 'px-8',
+            xl: 'px-10',
+        };
+        return `${verticalPaddingMap[verticalPadding]} ${horizontalPaddingMap[horizontalPadding]}`;
+    }, [verticalPadding, horizontalPadding]);
 
     useEffect(() => {
         if (isEditProfileModalOpen) {
@@ -71,7 +90,7 @@ export const Settings: React.FC = () => {
     };
 
     return (
-        <div className="p-6 space-y-4">
+        <div className={`${paddingClass} space-y-4`}>
             <h1 className="text-3xl font-bold text-gray-800 dark:text-white px-2">Settings</h1>
 
             <AccordionSection
@@ -103,6 +122,10 @@ export const Settings: React.FC = () => {
                     <div>
                         <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Theme</h3>
                         <ThemeSelector />
+                    </div>
+                     <div>
+                        <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Page Padding</h3>
+                        <PaddingSelector />
                     </div>
                     <div>
                         <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Rows Per Page</h3>
