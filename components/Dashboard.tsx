@@ -40,6 +40,12 @@ const toLocalDateKey = (date: Date): string => {
     return `${year}-${month}-${day}`;
 };
 
+const yAxisTickFormatter = (value: number) => {
+    if (Math.abs(value) >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+    if (Math.abs(value) >= 1000) return `${Math.round(value / 1000)}k`;
+    return value.toString();
+};
+
 export const Dashboard: React.FC = () => {
   const { products, sales, notifications, formatCurrency } = useAppContext();
   const [timeRange, setTimeRange] = useState<TimeRange>('weekly');
@@ -85,10 +91,11 @@ export const Dashboard: React.FC = () => {
     const now = new Date();
     switch (timeRange) {
         case 'today': {
-            const data = Array(24).fill(0).map((_, i) => ({ name: `${i}:00`, Sales: 0 }));
+            const data = Array(24).fill(0).map((_, i) => ({ name: `${i}:00`, Sales: 0, Profit: 0 }));
             filteredSales.forEach(sale => {
                 const hour = new Date(sale.date).getHours();
                 data[hour].Sales += sale.total;
+                data[hour].Profit += sale.profit;
             });
             return { chartData: data, chartTitle: 'Today' };
         }
@@ -102,20 +109,27 @@ export const Dashboard: React.FC = () => {
                 return { 
                     name, 
                     Sales: 0,
+                    Profit: 0,
                     dateKey: toLocalDateKey(d)
                 };
             });
 
             const salesByDay: { [key: string]: number } = {};
+            const profitByDay: { [key: string]: number } = {};
             filteredSales.forEach(sale => {
                 const key = toLocalDateKey(new Date(sale.date));
-                if (salesByDay[key] === undefined) salesByDay[key] = 0;
+                if (salesByDay[key] === undefined) {
+                    salesByDay[key] = 0;
+                    profitByDay[key] = 0;
+                }
                 salesByDay[key] += sale.total;
+                profitByDay[key] += sale.profit;
             });
 
             data.forEach(day => {
                 if (salesByDay[day.dateKey]) {
                     day.Sales = salesByDay[day.dateKey];
+                    day.Profit = profitByDay[day.dateKey];
                 }
             });
             return { chartData: data, chartTitle: 'This Week' };
@@ -124,20 +138,25 @@ export const Dashboard: React.FC = () => {
             const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
             const data = Array.from({ length: daysInMonth }, (_, i) => ({
                 name: `${i + 1}`,
-                Sales: 0
+                Sales: 0,
+                Profit: 0
             }));
             filteredSales.forEach(sale => {
                 const dayOfMonth = new Date(sale.date).getDate();
-                if(data[dayOfMonth - 1]) data[dayOfMonth - 1].Sales += sale.total;
+                if(data[dayOfMonth - 1]) {
+                    data[dayOfMonth - 1].Sales += sale.total;
+                    data[dayOfMonth - 1].Profit += sale.profit;
+                }
             });
             return { chartData: data, chartTitle: 'This Month' };
         }
         case 'yearly': {
             const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const data = monthNames.map(m => ({ name: m, Sales: 0 }));
+            const data = monthNames.map(m => ({ name: m, Sales: 0, Profit: 0 }));
             filteredSales.forEach(sale => {
                 const month = new Date(sale.date).getMonth();
                 data[month].Sales += sale.total;
+                data[month].Profit += sale.profit;
             });
             return { chartData: data, chartTitle: 'This Year' };
         }
@@ -146,18 +165,24 @@ export const Dashboard: React.FC = () => {
                 return { chartData: [], chartTitle: 'All Time' };
             }
             const salesByMonth: { [key: string]: number } = {};
+            const profitByMonth: { [key: string]: number } = {};
             filteredSales.forEach(sale => {
                 const d = new Date(sale.date);
                 const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                if (salesByMonth[key] === undefined) salesByMonth[key] = 0;
+                if (salesByMonth[key] === undefined) {
+                    salesByMonth[key] = 0;
+                    profitByMonth[key] = 0;
+                }
                 salesByMonth[key] += sale.total;
+                profitByMonth[key] += sale.profit;
             });
             const data = Object.keys(salesByMonth).sort().map(key => {
                 const [year, month] = key.split('-');
                 const date = new Date(parseInt(year), parseInt(month) - 1);
                 return {
                     name: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-                    Sales: salesByMonth[key]
+                    Sales: salesByMonth[key],
+                    Profit: profitByMonth[key]
                 };
             });
             return { chartData: data, chartTitle: 'All Time' };
@@ -207,17 +232,17 @@ export const Dashboard: React.FC = () => {
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-4">Sales Overview ({chartTitle})</h2>
+        <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-4">Sales & Profit Overview ({chartTitle})</h2>
         <div style={{ width: '100%', height: 300 }}>
           <ResponsiveContainer>
             <ChartComponent data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#4A5568" />
               <XAxis dataKey="name" stroke="#A0AEC0" />
-              <YAxis stroke="#A0AEC0" />
+              <YAxis stroke="#A0AEC0" tickFormatter={yAxisTickFormatter} />
               <Tooltip
                 contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.8)', border: 'none' }}
                 labelStyle={{ color: '#E2E8F0' }}
-                formatter={(value: number) => [formatCurrency(value), 'Sales']}
+                formatter={(value: number, name: string) => [formatCurrency(value), name]}
               />
               <Legend wrapperStyle={{ color: '#E2E8F0' }} />
               <ChartElement 
@@ -225,6 +250,14 @@ export const Dashboard: React.FC = () => {
                 dataKey="Sales" 
                 stroke="#4299E1" 
                 fill="#4299E1"
+                strokeWidth={2} 
+                activeDot={{ r: 8 }} 
+              />
+              <ChartElement 
+                type="monotone" 
+                dataKey="Profit" 
+                stroke="#48BB78" 
+                fill="#48BB78"
                 strokeWidth={2} 
                 activeDot={{ r: 8 }} 
               />
