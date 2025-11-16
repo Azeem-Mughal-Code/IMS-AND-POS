@@ -16,14 +16,20 @@ export function FilterDropdown<T extends string>({ label, options, value, onChan
   const selectedLabel = options.find(opt => opt.value === value)?.label || label;
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    const handleClickOutside = (event: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
+    };
+    
+    if (isOpen) {
+        document.addEventListener("mousedown", handleClickOutside);
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [wrapperRef]);
+
+    return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen, wrapperRef]);
 
   const handleSelect = (selectedValue: T) => {
     onChange(selectedValue);

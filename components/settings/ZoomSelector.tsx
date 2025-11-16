@@ -1,9 +1,9 @@
 import React from 'react';
-import { useAppContext } from '../context/AppContext';
 import { MinusIcon, PlusIcon } from '../Icons';
+import { useUIState } from '../context/UIStateContext';
 
 export const ZoomSelector: React.FC = () => {
-    const { zoomLevel, setZoomLevel } = useAppContext();
+    const { zoomLevel, setZoomLevel } = useUIState();
     const ZOOM_STEP = 0.05; // 5% step
     const MIN_ZOOM = 0.5; // 50%
     const MAX_ZOOM = 1.5; // 150%

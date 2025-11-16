@@ -1,13 +1,13 @@
 import React, { forwardRef } from 'react';
 import { Sale } from '../../types';
-import { useAppContext } from '../context/AppContext';
+import { useSettings } from '../context/SettingsContext';
 
 interface PrintableReceiptProps {
     sale: Sale;
 }
 
 export const PrintableReceipt = forwardRef<HTMLDivElement, PrintableReceiptProps>(({ sale }, ref) => {
-    const { businessName, isChangeDueEnabled, formatCurrency } = useAppContext();
+    const { businessName, isChangeDueEnabled, formatCurrency, formatDateTime } = useSettings();
     
     return (
         <div className="printable-area" ref={ref}>
@@ -16,7 +16,7 @@ export const PrintableReceipt = forwardRef<HTMLDivElement, PrintableReceiptProps
                 <p className="text-sm">Receipt: <span className="font-mono">{sale.id}</span></p>
             </div>
             <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
-                <p><span className="font-semibold text-gray-800 dark:text-gray-200">Date:</span> {new Date(sale.date).toLocaleString()}</p>
+                <p><span className="font-semibold text-gray-800 dark:text-gray-200">Date:</span> {formatDateTime(sale.date)}</p>
                 <p><span className="font-semibold text-gray-800 dark:text-gray-200">Cashier:</span> {sale.salespersonName}</p>
                 {sale.originalSaleId && <p><span className="font-semibold text-gray-800 dark:text-gray-200">Original Sale:</span> <span className="font-mono">{sale.originalSaleId}</span></p>}
                 <div className="border-t border-b py-2 my-2 border-gray-200 dark:border-gray-600">

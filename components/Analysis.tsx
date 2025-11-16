@@ -1,8 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { AnalysisViewState } from '../types';
 import { SearchIcon, ChevronDownIcon, ChevronUpIcon } from './Icons';
 import { Pagination } from './common/Pagination';
-import { useAppContext } from './context/AppContext';
+import { useProducts } from './context/ProductContext';
+import { useSales } from './context/SalesContext';
+import { useUIState } from './context/UIStateContext';
+import { useSettings } from './context/SettingsContext';
 
 type PerformanceMetric = {
     product: {
@@ -61,7 +64,10 @@ const getStartOfWeek = (date: Date): Date => {
 
 
 export const Analysis: React.FC = () => {
-    const { products, sales, analysisViewState, onAnalysisViewUpdate, formatCurrency } = useAppContext();
+    const { products } = useProducts();
+    const { sales } = useSales();
+    const { analysisViewState, onAnalysisViewUpdate } = useUIState();
+    const { formatCurrency } = useSettings();
     const { searchTerm, sortConfig, currentPage, itemsPerPage, timeRange } = analysisViewState;
 
     const filteredSales = useMemo(() => {
@@ -237,8 +243,8 @@ export const Analysis: React.FC = () => {
                     </div>
                  </div>
                 <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                    <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
+                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
                             <tr>
                                 <SortableHeader sortKey="product">Product</SortableHeader>
                                 <SortableHeader sortKey="unitsSold">Units Sold</SortableHeader>
@@ -248,19 +254,17 @@ export const Analysis: React.FC = () => {
                                 <SortableHeader sortKey="sellThrough">Sell-through</SortableHeader>
                             </tr>
                         </thead>
-                        <tbody>
-                            {paginatedPerformance.map(p => {
-                                return (
-                                    <tr key={p.product.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                                        <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{p.product.name}</td>
-                                        <td className="px-6 py-4">{p.unitsSold}</td>
-                                        <td className="px-6 py-4">{formatCurrency(p.revenue)}</td>
-                                        <td className="px-6 py-4">{formatCurrency(p.profit)}</td>
-                                        <td className={`px-6 py-4 font-semibold ${p.profitMargin < 10 ? 'text-red-500' : p.profitMargin < 30 ? 'text-yellow-500' : 'text-green-500'}`}>{p.profitMargin.toFixed(1)}%</td>
-                                        <td className="px-6 py-4">{p.sellThrough.toFixed(1)}%</td>
-                                    </tr>
-                                );
-                            })}
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                            {paginatedPerformance.map(p => (
+                                <tr key={p.product.id}>
+                                    <td data-label="Product" className="px-6 py-4 font-medium text-gray-900 dark:text-white">{p.product.name}</td>
+                                    <td data-label="Units Sold" className="px-6 py-4">{p.unitsSold}</td>
+                                    <td data-label="Revenue" className="px-6 py-4">{formatCurrency(p.revenue)}</td>
+                                    <td data-label="Profit" className="px-6 py-4">{formatCurrency(p.profit)}</td>
+                                    <td data-label="Profit Margin" className={`px-6 py-4 font-semibold ${p.profitMargin < 10 ? 'text-red-500' : p.profitMargin < 30 ? 'text-yellow-500' : 'text-green-500'}`}>{p.profitMargin.toFixed(1)}%</td>
+                                    <td data-label="Sell-through" className="px-6 py-4">{p.sellThrough.toFixed(1)}%</td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 </div>

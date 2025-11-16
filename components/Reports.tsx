@@ -4,8 +4,12 @@ import { Modal } from './common/Modal';
 import { FilterMenu, FilterSelectItem } from './common/FilterMenu';
 import { Pagination } from './common/Pagination';
 import { SearchIcon, ChevronUpIcon, ChevronDownIcon, PhotoIcon, DangerIcon, TrashIcon } from './Icons';
-import { useAppContext } from './context/AppContext';
 import { PrintableReceipt } from './common/PrintableReceipt';
+import { useSales } from './context/SalesContext';
+import { useProducts } from './context/ProductContext';
+import { useAuth } from './context/AuthContext';
+import { useUIState } from './context/UIStateContext';
+import { useSettings } from './context/SettingsContext';
 
 declare var html2canvas: any;
 
@@ -41,16 +45,16 @@ const getStartOfWeek = (date: Date): Date => {
 
 
 export const Reports: React.FC = () => {
-  const { 
-    sales, products, currentUser, users, processSale, deleteSale, reportsViewState, 
-    onReportsSalesViewUpdate, onReportsProductsViewUpdate, 
-    formatCurrency
-  } = useAppContext();
+  const { sales, processSale, deleteSale } = useSales();
+  const { products } = useProducts();
+  const { currentUser, users } = useAuth();
+  const { reportsViewState, onReportsSalesViewUpdate, onReportsProductsViewUpdate, showToast } = useUIState();
+  const { formatCurrency, formatDateTime } = useSettings();
     
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const printableAreaRef = useRef<HTMLDivElement>(null);
+
 
   const handleSaveAsImage = () => {
     if (printableAreaRef.current && viewingSale) {
@@ -110,13 +114,6 @@ export const Reports: React.FC = () => {
   ];
 
 
-  useEffect(() => {
-    if (statusMessage) {
-      const timer = setTimeout(() => setStatusMessage(null), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [statusMessage]);
-
   const handleRefund = () => {
     if (!viewingSale || viewingSale.type !== 'Sale' || (viewingSale.status !== 'Completed' && viewingSale.status !== 'Partially Refunded')) return;
     
@@ -128,7 +125,7 @@ export const Reports: React.FC = () => {
         .filter(item => item.quantity > 0);
     
     if (itemsToRefund.length === 0) {
-        setStatusMessage({ type: 'error', text: 'No items remaining to refund.' });
+        showToast('No items remaining to refund.', 'error');
         setViewingSale(null);
         return;
     }
@@ -172,12 +169,12 @@ export const Reports: React.FC = () => {
 
     try {
         processSale(refundTransaction);
-        setStatusMessage({ type: 'success', text: `Successfully refunded remaining items for sale ${viewingSale.id}.` });
+        showToast(`Successfully refunded remaining items for sale ${viewingSale.id}.`, 'success');
     } catch (e) {
         if (e instanceof Error) {
-            setStatusMessage({ type: 'error', text: e.message });
+            showToast(e.message, 'error');
         } else {
-            setStatusMessage({ type: 'error', text: 'An error occurred while processing the refund.' });
+            showToast('An error occurred while processing the refund.', 'error');
         }
     } finally {
         setViewingSale(null);
@@ -187,7 +184,7 @@ export const Reports: React.FC = () => {
   const handleDeleteSale = () => {
     if (!viewingSale) return;
     const result = deleteSale(viewingSale.id);
-    setStatusMessage({type: result.success ? 'success' : 'error', text: result.message || 'An error occurred.'});
+    showToast(result.message || 'An error occurred.', result.success ? 'success' : 'error');
     setIsDeleteConfirmOpen(false);
     setViewingSale(null);
   };
@@ -308,7 +305,7 @@ export const Reports: React.FC = () => {
         productCurrentPage * productItemsPerPage
     );
   }, [filteredAndSortedProducts, productCurrentPage, productItemsPerPage]);
-  
+
   const SortableSaleHeader: React.FC<{ children: React.ReactNode, sortKey: SortableSaleKeys }> = ({ children, sortKey }) => {
     const isSorted = saleSortConfig.key === sortKey;
     return (
@@ -324,6 +321,7 @@ export const Reports: React.FC = () => {
   };
 
   const SortableProductHeader: React.FC<{ children: React.ReactNode, sortKey: SortableProductKeys }> = ({ children, sortKey }) => {
+    // FIX: Changed `key` to `sortKey` to fix "Cannot find name 'key'" error.
     const isSorted = productSortConfig.key === sortKey;
     return (
         <th scope="col" className="px-6 py-3">
@@ -341,15 +339,6 @@ export const Reports: React.FC = () => {
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Reports</h1>
-
-      {statusMessage && (
-        <div className={`border px-4 py-3 rounded relative mb-4 ${statusMessage.type === 'success' ? 'bg-green-100 border-green-400 text-green-700' : 'bg-red-100 border-red-400 text-red-700'}`} role="alert">
-          <span className="block sm:inline">{statusMessage.text}</span>
-          <span className="absolute top-0 bottom-0 right-0 px-4 py-3" onClick={() => setStatusMessage(null)}>
-            <svg className="fill-current h-6 w-6" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z"/></svg>
-          </span>
-        </div>
-      )}
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
         <div className="p-4 space-y-4">
@@ -397,8 +386,8 @@ export const Reports: React.FC = () => {
             </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-            <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0">
+          <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
+            <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
               <tr>
                 <SortableSaleHeader sortKey="id">ID</SortableSaleHeader>
                 <SortableSaleHeader sortKey="date">Date</SortableSaleHeader>
@@ -409,16 +398,16 @@ export const Reports: React.FC = () => {
                 {currentUser.role === UserRole.Admin && <SortableSaleHeader sortKey="profit">Profit</SortableSaleHeader>}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {paginatedSales.map(s => (
-                <tr key={s.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                  <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">
+                <tr key={s.id}>
+                  <td data-label="ID" className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">
                     <button onClick={() => setViewingSale(s)} className="text-blue-600 dark:text-blue-400 hover:underline font-mono">
                       {s.id}
                     </button>
                   </td>
-                  <td className="px-6 py-4">{new Date(s.date).toLocaleString()}</td>
-                  <td className="px-6 py-4">
+                  <td data-label="Date" className="px-6 py-4">{formatDateTime(s.date)}</td>
+                  <td data-label="Status" className="px-6 py-4">
                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                         s.type === 'Return' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' :
                         s.status === 'Refunded' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
@@ -428,12 +417,12 @@ export const Reports: React.FC = () => {
                         {s.type === 'Sale' ? s.status : s.type}
                     </span>
                   </td>
-                  <td className="px-6 py-4">{s.salespersonName}</td>
-                  <td className="px-6 py-4">
+                  <td data-label="Salesperson" className="px-6 py-4">{s.salespersonName}</td>
+                  <td data-label="Items" className="px-6 py-4">
                     {s.items.reduce((sum, item) => sum + item.quantity, 0)}
                   </td>
-                  <td className="px-6 py-4">{formatCurrency(s.total)}</td>
-                  {currentUser.role === UserRole.Admin && <td className="px-6 py-4">{formatCurrency(s.profit)}</td>}
+                  <td data-label="Total" className="px-6 py-4">{formatCurrency(s.total)}</td>
+                  {currentUser.role === UserRole.Admin && <td data-label="Profit" className="px-6 py-4">{formatCurrency(s.profit)}</td>}
                 </tr>
               ))}
             </tbody>
@@ -473,8 +462,8 @@ export const Reports: React.FC = () => {
             </div>
         </div>
         <div className="overflow-x-auto">
-           <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-            <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0">
+           <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
+            <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
               <tr>
                 <SortableProductHeader sortKey="sku">SKU</SortableProductHeader>
                 <SortableProductHeader sortKey="name">Name</SortableProductHeader>
@@ -483,14 +472,14 @@ export const Reports: React.FC = () => {
                 <th scope="col" className="px-6 py-3">Status</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {paginatedProducts.map(p => (
-                <tr key={p.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                  <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{p.sku}</td>
-                  <td className="px-6 py-4">{p.name}</td>
-                  <td className="px-6 py-4">{p.stock}</td>
-                  <td className="px-6 py-4">{p.lowStockThreshold}</td>
-                  <td className="px-6 py-4">
+                <tr key={p.id}>
+                  <td data-label="SKU" className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{p.sku}</td>
+                  <td data-label="Name" className="px-6 py-4">{p.name}</td>
+                  <td data-label="Stock" className="px-6 py-4">{p.stock}</td>
+                  <td data-label="Low Stock Threshold" className="px-6 py-4">{p.lowStockThreshold}</td>
+                  <td data-label="Status" className="px-6 py-4">
                     {p.stock <= 0 ? 
                       <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">Out of Stock</span> :
                     p.stock <= p.lowStockThreshold ?

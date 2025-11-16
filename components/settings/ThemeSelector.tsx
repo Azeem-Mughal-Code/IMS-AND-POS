@@ -1,9 +1,9 @@
 import React from 'react';
 import { SunIcon, MoonIcon, ComputerDesktopIcon } from '../Icons';
-import { useAppContext } from '../context/AppContext';
+import { useSettings } from '../context/SettingsContext';
 
 export const ThemeSelector: React.FC = () => {
-    const { theme, setTheme } = useAppContext();
+    const { theme, setTheme } = useSettings();
     const options = [
         { value: 'light', label: 'Light', icon: <SunIcon /> },
         { value: 'dark', label: 'Dark', icon: <MoonIcon /> },

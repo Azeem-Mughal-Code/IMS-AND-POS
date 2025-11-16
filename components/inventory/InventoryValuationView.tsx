@@ -1,6 +1,9 @@
 import React, { useMemo } from 'react';
 import { Product } from '../../types';
-import { useAppContext } from '../context/AppContext';
+// FIX: Replaced useAppContext with specific context hooks to resolve import error.
+import { useProducts } from '../context/ProductContext';
+import { useUIState } from '../context/UIStateContext';
+import { useSettings } from '../context/SettingsContext';
 import { Pagination } from '../common/Pagination';
 import { SearchIcon, ChevronUpIcon, ChevronDownIcon } from '../Icons';
 
@@ -14,7 +17,10 @@ type ValuationData = {
 type SortableValuationKeys = 'sku' | 'name' | 'stock' | 'totalCostValue' | 'totalRetailValue' | 'potentialProfit';
 
 export const InventoryValuationView: React.FC = () => {
-    const { products, reportsViewState, onReportsInventoryValuationViewUpdate, formatCurrency } = useAppContext();
+    // FIX: Replaced useAppContext with specific context hooks.
+    const { products } = useProducts();
+    const { reportsViewState, onReportsInventoryValuationViewUpdate } = useUIState();
+    const { formatCurrency } = useSettings();
     const { searchTerm, sortConfig, currentPage, itemsPerPage } = reportsViewState.inventoryValuation;
 
     const requestSort = (key: SortableValuationKeys) => {
@@ -86,8 +92,8 @@ export const InventoryValuationView: React.FC = () => {
                 </div>
             </div>
             <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                    <thead className="text-xs text-gray-700 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700">
+                <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
+                    <thead className="text-xs text-gray-700 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700 sticky top-0 z-10">
                         <tr>
                             <SortableHeader sortKey="sku">SKU</SortableHeader>
                             <SortableHeader sortKey="name">Name</SortableHeader>
@@ -99,22 +105,22 @@ export const InventoryValuationView: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                         {paginated.map(v => (
-                            <tr key={v.product.id} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-600">
-                                <td className="px-6 py-4 font-mono">{v.product.sku}</td>
-                                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{v.product.name}</td>
-                                <td className="px-6 py-4">{v.product.stock}</td>
-                                <td className="px-6 py-4">{formatCurrency(v.totalCostValue)}</td>
-                                <td className="px-6 py-4">{formatCurrency(v.totalRetailValue)}</td>
-                                <td className="px-6 py-4">{formatCurrency(v.potentialProfit)}</td>
+                            <tr key={v.product.id}>
+                                <td data-label="SKU" className="px-6 py-4 font-mono">{v.product.sku}</td>
+                                <td data-label="Name" className="px-6 py-4 font-medium text-gray-900 dark:text-white">{v.product.name}</td>
+                                <td data-label="Stock" className="px-6 py-4">{v.product.stock}</td>
+                                <td data-label="Total Cost" className="px-6 py-4">{formatCurrency(v.totalCostValue)}</td>
+                                <td data-label="Total Retail" className="px-6 py-4">{formatCurrency(v.totalRetailValue)}</td>
+                                <td data-label="Potential Profit" className="px-6 py-4">{formatCurrency(v.potentialProfit)}</td>
                             </tr>
                         ))}
                     </tbody>
                      <tfoot className="bg-gray-50 dark:bg-gray-700 font-semibold text-gray-600 dark:text-gray-300">
                         <tr>
                             <td colSpan={3} className="px-6 py-3 text-right">Totals:</td>
-                            <td className="px-6 py-3">{formatCurrency(totals.totalCost)}</td>
-                            <td className="px-6 py-3">{formatCurrency(totals.totalRetail)}</td>
-                            <td className="px-6 py-3">{formatCurrency(totals.totalProfit)}</td>
+                            <td data-label="Total Cost Value" className="px-6 py-3">{formatCurrency(totals.totalCost)}</td>
+                            <td data-label="Total Retail Value" className="px-6 py-3">{formatCurrency(totals.totalRetail)}</td>
+                            <td data-label="Total Potential Profit" className="px-6 py-3">{formatCurrency(totals.totalProfit)}</td>
                         </tr>
                     </tfoot>
                 </table>

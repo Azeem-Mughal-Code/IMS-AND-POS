@@ -2,9 +2,13 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { Product, CartItem, PaymentType, Sale, Payment } from '../types';
 import { SearchIcon, PlusIcon, MinusIcon, TrashIcon, PhotoIcon } from './Icons';
 import { Modal } from './common/Modal';
-import { useAppContext } from './context/AppContext';
 import { PrintableReceipt } from './common/PrintableReceipt';
 import { UserRole } from '../types';
+import { useProducts } from './context/ProductContext';
+import { useSales } from './context/SalesContext';
+import { useAuth } from './context/AuthContext';
+import { useSettings } from './context/SettingsContext';
+import { useUIState } from './context/UIStateContext';
 
 declare var html2canvas: any;
 
@@ -16,7 +20,7 @@ const SimplePaymentModalContent: React.FC<{
     onCompleteSale: (payments: Payment[]) => void;
     onClose: () => void;
 }> = ({ total, onCompleteSale, onClose }) => {
-    const { isChangeDueEnabled, isIntegerCurrency, formatCurrency } = useAppContext();
+    const { isChangeDueEnabled, isIntegerCurrency, formatCurrency } = useSettings();
     const [amountTendered, setAmountTendered] = useState(total.toFixed(isIntegerCurrency ? 0 : 2));
 
     useEffect(() => {
@@ -83,7 +87,7 @@ const PaymentModalContent: React.FC<{
     onCompleteSale: (payments: Payment[]) => void,
     onClose: () => void,
 }> = ({ total, onCompleteSale, onClose }) => {
-    const { isChangeDueEnabled, isIntegerCurrency, formatCurrency } = useAppContext();
+    const { isChangeDueEnabled, isIntegerCurrency, formatCurrency } = useSettings();
     const [payments, setPayments] = useState<Payment[]>([]);
     const [currentAmount, setCurrentAmount] = useState('');
 
@@ -188,19 +192,48 @@ const PaymentModalContent: React.FC<{
 
 
 export const POS: React.FC<POSProps> = () => {
-  const { products, sales, processSale, currentUser, isSplitPaymentEnabled, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, isIntegerCurrency, cashierPermissions, formatCurrency } = useAppContext();
+  const { products } = useProducts();
+  const { sales, processSale } = useSales();
+  const { currentUser } = useAuth();
+  const { isSplitPaymentEnabled, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, isIntegerCurrency, cashierPermissions, formatCurrency, formatDateTime } = useSettings();
+  const { showToast } = useUIState();
+
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentModalKey, setPaymentModalKey] = useState(Date.now());
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [lastSale, setLastSale] = useState<Sale | null>(null);
   const [mode, setMode] = useState<'Sale' | 'Return'>('Sale');
   const [selectedSaleForReturn, setSelectedSaleForReturn] = useState<Sale | null>(null);
   const [returnSearchTerm, setReturnSearchTerm] = useState('');
-  const [feedback, setFeedback] = useState<{ type: 'error', text: string } | null>(null);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const printableAreaRef = useRef<HTMLDivElement>(null);
 
   const canProcessReturns = currentUser.role === UserRole.Admin || cashierPermissions.canProcessReturns;
+  
+  const openPaymentModal = useCallback(() => {
+    if (cart.length > 0) {
+        setPaymentModalKey(Date.now());
+        setIsPaymentModalOpen(true);
+    }
+  }, [cart]);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+        if (e.altKey && e.key.toLowerCase() === 'p') {
+            e.preventDefault();
+            openPaymentModal();
+        }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [openPaymentModal]);
+  
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [mode]);
 
   const handleSaveAsImage = () => {
     if (printableAreaRef.current) {
@@ -244,11 +277,9 @@ export const POS: React.FC<POSProps> = () => {
     setSearchTerm('');
     setSelectedSaleForReturn(null);
     setReturnSearchTerm('');
-    setFeedback(null);
   };
   
   const addToCart = (product: Product) => {
-    setFeedback(null);
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item.id === product.id);
       if (existingItem) {
@@ -265,6 +296,7 @@ export const POS: React.FC<POSProps> = () => {
       return prevCart;
     });
     setSearchTerm('');
+    setHighlightedIndex(-1);
   };
 
   const updateQuantity = (productId: string, change: number) => {
@@ -393,9 +425,9 @@ export const POS: React.FC<POSProps> = () => {
         }
     } catch (error) {
         if (error instanceof Error) {
-            setFeedback({ type: 'error', text: error.message });
+            showToast(error.message, 'error');
         } else {
-            setFeedback({ type: 'error', text: 'An unknown error occurred while processing the sale.' });
+            showToast('An unknown error occurred while processing the sale.', 'error');
         }
         setIsPaymentModalOpen(false);
     }
@@ -417,6 +449,24 @@ export const POS: React.FC<POSProps> = () => {
       .slice(0, 10);
   }, [sales, returnSearchTerm]);
 
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setHighlightedIndex(prev => Math.min(prev + 1, filteredProducts.length - 1));
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setHighlightedIndex(prev => Math.max(prev - 1, 0));
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (highlightedIndex >= 0 && highlightedIndex < filteredProducts.length) {
+            addToCart(filteredProducts[highlightedIndex]);
+        }
+    } else if (e.key === 'Escape') {
+        setSearchTerm('');
+        setHighlightedIndex(-1);
+    }
+  };
+
 
   const renderSaleMode = () => (
     <>
@@ -425,17 +475,23 @@ export const POS: React.FC<POSProps> = () => {
           <SearchIcon />
         </div>
         <input
+          ref={searchInputRef}
           type="text"
           placeholder="Scan barcode or search product..."
           value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
+          onChange={e => { setSearchTerm(e.target.value); setHighlightedIndex(-1); }}
+          onKeyDown={handleSearchKeyDown}
           className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 focus:ring-blue-500 focus:border-blue-500"
         />
         {searchTerm && (
           <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
             {filteredProducts.length > 0 ? (
-              filteredProducts.map(p => (
-                <div key={p.id} onClick={() => addToCart(p)} className="p-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer flex justify-between">
+              filteredProducts.map((p, index) => (
+                <div 
+                    key={p.id} 
+                    onClick={() => addToCart(p)} 
+                    className={`p-3 cursor-pointer flex justify-between ${highlightedIndex === index ? 'bg-blue-100 dark:bg-blue-900' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                >
                   <span>{p.name}</span>
                   <span className="text-gray-500 dark:text-gray-400">{formatCurrency(p.retailPrice)}</span>
                 </div>
@@ -504,7 +560,7 @@ export const POS: React.FC<POSProps> = () => {
                     <span className="font-semibold text-gray-900 dark:text-white truncate">Receipt ID: <span className="font-mono">{sale.id}</span></span>
                     <span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(sale.total)}</span>
                  </div>
-                 <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{new Date(sale.date).toLocaleString()} &middot; {sale.status}</div>
+                 <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{formatDateTime(sale.date)} &middot; {sale.status}</div>
                </div>
              )) : <div className="p-10 text-center text-gray-500">No returnable sales found.</div>}
           </div>
@@ -520,7 +576,7 @@ export const POS: React.FC<POSProps> = () => {
                     <h3 className="font-semibold text-gray-800 dark:text-white truncate">Returning items from <span className="font-mono">{selectedSaleForReturn.id}</span></h3>
                     <button onClick={() => { setSelectedSaleForReturn(null); setCart([]); }} className="text-sm text-blue-600 hover:underline">Change Sale</button>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{new Date(selectedSaleForReturn.date).toLocaleString()}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{formatDateTime(selectedSaleForReturn.date)}</p>
             </div>
         </div>
         <div className="flex-grow bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-y-auto">
@@ -595,11 +651,6 @@ export const POS: React.FC<POSProps> = () => {
                 </button>
             )}
         </div>
-        {feedback && (
-          <div className={`mb-4 px-4 py-3 rounded-md text-sm ${feedback.type === 'error' ? 'bg-red-100 dark:bg-red-900 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-200' : ''}`} role="alert">
-            {feedback.text}
-          </div>
-        )}
         {mode === 'Sale' ? renderSaleMode() : renderReturnMode()}
       </div>
       
@@ -630,11 +681,11 @@ export const POS: React.FC<POSProps> = () => {
             </div>
           </div>
           <button
-            onClick={() => setIsPaymentModalOpen(true)}
+            onClick={openPaymentModal}
             disabled={cart.length === 0}
             className={`w-full text-white font-bold py-4 rounded-lg text-xl disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors ${mode === 'Sale' ? 'bg-green-500 hover:bg-green-600' : 'bg-orange-500 hover:bg-orange-600'}`}
           >
-            {mode === 'Sale' ? 'PAY' : 'REFUND'}
+            {mode === 'Sale' ? 'PAY' : 'REFUND'} <span className="text-sm font-normal">(Alt + P)</span>
           </button>
         </div>
       </div>
@@ -642,12 +693,14 @@ export const POS: React.FC<POSProps> = () => {
       <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Payment">
         {isSplitPaymentEnabled ? (
             <PaymentModalContent 
+                key={paymentModalKey}
                 total={Math.abs(totals.total)} 
                 onCompleteSale={handleCompleteSale}
                 onClose={() => setIsPaymentModalOpen(false)}
             />
         ) : (
             <SimplePaymentModalContent
+                key={paymentModalKey}
                 total={Math.abs(totals.total)}
                 onCompleteSale={handleCompleteSale}
                 onClose={() => setIsPaymentModalOpen(false)}

@@ -16,6 +16,15 @@ export enum PaymentType {
   Other = 'Other',
 }
 
+export interface PriceHistoryEntry {
+  date: string;
+  priceType: 'retail' | 'cost';
+  oldValue: number;
+  newValue: number;
+  userId: string;
+  userName: string;
+}
+
 export interface Product {
   id: string;
   sku: string;
@@ -24,6 +33,7 @@ export interface Product {
   costPrice: number;
   stock: number;
   lowStockThreshold: number;
+  priceHistory: PriceHistoryEntry[];
 }
 
 export interface CartItem extends Product {
@@ -175,17 +185,7 @@ export interface POViewState {
     itemsPerPage: number;
 }
 
-// FIX: Added missing ProcurementViewState for procurement feature.
-type SupplierSortKeys = keyof Omit<Supplier, 'id' | 'address'>;
-export interface ProcurementViewState {
-    suppliers: {
-        searchTerm: string;
-        sortConfig: SortConfig<SupplierSortKeys>;
-        currentPage: number;
-        itemsPerPage: number;
-    };
-    purchaseOrders: POViewState;
-}
+export type SupplierSortKeys = keyof Omit<Supplier, 'id' | 'address'>;
 
 // FIX: Added missing PaddingLevel type for the unused PaddingSelector component.
 export type PaddingLevel = 'xs' | 'sm' | 'md' | 'lg' | 'xl';

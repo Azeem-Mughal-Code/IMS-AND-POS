@@ -2,8 +2,12 @@ import React, { useState, useRef, useMemo } from 'react';
 import { Modal } from '../common/Modal';
 import { ExportIcon, ImportIcon, DangerIcon, ShieldCheckIcon } from '../Icons';
 import { Product, Sale, PruneTarget } from '../../types';
-import { useAppContext } from '../context/AppContext';
 import { Dropdown } from '../common/Dropdown';
+import { useAuth } from '../context/AuthContext';
+import { useProducts } from '../context/ProductContext';
+import { useSales } from '../context/SalesContext';
+import { useSettings } from '../context/SettingsContext';
+import { useUIState } from '../context/UIStateContext';
 
 const StatusCheckbox: React.FC<{
     label: string;
@@ -22,13 +26,15 @@ const StatusCheckbox: React.FC<{
 );
 
 export const DataManagement: React.FC = () => {
+    const { currentUser, users } = useAuth();
+    const { products, importProducts, factoryReset: productReset } = useProducts();
+    const { sales, purchaseOrders, clearSales, factoryReset: salesReset, pruneData: pruneSalesData } = useSales();
     const { 
-        currentUser, businessName, products, sales, importProducts, clearSales, factoryReset,
-        theme, itemsPerPage, currency, currencies, currencyDisplay, isSplitPaymentEnabled,
+        businessName, theme, itemsPerPage, currency, currencies, currencyDisplay, isSplitPaymentEnabled,
         isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled,
-        discountRate, discountThreshold, cashierPermissions, users, inventoryAdjustments,
-        purchaseOrders, notifications, restoreBackup, pruneData, showToast
-    } = useAppContext();
+        discountRate, discountThreshold, cashierPermissions, restoreBackup
+    } = useSettings();
+    const { notifications, factoryReset: uiReset, pruneData: pruneUiData, showToast } = useUIState();
     
     const [isImportExportOpen, setIsImportExportOpen] = useState(false);
     const [isBackupRestoreOpen, setIsBackupRestoreOpen] = useState(false);
@@ -37,12 +43,10 @@ export const DataManagement: React.FC = () => {
     // State for Import/Export Modal
     const [activeImpExpTab, setActiveImpExpTab] = useState<'export' | 'import'>('export');
     const [importFile, setImportFile] = useState<File | null>(null);
-    const [importFeedback, setImportFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // State for Backup/Restore Modal
     const [backupFile, setBackupFile] = useState<File | null>(null);
-    const [backupFeedback, setBackupFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null);
     const [restorePassword, setRestorePassword] = useState('');
     const backupFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -73,6 +77,22 @@ export const DataManagement: React.FC = () => {
     };
     const handlePruneSelectAll = (checked: boolean) => setPruneStatuses(checked ? saleStatuses : []);
     const allPruneStatusesSelected = pruneStatuses.length === saleStatuses.length;
+    
+    const factoryReset = () => {
+        // This needs to call the reset function from each context
+        productReset(currentUser);
+        salesReset();
+        uiReset();
+    };
+
+    const pruneData = (target: PruneTarget, options: { days: number; statuses?: (Sale['status'])[] }): { success: boolean; message: string } => {
+        if(target === 'sales' || target === 'purchaseOrders') {
+            return pruneSalesData(target, options);
+        } else {
+            return pruneUiData(target, options);
+        }
+    };
+
 
     const convertToCSV = (data: any[], type: 'products' | 'sales') => {
         if (!data || data.length === 0) return '';
@@ -106,46 +126,44 @@ export const DataManagement: React.FC = () => {
     };
 
     const handleImport = () => {
-        if (!importFile) { setImportFeedback({ type: 'error', message: 'Please select a file to import.' }); return; }
+        if (!importFile) { showToast('Please select a file to import.', 'error'); return; }
         const reader = new FileReader();
         reader.onload = (e) => {
             const text = e.target?.result as string;
             const rows = text.split('\n').filter(row => row.trim() !== '');
-            if (rows.length < 2) { setImportFeedback({ type: 'error', message: 'CSV file is empty or contains only a header.' }); return; }
+            if (rows.length < 2) { showToast('CSV file is empty or contains only a header.', 'error'); return; }
             const header = rows[0].trim().split(',');
             const requiredHeaders = ['sku', 'name', 'retailPrice', 'costPrice', 'stock', 'lowStockThreshold'];
-            if (!requiredHeaders.every(h => header.includes(h))) { setImportFeedback({ type: 'error', message: `Invalid CSV header. Must include: ${requiredHeaders.join(', ')}` }); return; }
+            if (!requiredHeaders.every(h => header.includes(h))) { showToast(`Invalid CSV header. Must include: ${requiredHeaders.join(', ')}`, 'error'); return; }
             const newProducts: Omit<Product, 'id'>[] = [];
             for (let i = 1; i < rows.length; i++) {
                 const values = rows[i].trim().split(',');
                 const productData: any = {};
                 header.forEach((h, index) => productData[h] = values[index]);
-                newProducts.push({ sku: productData.sku, name: productData.name, retailPrice: parseFloat(productData.retailPrice), costPrice: parseFloat(productData.costPrice), stock: parseInt(productData.stock, 10), lowStockThreshold: parseInt(productData.lowStockThreshold, 10) });
+                newProducts.push({ sku: productData.sku, name: productData.name, retailPrice: parseFloat(productData.retailPrice), costPrice: parseFloat(productData.costPrice), stock: parseInt(productData.stock, 10), lowStockThreshold: parseInt(productData.lowStockThreshold, 10), priceHistory: [] });
             }
             const result = importProducts(newProducts);
-            // FIX: Map the result from importProducts to the feedback state shape.
-            setImportFeedback({ type: result.success ? 'success' : 'error', message: result.message });
+            showToast(result.message, result.success ? 'success' : 'error');
         };
         reader.readAsText(importFile);
     };
 
     const handleCreateBackup = () => {
-        const backupData = { businessName, products, sales, inventoryAdjustments, users, purchaseOrders, notifications, itemsPerPage, currency, currencies, currencyDisplay, isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, cashierPermissions, theme };
+        const backupData = { businessName, products, sales, inventoryAdjustments: [], purchaseOrders, notifications, itemsPerPage, currency, currencies, currencyDisplay, isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, cashierPermissions, theme, users };
         const date = new Date().toISOString().split('T')[0];
         downloadFile(JSON.stringify(backupData, null, 2), `ims-backup-${businessName}-${date}.json`, 'application/json');
     };
 
     const handleRestoreBackup = async () => {
-        setBackupFeedback(null);
-        if (!backupFile) { setBackupFeedback({ type: 'error', message: 'Please select a backup file.' }); return; }
-        if (restorePassword !== currentUser.password) { setBackupFeedback({ type: 'error', message: 'Incorrect admin password.' }); return; }
+        if (!backupFile) { showToast('Please select a backup file.', 'error'); return; }
+        if (restorePassword !== currentUser.password) { showToast('Incorrect admin password.', 'error'); return; }
         try {
             const fileContent = await backupFile.text();
             const backupData = JSON.parse(fileContent);
             const result = restoreBackup(backupData);
-            setBackupFeedback({ type: result.success ? 'success' : 'error', message: result.message });
+            showToast(result.message, result.success ? 'success' : 'error');
             if (result.success) { setTimeout(() => window.location.reload(), 2000); }
-        } catch (error) { setBackupFeedback({ type: 'error', message: 'Failed to read or parse backup file. Is it a valid JSON backup?' }); }
+        } catch (error) { showToast('Failed to read or parse backup file. Is it a valid JSON backup?', 'error'); }
     };
 
     const dangerDetails = useMemo(() => {
@@ -245,8 +263,7 @@ export const DataManagement: React.FC = () => {
                             <h4 className="font-semibold text-gray-800 dark:text-white">CSV File Format</h4>
                             <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">Your CSV file must contain the following columns: <code className="text-xs bg-gray-100 dark:bg-gray-700 p-1 rounded-md">sku,name,retailPrice,costPrice,stock,lowStockThreshold</code>. Products with existing SKUs will be skipped.</p>
                         </div>
-                        <input type="file" accept=".csv" ref={fileInputRef} onChange={e => { if (e.target.files) setImportFile(e.target.files[0]); setImportFeedback(null); }} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-800" />
-                        {importFeedback && <div className={`text-sm p-3 rounded-md ${importFeedback.type === 'success' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' : 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'}`}>{importFeedback.message}</div>}
+                        <input type="file" accept=".csv" ref={fileInputRef} onChange={e => { if (e.target.files) setImportFile(e.target.files[0]); }} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-800" />
                         <div className="flex justify-end pt-2"><button onClick={handleImport} disabled={!importFile} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400">Import</button></div>
                     </div>
                 )}
@@ -263,9 +280,8 @@ export const DataManagement: React.FC = () => {
                         <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Restore from Backup</h3>
                         <p className="text-sm text-red-600 dark:text-red-400 mt-1">Restoring will overwrite all current data. This action is irreversible.</p>
                         <div className="mt-4 space-y-4">
-                            <input type="file" accept=".json" ref={backupFileInputRef} onChange={e => { if (e.target.files) setBackupFile(e.target.files[0]); setBackupFeedback(null); }} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-800" />
+                            <input type="file" accept=".json" ref={backupFileInputRef} onChange={e => { if (e.target.files) setBackupFile(e.target.files[0]); }} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-800" />
                             <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Admin Password</label><input type="password" value={restorePassword} onChange={e => setRestorePassword(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700" /></div>
-                            {backupFeedback && <div className={`text-sm p-3 rounded-md ${backupFeedback.type === 'success' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' : 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'}`}>{backupFeedback.message}</div>}
                             <div className="flex justify-end pt-2"><button onClick={handleRestoreBackup} disabled={!backupFile || !restorePassword} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400">Restore Data</button></div>
                         </div>
                     </div>
@@ -320,7 +336,7 @@ export const DataManagement: React.FC = () => {
                             </div>
                             {pruneTarget === 'sales' && <div>
                                  <p className="text-sm font-medium text-yellow-700 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/50 p-3 rounded-md mb-4">
-                                    Pruning sales will also remove their associated return transactions and stock history. Stock levels for products will not be affected.
+                                    When a sales receipt is pruned, its related return receipts and stock history will also be permanently deleted. Product stock levels will not be changed.
                                 </p>
                                 <h4 className="text-sm font-medium mb-2">Only prune sales with these statuses:</h4>
                                 <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-md flex flex-wrap gap-x-6 gap-y-2">
@@ -333,7 +349,7 @@ export const DataManagement: React.FC = () => {
 
                         {dangerAction === 'clearSales' && <>
                             <p className="text-sm text-gray-600 dark:text-gray-400">
-                                You are about to permanently delete sales records based on the statuses you select. This action will also remove all associated return transactions and their stock history entries. <strong className="text-gray-800 dark:text-gray-200">Product stock levels will not be changed.</strong> This is irreversible.
+                                You are about to permanently delete sales receipts based on the statuses you select. When a sales receipt is deleted, its related return receipts and stock history entries will also be deleted. <strong className="text-gray-800 dark:text-gray-200">Product stock levels will not be changed.</strong> This is irreversible.
                             </p>
                             <div><h4 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">Select sales data to clear:</h4><div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-md flex flex-wrap gap-x-6 gap-y-2"><StatusCheckbox label="All Sales Data" checked={allClearStatusesSelected} onChange={handleClearSelectAll} />{saleStatuses.map(s => <StatusCheckbox key={s} label={s} checked={clearSaleStatuses.includes(s)} onChange={c => handleClearStatusChange(s, c)} />)}</div><p className="text-xs text-gray-500 mt-1">If no statuses are selected, no sales data will be cleared.</p></div>
                         </>}

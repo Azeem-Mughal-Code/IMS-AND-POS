@@ -3,7 +3,6 @@ import { UserRole } from '../types';
 import { UserSettings } from './UserSettings';
 import { Modal } from './common/Modal';
 import { LogoutIcon } from './Icons';
-import { useAppContext } from './context/AppContext';
 import { AccordionSection } from './common/AccordionSection';
 import { ToggleSwitch } from './common/ToggleSwitch';
 import { Dropdown } from './common/Dropdown';
@@ -12,15 +11,19 @@ import { DataManagement } from './settings/DataManagement';
 import { CurrencyDisplaySelector } from './settings/CurrencyDisplaySelector';
 import { CurrencyManager } from './settings/CurrencyManager';
 import { ZoomSelector } from './settings/ZoomSelector';
+import { useAuth } from './context/AuthContext';
+import { useSettings } from './context/SettingsContext';
+import { TimezoneSelector } from './settings/TimezoneSelector';
 
 export const Settings: React.FC = () => {
+    const { currentUser, updateUser, onLogout } = useAuth();
     const { 
-        currentUser, updateUser, onLogout, itemsPerPage, setItemsPerPage,
+        itemsPerPage, setItemsPerPage,
         isSplitPaymentEnabled, setIsSplitPaymentEnabled, isChangeDueEnabled, setIsChangeDueEnabled,
         isIntegerCurrency, setIsIntegerCurrency, isTaxEnabled, setIsTaxEnabled, taxRate, setTaxRate,
         isDiscountEnabled, setIsDiscountEnabled, discountRate, setDiscountRate, discountThreshold, setDiscountThreshold,
         cashierPermissions
-    } = useAppContext();
+    } = useSettings();
 
     const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
     
@@ -108,6 +111,10 @@ export const Settings: React.FC = () => {
                      <div>
                         <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Zoom Level</h3>
                         <ZoomSelector />
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Timezone</h3>
+                        <TimezoneSelector />
                     </div>
                     <div>
                         <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Rows Per Page</h3>

@@ -1,10 +1,12 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { User, UserRole, CashierPermissions } from '../types';
 import { Modal } from './common/Modal';
 import { Pagination } from './common/Pagination';
 import { TrashIcon, PlusIcon, SearchIcon, ChevronUpIcon, ChevronDownIcon, PencilIcon, ShieldCheckIcon } from './Icons';
-import { useAppContext } from './context/AppContext';
 import { ToggleSwitch } from './common/ToggleSwitch';
+import { useAuth } from './context/AuthContext';
+import { useUIState } from './context/UIStateContext';
+import { useSettings } from './context/SettingsContext';
 
 const UserForm: React.FC<{
     user?: User | null;
@@ -55,7 +57,7 @@ const UserForm: React.FC<{
 const PermissionsModal: React.FC<{
     onClose: () => void;
 }> = ({ onClose }) => {
-    const { cashierPermissions, setCashierPermissions } = useAppContext();
+    const { cashierPermissions, setCashierPermissions } = useSettings();
     const [localPermissions, setLocalPermissions] = useState<CashierPermissions>(cashierPermissions);
 
     const handleToggle = (key: keyof CashierPermissions, value: boolean) => {
@@ -75,39 +77,39 @@ const PermissionsModal: React.FC<{
             <div className="space-y-4">
                 <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 border-b pb-2 mb-2 dark:border-gray-600">Page Access</h4>
                 <ToggleSwitch
-                    enabled={localPermissions.canViewDashboard}
+                    enabled={!!localPermissions.canViewDashboard}
                     onChange={(val) => handleToggle('canViewDashboard', val)}
                     label="Can View Dashboard Page"
                 />
                  <ToggleSwitch
-                    enabled={localPermissions.canViewInventory}
+                    enabled={!!localPermissions.canViewInventory}
                     onChange={(val) => handleToggle('canViewInventory', val)}
                     label="Can View Inventory Page"
                 />
                 <ToggleSwitch
-                    enabled={localPermissions.canViewReports}
+                    enabled={!!localPermissions.canViewReports}
                     onChange={(val) => handleToggle('canViewReports', val)}
                     label="Can View Reports Page"
                 />
                 <ToggleSwitch
-                    enabled={localPermissions.canViewAnalysis}
+                    enabled={!!localPermissions.canViewAnalysis}
                     onChange={(val) => handleToggle('canViewAnalysis', val)}
                     label="Can View Analysis Page"
                 />
 
                 <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 border-b pb-2 mb-2 pt-4 dark:border-gray-600">Action & Settings Permissions</h4>
                 <ToggleSwitch
-                    enabled={localPermissions.canProcessReturns}
+                    enabled={!!localPermissions.canProcessReturns}
                     onChange={(val) => handleToggle('canProcessReturns', val)}
                     label="Can Process Returns in POS"
                 />
                  <ToggleSwitch
-                    enabled={localPermissions.canEditOwnProfile}
+                    enabled={!!localPermissions.canEditOwnProfile}
                     onChange={(val) => handleToggle('canEditOwnProfile', val)}
                     label="Can Edit Own Profile"
                 />
                  <ToggleSwitch
-                    enabled={localPermissions.canEditBehaviorSettings}
+                    enabled={!!localPermissions.canEditBehaviorSettings}
                     onChange={(val) => handleToggle('canEditBehaviorSettings', val)}
                     label="Can Edit Behavior Settings"
                 />
@@ -123,23 +125,14 @@ const PermissionsModal: React.FC<{
 type SortableUserKeys = 'username' | 'role';
 
 export const UserSettings: React.FC = () => {
-  const { users, currentUser, addUser, updateUser, deleteUser, usersViewState, onUsersViewUpdate } = useAppContext();
+  const { users, currentUser, addUser, updateUser, deleteUser } = useAuth();
+  const { usersViewState, onUsersViewUpdate, showToast } = useUIState();
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [formError, setFormError] = useState('');
   
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-
-  useEffect(() => {
-    if (feedback) {
-      const timer = setTimeout(() => setFeedback(null), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [feedback]);
-
-
   const { searchTerm, sortConfig, currentPage, itemsPerPage } = usersViewState;
 
   const requestSort = (key: SortableUserKeys) => {
@@ -179,7 +172,7 @@ export const UserSettings: React.FC = () => {
         : addUser(data.username, data.pass, UserRole.Cashier);
     
     if (result.success) {
-        setFeedback({ type: 'success', text: `User ${isEditMode ? 'updated' : 'added'} successfully!` });
+        showToast(`User ${isEditMode ? 'updated' : 'added'} successfully!`, 'success');
         closeUserModal();
     } else {
         setFormError(result.message || `Failed to ${isEditMode ? 'update' : 'add'} user.`);
@@ -188,7 +181,6 @@ export const UserSettings: React.FC = () => {
 
   const handleDeleteClick = (user: User) => {
     if (user.id === currentUser.id) return;
-    setFeedback(null);
     setUserToDelete(user);
   };
 
@@ -196,16 +188,15 @@ export const UserSettings: React.FC = () => {
     if (userToDelete) {
       const result = deleteUser(userToDelete.id);
       if (!result.success) {
-        setFeedback({type: 'error', text: result.message || 'Failed to delete user.'});
+        showToast(result.message || 'Failed to delete user.', 'error');
       } else {
-        setFeedback({type: 'success', text: 'User deleted successfully!'});
+        showToast('User deleted successfully!', 'success');
       }
       setUserToDelete(null);
     }
   };
   
   const openAddModal = () => {
-      setFeedback(null);
       setEditingUser(null);
       setFormError('');
       setIsUserModalOpen(true);
@@ -213,10 +204,9 @@ export const UserSettings: React.FC = () => {
 
   const openEditModal = (user: User) => {
       if (user.role === UserRole.Admin) {
-          setFeedback({ type: 'error', text: 'Admin accounts cannot be edited.' });
+          showToast('Admin accounts cannot be edited.', 'error');
           return;
       }
-      setFeedback(null);
       setEditingUser(user);
       setFormError('');
       setIsUserModalOpen(true);
@@ -256,12 +246,6 @@ export const UserSettings: React.FC = () => {
         </button>
       </div>
 
-      {feedback && (
-        <div className={`my-4 px-4 py-3 rounded-md text-sm ${feedback.type === 'success' ? 'bg-green-100 dark:bg-green-900 border border-green-200 dark:border-green-700 text-green-800 dark:text-green-200' : 'bg-red-100 dark:bg-red-900 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-200'}`} role="alert">
-          {feedback.text}
-        </div>
-      )}
-
       <div className="mt-4">
             <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
@@ -277,20 +261,20 @@ export const UserSettings: React.FC = () => {
             </div>
         </div>
         <div className="overflow-x-auto mt-4">
-          <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-            <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0">
+          <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
+            <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
               <tr>
                 <SortableHeader sortKey="username">Username</SortableHeader>
                 <SortableHeader sortKey="role">Role</SortableHeader>
                 <th scope="col" className="px-6 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {paginatedUsers.map(user => (
-                <tr key={user.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                  <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{user.username} {user.id === currentUser.id && <span className="text-xs font-normal text-gray-500 dark:text-gray-400">(You)</span>}</td>
-                  <td className="px-6 py-4">{user.role}</td>
-                  <td className="px-6 py-4 text-right space-x-2">
+                <tr key={user.id}>
+                  <td data-label="Username" className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{user.username} {user.id === currentUser.id && <span className="text-xs font-normal text-gray-500 dark:text-gray-400">(You)</span>}</td>
+                  <td data-label="Role" className="px-6 py-4">{user.role}</td>
+                  <td data-label="Actions" className="px-6 py-4 text-right space-x-2">
                      <button
                       onClick={() => openEditModal(user)}
                       disabled={user.role === UserRole.Admin}

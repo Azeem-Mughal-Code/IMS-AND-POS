@@ -7,11 +7,15 @@ import { Reports } from '../Reports';
 import { Settings } from '../Settings';
 import { Analysis } from '../Analysis';
 import { DashboardIcon, POSIcon, InventoryIcon, ReportsIcon, SettingsIcon, AnalysisIcon, UserIcon, ChevronDownIcon, LogoutIcon } from '../Icons';
-import { useAppContext } from '../context/AppContext';
 import { ToastContainer } from '../common/ToastContainer';
+import { useAuth } from '../context/AuthContext';
+import { useUIState } from '../context/UIStateContext';
+import { useSettings } from '../context/SettingsContext';
 
 export const MainLayout: React.FC = () => {
-    const { currentUser, businessName, activeView, setActiveView, onLogout, cashierPermissions, toasts, dismissToast } = useAppContext();
+    const { currentUser, onLogout } = useAuth();
+    const { businessName, cashierPermissions } = useSettings();
+    const { activeView, setActiveView, toasts, dismissToast } = useUIState();
     
     const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
     const profileDropdownRef = useRef<HTMLDivElement>(null);
@@ -124,7 +128,7 @@ export const MainLayout: React.FC = () => {
         </aside>
         <main className="flex-1 overflow-y-auto pb-16 md:pb-0">{renderView()}</main>
 
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-around shadow-lg">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-around shadow-lg z-40">
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewDashboard) && <BottomNavItem view="dashboard" icon={<DashboardIcon />} label="Dashboard" />}
             <BottomNavItem view="pos" icon={<POSIcon />} label="POS" />
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewInventory) && <BottomNavItem view="inventory" icon={<InventoryIcon />} label="Inventory" />}

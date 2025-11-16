@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Currency } from '../../types';
-import { useAppContext } from '../context/AppContext';
+import { useSettings } from '../context/SettingsContext';
 import { PlusIcon, PencilIcon, TrashIcon } from '../Icons';
 import { Modal } from '../common/Modal';
 
@@ -51,7 +51,7 @@ const CurrencyForm: React.FC<{
 };
 
 export const CurrencyManager: React.FC = () => {
-    const { currencies, currency, setCurrency, addCurrency, updateCurrency, deleteCurrency } = useAppContext();
+    const { currencies, currency, setCurrency, addCurrency, updateCurrency, deleteCurrency } = useSettings();
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [editingCurrency, setEditingCurrency] = useState<Currency | null>(null);

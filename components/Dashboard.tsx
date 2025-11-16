@@ -1,10 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { Card } from './common/Card';
-import { useAppContext } from './context/AppContext';
 import { BellIcon } from './Icons';
 import { Modal } from './common/Modal';
 import { NotificationsPanel } from './common/NotificationsPanel';
+import { useProducts } from './context/ProductContext';
+import { useSales } from './context/SalesContext';
+import { useUIState } from './context/UIStateContext';
+import { useSettings } from './context/SettingsContext';
 
 type TimeRange = 'today' | 'weekly' | 'monthly' | 'yearly' | 'all';
 
@@ -47,9 +50,18 @@ const yAxisTickFormatter = (value: number) => {
 };
 
 export const Dashboard: React.FC = () => {
-  const { products, sales, notifications, formatCurrency } = useAppContext();
+  const { products } = useProducts();
+  const { sales } = useSales();
+  const { notifications } = useUIState();
+  const { formatCurrency, formatDateTime } = useSettings();
   const [timeRange, setTimeRange] = useState<TimeRange>('weekly');
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+  const tooltipItemSorter = (item: any) => {
+    if (item.dataKey === 'Sales') return 0;
+    if (item.dataKey === 'Profit') return 1;
+    return 2;
+  };
 
   const unreadCount = useMemo(() => notifications.filter(n => !n.isRead).length, [notifications]);
 
@@ -180,7 +192,7 @@ export const Dashboard: React.FC = () => {
                 const [year, month] = key.split('-');
                 const date = new Date(parseInt(year), parseInt(month) - 1);
                 return {
-                    name: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+                    name: formatDateTime(date, { month: 'short', year: '2-digit', hour: undefined, minute: undefined }),
                     Sales: salesByMonth[key],
                     Profit: profitByMonth[key]
                 };
@@ -190,7 +202,7 @@ export const Dashboard: React.FC = () => {
         default:
             return { chartData: [], chartTitle: ''};
     }
-  }, [filteredSales, timeRange]);
+  }, [filteredSales, timeRange, formatDateTime]);
   
   const ChartComponent = timeRange === 'today' ? BarChart : LineChart;
   const ChartElement = timeRange === 'today' ? Bar : Line;
@@ -233,13 +245,14 @@ export const Dashboard: React.FC = () => {
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
         <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-4">Sales & Profit Overview ({chartTitle})</h2>
-        <div style={{ width: '100%', height: 300 }}>
+        <div style={{ width: '100%', height: 300 }} className="[&_*:focus]:outline-none">
           <ResponsiveContainer>
             <ChartComponent data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#4A5568" />
               <XAxis dataKey="name" stroke="#A0AEC0" />
               <YAxis stroke="#A0AEC0" tickFormatter={yAxisTickFormatter} />
               <Tooltip
+                itemSorter={tooltipItemSorter}
                 contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.8)', border: 'none' }}
                 labelStyle={{ color: '#E2E8F0' }}
                 formatter={(value: number, name: string) => [formatCurrency(value), name]}

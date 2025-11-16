@@ -1,6 +1,11 @@
 import React, { useState, useMemo, useRef, forwardRef } from 'react';
-import { PurchaseOrder, POItem, Product } from '../../types';
-import { useAppContext } from '../context/AppContext';
+import { PurchaseOrder, POItem, Product, Supplier } from '../../types';
+import useLocalStorage from '../../hooks/useLocalStorage';
+// FIX: Replaced useAppContext with specific context hooks to resolve import error.
+import { useProducts } from '../context/ProductContext';
+import { useSales } from '../context/SalesContext';
+import { useSettings } from '../context/SettingsContext';
+import { useUIState } from '../context/UIStateContext';
 import { Modal } from '../common/Modal';
 import { Pagination } from '../common/Pagination';
 import { SearchIcon, ChevronUpIcon, ChevronDownIcon, PlusIcon, TrashIcon, PhotoIcon, EyeIcon, ReceiveIcon } from '../Icons';
@@ -9,7 +14,8 @@ import { FilterMenu, FilterSelectItem } from '../common/FilterMenu';
 declare var html2canvas: any;
 
 const PrintablePO = forwardRef<HTMLDivElement, { po: PurchaseOrder }>(({ po }, ref) => {
-    const { businessName, formatCurrency } = useAppContext();
+    // FIX: Replaced useAppContext with useSettings hook.
+    const { businessName, formatCurrency, formatDateTime } = useSettings();
 
     return (
         <div className="printable-area text-gray-900 dark:text-white" ref={ref}>
@@ -20,8 +26,8 @@ const PrintablePO = forwardRef<HTMLDivElement, { po: PurchaseOrder }>(({ po }, r
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-3 text-xs">
                 <div><strong>PO Number:</strong> <span className="font-mono">{po.id}</span></div>
                 <div><strong>Supplier:</strong> {po.supplierName}</div>
-                <div><strong>Date Created:</strong> {new Date(po.dateCreated).toLocaleDateString()}</div>
-                <div><strong>Date Expected:</strong> {new Date(po.dateExpected).toLocaleDateString()}</div>
+                <div><strong>Date Created:</strong> {formatDateTime(po.dateCreated, { year: 'numeric', month: 'numeric', day: 'numeric' })}</div>
+                <div><strong>Date Expected:</strong> {formatDateTime(po.dateExpected, { year: 'numeric', month: 'numeric', day: 'numeric' })}</div>
                 <div><strong>Status:</strong> {po.status}</div>
             </div>
             <table className="w-full text-xs text-left">
@@ -58,7 +64,8 @@ const PrintablePO = forwardRef<HTMLDivElement, { po: PurchaseOrder }>(({ po }, r
 });
 
 const ReceivePOModal: React.FC<{ po: PurchaseOrder; onClose: () => void; }> = ({ po, onClose }) => {
-    const { receivePOItems } = useAppContext();
+    // FIX: Replaced useAppContext with useSales hook.
+    const { receivePOItems } = useSales();
     const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
 
     const handleQuantityChange = (productId: string, value: string) => {
@@ -130,8 +137,14 @@ const ReceivePOModal: React.FC<{ po: PurchaseOrder; onClose: () => void; }> = ({
 };
 
 const CreatePOModal: React.FC<{ onClose: () => void; }> = ({ onClose }) => {
-    const { products, addPurchaseOrder, formatCurrency } = useAppContext();
-    const [supplierName, setSupplierName] = useState('');
+    // FIX: Replaced useAppContext with specific context hooks.
+    const { products } = useProducts();
+    const { addPurchaseOrder } = useSales();
+    const { formatCurrency, businessName } = useSettings();
+    const [suppliers] = useLocalStorage<Supplier[]>(`ims-${businessName}-suppliers`, []);
+
+    const [selectedSupplier, setSelectedSupplier] = useState('');
+    const [customSupplierName, setCustomSupplierName] = useState('');
     const [items, setItems] = useState<POItem[]>([]);
     const [expectedDate, setExpectedDate] = useState<string>(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]); // Default to 1 week from now
     const [notes, setNotes] = useState('');
@@ -176,12 +189,13 @@ const CreatePOModal: React.FC<{ onClose: () => void; }> = ({ onClose }) => {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!supplierName.trim() || items.length === 0 || !expectedDate) {
+        const finalSupplierName = selectedSupplier === '_CUSTOM_' ? customSupplierName.trim() : selectedSupplier;
+        if (!finalSupplierName.trim() || items.length === 0 || !expectedDate) {
             return;
         }
 
         addPurchaseOrder({
-            supplierName: supplierName.trim(),
+            supplierName: finalSupplierName,
             dateCreated: new Date().toISOString(),
             dateExpected: new Date(expectedDate).toISOString(),
             status: 'Pending',
@@ -197,7 +211,21 @@ const CreatePOModal: React.FC<{ onClose: () => void; }> = ({ onClose }) => {
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Supplier Name</label>
-                    <input type="text" value={supplierName} onChange={e => setSupplierName(e.target.value)} required className="block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
+                    <select value={selectedSupplier} onChange={e => setSelectedSupplier(e.target.value)} required className="block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200">
+                        <option value="" disabled>Select a supplier</option>
+                        {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                        <option value="_CUSTOM_">-- Enter Custom Name --</option>
+                    </select>
+                    {selectedSupplier === '_CUSTOM_' && (
+                        <input
+                            type="text"
+                            value={customSupplierName}
+                            onChange={e => setCustomSupplierName(e.target.value)}
+                            required
+                            placeholder="Custom Supplier Name"
+                            className="mt-2 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
+                        />
+                    )}
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expected Delivery</label>
@@ -260,12 +288,15 @@ const CreatePOModal: React.FC<{ onClose: () => void; }> = ({ onClose }) => {
 };
 
 export const PurchaseOrdersView: React.FC = () => {
-    const { purchaseOrders, deletePurchaseOrder, poViewState, onPOViewUpdate, formatCurrency } = useAppContext();
+    // FIX: Replaced useAppContext with specific context hooks.
+    const { purchaseOrders, deletePurchaseOrder } = useSales();
+    const { poViewState, onPOViewUpdate, showToast } = useUIState();
+    const { formatCurrency, formatDateTime } = useSettings();
+    
     const [viewingPO, setViewingPO] = useState<PurchaseOrder | null>(null);
     const [receivingPO, setReceivingPO] = useState<PurchaseOrder | null>(null);
     const [isCreatePOModalOpen, setIsCreatePOModalOpen] = useState(false);
     const [poToDelete, setPoToDelete] = useState<PurchaseOrder | null>(null);
-    const [feedback, setFeedback] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const printableAreaRef = useRef<HTMLDivElement>(null);
 
     const handleSaveAsImage = () => {
@@ -297,7 +328,7 @@ export const PurchaseOrdersView: React.FC = () => {
 
     const handleDelete = (po: PurchaseOrder) => {
         const result = deletePurchaseOrder(po.id);
-        setFeedback({ type: result.success ? 'success' : 'error', text: result.message || `PO #${po.id} deleted.` });
+        showToast(result.message || `PO #${po.id} deleted.`, result.success ? 'success' : 'error');
         if(result.success) {
             setPoToDelete(null);
         }
@@ -385,10 +416,9 @@ export const PurchaseOrdersView: React.FC = () => {
                     </div>
                 </div>
             </div>
-            {feedback && <div className={`mx-4 mb-4 px-4 py-2 rounded-md text-sm ${feedback.type === 'success' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' : 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'}`}>{feedback.text}</div>}
             <div className="overflow-x-auto">
-                 <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                    <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                 <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
+                    <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
                         <tr>
                             <SortableHeader sortKey="id">PO ID</SortableHeader>
                             <SortableHeader sortKey="supplierName">Supplier</SortableHeader>
@@ -400,14 +430,17 @@ export const PurchaseOrdersView: React.FC = () => {
                     </thead>
                     <tbody>
                         {paginated.map(po => (
-                            <tr key={po.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                                <td className="px-6 py-4 font-mono text-gray-900 dark:text-white">{po.id}</td>
-                                <td className="px-6 py-4 text-gray-900 dark:text-white">{po.supplierName}</td>
-                                <td className="px-6 py-4 text-gray-900 dark:text-white">{new Date(po.dateCreated).toLocaleDateString()}</td>
-                                <td className="px-6 py-4">{getStatusChip(po.status)}</td>
-                                <td className="px-6 py-4 text-gray-900 dark:text-white">{formatCurrency(po.totalCost)}</td>
-                                <td className="px-6 py-4 text-right flex items-center justify-end gap-1">
-                                    <button onClick={() => setViewingPO(po)} title="View PO" className="p-2 text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><EyeIcon /></button>
+                            <tr key={po.id}>
+                                <td data-label="PO ID" className="px-6 py-4 font-mono text-gray-900 dark:text-white">
+                                    <button onClick={() => setViewingPO(po)} className="text-blue-600 dark:text-blue-400 hover:underline">
+                                        {po.id}
+                                    </button>
+                                </td>
+                                <td data-label="Supplier" className="px-6 py-4 text-gray-900 dark:text-white">{po.supplierName}</td>
+                                <td data-label="Date" className="px-6 py-4 text-gray-900 dark:text-white">{formatDateTime(po.dateCreated, { year: 'numeric', month: 'numeric', day: 'numeric' })}</td>
+                                <td data-label="Status" className="px-6 py-4">{getStatusChip(po.status)}</td>
+                                <td data-label="Total" className="px-6 py-4 text-gray-900 dark:text-white">{formatCurrency(po.totalCost)}</td>
+                                <td data-label="Actions" className="px-6 py-4 text-right flex items-center justify-end gap-1">
                                     {po.status !== 'Received' && <button onClick={() => setReceivingPO(po)} title="Receive Items" className="p-2 text-green-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><ReceiveIcon /></button>}
                                     {po.status === 'Pending' && (
                                         <button
@@ -451,9 +484,8 @@ export const PurchaseOrdersView: React.FC = () => {
                 <Modal isOpen={!!poToDelete} onClose={() => setPoToDelete(null)} title="Confirm Deletion">
                     <div>
                         <p className="mb-4">Are you sure you want to delete PO #{poToDelete.id}? This action cannot be undone.</p>
-                        {feedback && feedback.type === 'error' && <p className="text-red-500 text-sm mb-4">{feedback.text}</p>}
                         <div className="flex justify-end gap-2 pt-4">
-                            <button onClick={() => { setPoToDelete(null); setFeedback(null); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
+                            <button onClick={() => setPoToDelete(null)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
                             <button onClick={() => handleDelete(poToDelete)} className="px-4 py-2 bg-red-600 text-white rounded-md">Delete</button>
                         </div>
                     </div>

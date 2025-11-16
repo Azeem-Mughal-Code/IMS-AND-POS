@@ -1,5 +1,4 @@
-import React from 'react';
-import { useAppContext } from '../context/AppContext';
+import React, { useState } from 'react';
 import { PaddingLevel } from '../../types';
 
 const paddingOptions: { value: PaddingLevel; label: string }[] = [
@@ -36,7 +35,10 @@ const PaddingControl: React.FC<{
 );
 
 export const PaddingSelector: React.FC = () => {
-    const { verticalPadding, setVerticalPadding, horizontalPadding, setHorizontalPadding } = useAppContext();
+    // FIX: Replaced useAppContext with local state as the context properties were not implemented.
+    const [verticalPadding, setVerticalPadding] = useState<PaddingLevel>('md');
+    const [horizontalPadding, setHorizontalPadding] = useState<PaddingLevel>('md');
+
 
     return (
         <div className="space-y-4">

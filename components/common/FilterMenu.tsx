@@ -11,14 +11,18 @@ export const FilterMenu: React.FC<FilterMenuProps> = ({ children, activeFilterCo
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    const handleClickOutside = (event: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
+    };
+    if (isOpen) {
+        document.addEventListener("mousedown", handleClickOutside);
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [wrapperRef]);
+    return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen, wrapperRef]);
   
   return (
       <div className="relative" ref={wrapperRef}>
@@ -35,8 +39,7 @@ export const FilterMenu: React.FC<FilterMenuProps> = ({ children, activeFilterCo
               )}
           </button>
           {isOpen && (
-              <div className="origin-top-right absolute right-0 mt-2 w-72 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black dark:ring-gray-700 ring-opacity-5 z-20 focus:outline-none p-4"
-                onClick={(e) => e.stopPropagation()}>
+              <div className="origin-top-right absolute right-0 mt-2 w-72 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black dark:ring-gray-700 ring-opacity-5 z-20 focus:outline-none p-4">
                   <div className="space-y-4">
                       {children}
                   </div>
@@ -58,14 +61,18 @@ export const FilterSelectItem: React.FC<{
   const selectedOption = options.find(opt => opt.value === value);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
+    const handleClickOutside = (event: MouseEvent) => {
+        if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+            setIsOpen(false);
+        }
+    };
+    if (isOpen) {
+        document.addEventListener('mousedown', handleClickOutside);
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [wrapperRef]);
+    return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, wrapperRef]);
   
   const handleSelect = (selectedValue: string) => {
     onChange(selectedValue);

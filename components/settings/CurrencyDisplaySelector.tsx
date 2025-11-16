@@ -1,8 +1,8 @@
 import React from 'react';
-import { useAppContext } from '../context/AppContext';
+import { useSettings } from '../context/SettingsContext';
 
 export const CurrencyDisplaySelector: React.FC = () => {
-    const { currencyDisplay, setCurrencyDisplay, currency, currencies } = useAppContext();
+    const { currencyDisplay, setCurrencyDisplay, currency, currencies } = useSettings();
     
     const activeCurrency = currencies.find(c => c.code === currency) || { code: 'N/A', symbol: '?' };
     

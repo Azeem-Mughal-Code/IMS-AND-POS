@@ -1,12 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { PurchaseOrdersView } from './inventory/PurchaseOrdersView';
-import { Supplier, SortConfig } from '../types';
-import useLocalStorage from '../hooks/useLocalStorage';
-import { useSettings } from './context/SettingsContext';
-import { useUIState } from './context/UIStateContext';
-import { Modal } from './common/Modal';
-import { Pagination } from './common/Pagination';
-import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, ChevronUpIcon, ChevronDownIcon } from './Icons';
+import { Supplier, SortConfig, SupplierSortKeys } from '../../types';
+import useLocalStorage from '../../hooks/useLocalStorage';
+import { useSettings } from '../context/SettingsContext';
+import { useUIState } from '../context/UIStateContext';
+import { Modal } from '../common/Modal';
+import { Pagination } from '../common/Pagination';
+import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, ChevronUpIcon, ChevronDownIcon } from '../Icons';
 
 // Self-contained Supplier Form
 const SupplierForm: React.FC<{ 
@@ -56,7 +55,7 @@ const SupplierForm: React.FC<{
 
 
 // Self-contained View for managing suppliers
-const SuppliersView: React.FC = () => {
+export const SuppliersView: React.FC = () => {
     const { businessName } = useSettings();
     const { showToast } = useUIState();
     const [suppliers, setSuppliers] = useLocalStorage<Supplier[]>(`ims-${businessName}-suppliers`, []);
@@ -67,7 +66,7 @@ const SuppliersView: React.FC = () => {
     
     // Local view state management
     const [searchTerm, setSearchTerm] = useState('');
-    const [sortConfig, setSortConfig] = useState<SortConfig<keyof Omit<Supplier, 'id' | 'address'>>>({ key: 'name', direction: 'ascending' });
+    const [sortConfig, setSortConfig] = useState<SortConfig<SupplierSortKeys>>({ key: 'name', direction: 'ascending' });
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
 
@@ -128,7 +127,7 @@ const SuppliersView: React.FC = () => {
             </div>
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
-                     <thead className="text-xs text-gray-700 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700">
+                     <thead className="text-xs text-gray-700 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700 sticky top-0 z-10">
                         <tr>
                             <th className="px-6 py-3">Name</th>
                             <th className="px-6 py-3">Contact Person</th>
@@ -163,39 +162,4 @@ const SuppliersView: React.FC = () => {
             </Modal>
         </div>
     );
-};
-
-export const Procurement: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'suppliers' | 'purchaseOrders'>('suppliers');
-
-  const TabButton: React.FC<{ tabId: 'suppliers' | 'purchaseOrders', label: string }> = ({ tabId, label }) => (
-    <button
-        onClick={() => setActiveTab(tabId)}
-        className={`px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
-            activeTab === tabId
-                ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow'
-                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-        }`}
-    >
-        {label}
-    </button>
-  );
-
-  return (
-    <div className="p-6">
-      <div className="flex flex-col items-start gap-4 md:flex-row md:justify-between md:items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Procurement</h1>
-      </div>
-
-       <div className="mb-6 flex-shrink-0 bg-gray-200 dark:bg-gray-700 p-1 rounded-lg self-start">
-            <div className="flex items-center space-x-1">
-                <TabButton tabId="suppliers" label="Suppliers" />
-                <TabButton tabId="purchaseOrders" label="Purchase Orders" />
-            </div>
-        </div>
-      
-      {activeTab === 'suppliers' && <SuppliersView />}
-      {activeTab === 'purchaseOrders' && <PurchaseOrdersView />}
-    </div>
-  );
 };

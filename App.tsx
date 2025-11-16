@@ -1,7 +1,10 @@
 import React, { useState, FormEvent, useEffect } from 'react';
-import { AppProvider, useAppContext } from './components/context/AppContext';
+import { AppProvider } from './components/context/AppContext';
+import { useAuth } from './components/context/AuthContext';
+import { useSettings } from './components/context/SettingsContext';
 import { MainLayout } from './components/layout/MainLayout';
 import useLocalStorage from './hooks/useLocalStorage';
+import { useUIState } from './components/context/UIStateContext';
 
 // Component to select a business workspace
 const BusinessSelector: React.FC<{ onSelect: (name: string) => void }> = ({ onSelect }) => {
@@ -46,7 +49,8 @@ const BusinessSelector: React.FC<{ onSelect: (name: string) => void }> = ({ onSe
 
 // AuthForm Component for Login/Signup within a business context
 const AuthForm: React.FC<{ onGoBack: () => void; }> = ({ onGoBack }) => {
-  const { businessName, users, login, signup } = useAppContext();
+  const { businessName } = useSettings();
+  const { users, login, signup } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -105,7 +109,13 @@ const AuthForm: React.FC<{ onGoBack: () => void; }> = ({ onGoBack }) => {
 };
 
 const BusinessWorkspace: React.FC<{ onGoBack: () => void }> = ({ onGoBack }) => {
-  const { currentUser, theme } = useAppContext();
+  const { currentUser } = useAuth();
+  const { theme } = useSettings();
+  const { zoomLevel } = useUIState();
+
+  useEffect(() => {
+    document.documentElement.style.fontSize = `${zoomLevel * 100}%`;
+  }, [zoomLevel]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');

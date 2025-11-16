@@ -1,12 +1,15 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Product, InventoryAdjustment } from '../../types';
-import { useAppContext } from '../context/AppContext';
+import { Product, InventoryAdjustment, PriceHistoryEntry } from '../../types';
+// FIX: Replaced useAppContext with specific context hooks to resolve import error.
+import { useProducts } from '../context/ProductContext';
+import { useUIState } from '../context/UIStateContext';
+import { useSettings } from '../context/SettingsContext';
 import { Modal } from '../common/Modal';
 import { Pagination } from '../common/Pagination';
 import { SearchIcon, PlusIcon, PencilIcon, TrashIcon, AdjustIcon, HistoryIcon, ChevronUpIcon, ChevronDownIcon, ReceiveIcon } from '../Icons';
 import { FilterMenu, FilterSelectItem } from '../common/FilterMenu';
 
-const ProductForm: React.FC<{ product?: Product | null; onSubmit: (data: Omit<Product, 'id' | 'stock'>) => void; onCancel: () => void; }> = ({ product, onSubmit, onCancel }) => {
+const ProductForm: React.FC<{ product?: Product | null; onSubmit: (data: Omit<Product, 'id' | 'stock' | 'priceHistory'>) => void; onCancel: () => void; }> = ({ product, onSubmit, onCancel }) => {
     const [formData, setFormData] = useState({
         sku: product?.sku || '',
         name: product?.name || '',
@@ -42,7 +45,8 @@ const ProductForm: React.FC<{ product?: Product | null; onSubmit: (data: Omit<Pr
 };
 
 const ReceiveStockModal: React.FC<{ product: Product, onClose: () => void }> = ({ product, onClose }) => {
-    const { receiveStock } = useAppContext();
+    // FIX: Replaced useAppContext with useProducts hook.
+    const { receiveStock } = useProducts();
     const [quantity, setQuantity] = useState(1);
     const handleSubmit = () => {
         if (quantity > 0) {
@@ -66,7 +70,8 @@ const ReceiveStockModal: React.FC<{ product: Product, onClose: () => void }> = (
 };
 
 const AdjustStockModal: React.FC<{ product: Product, onClose: () => void }> = ({ product, onClose }) => {
-    const { adjustStock } = useAppContext();
+    // FIX: Replaced useAppContext with useProducts hook.
+    const { adjustStock } = useProducts();
     const [newStock, setNewStock] = useState(product.stock);
     const [reason, setReason] = useState('');
     const handleSubmit = () => {
@@ -94,8 +99,10 @@ const AdjustStockModal: React.FC<{ product: Product, onClose: () => void }> = ({
     );
 };
 
-const HistoryModal: React.FC<{ product: Product, onClose: () => void }> = ({ product, onClose }) => {
-    const { inventoryAdjustments } = useAppContext();
+const StockHistoryModal: React.FC<{ product: Product, onClose: () => void }> = ({ product, onClose }) => {
+    // FIX: Replaced useAppContext with useProducts hook.
+    const { inventoryAdjustments } = useProducts();
+    const { formatDateTime } = useSettings();
     const productHistory = inventoryAdjustments.filter(adj => adj.productId === product.id).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     return (
         <div>
@@ -106,10 +113,10 @@ const HistoryModal: React.FC<{ product: Product, onClose: () => void }> = ({ pro
                     </thead>
                     <tbody>
                         {productHistory.map((adj, i) => (
-                             <tr key={i} className="border-b dark:border-gray-200 dark:bg-white">
-                                <td className="p-2 whitespace-nowrap dark:text-gray-900">{new Date(adj.date).toLocaleString()}</td>
+                             <tr key={i} className="border-b dark:border-gray-700 bg-white dark:bg-gray-800">
+                                <td className="p-2 whitespace-nowrap text-gray-800 dark:text-gray-200">{formatDateTime(adj.date)}</td>
                                 <td className={`p-2 font-semibold ${adj.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>{adj.quantity > 0 ? `+${adj.quantity}` : adj.quantity}</td>
-                                <td className="p-2 dark:text-gray-900">{adj.reason}</td>
+                                <td className="p-2 text-gray-800 dark:text-gray-200">{adj.reason}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -123,21 +130,62 @@ const HistoryModal: React.FC<{ product: Product, onClose: () => void }> = ({ pro
     );
 };
 
+const PriceHistoryModal: React.FC<{ product: Product, onClose: () => void }> = ({ product, onClose }) => {
+    // FIX: Replaced useAppContext with useSettings hook.
+    const { formatCurrency, formatDateTime } = useSettings();
+    const priceHistory = product.priceHistory || [];
+
+    return (
+        <div>
+            <div className="max-h-96 overflow-y-auto">
+                <table className="w-full text-sm text-left">
+                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 text-xs uppercase dark:text-gray-400">
+                        <tr>
+                            <th className="p-2">Date</th>
+                            <th className="p-2">Type</th>
+                            <th className="p-2 text-right">Old Value</th>
+                            <th className="p-2 text-right">New Value</th>
+                            <th className="p-2">Changed By</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {priceHistory.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((entry, i) => (
+                             <tr key={i} className="border-b dark:border-gray-700 bg-white dark:bg-gray-800">
+                                <td className="p-2 whitespace-nowrap text-gray-800 dark:text-gray-200">{formatDateTime(entry.date)}</td>
+                                <td className={`p-2 font-semibold capitalize ${entry.priceType === 'retail' ? 'text-blue-600' : 'text-green-600'}`}>{entry.priceType}</td>
+                                <td className="p-2 text-right text-red-600">{formatCurrency(entry.oldValue)}</td>
+                                <td className="p-2 text-right text-green-600">{formatCurrency(entry.newValue)}</td>
+                                <td className="p-2 text-gray-800 dark:text-gray-200">{entry.userName}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                 {priceHistory.length === 0 && <p className="p-4 text-center text-gray-500">No price history found.</p>}
+            </div>
+            <div className="flex justify-end pt-4 mt-4 border-t dark:border-gray-700">
+                 <button onClick={onClose} className="px-4 py-2 bg-blue-600 text-white rounded-md">Close</button>
+            </div>
+        </div>
+    );
+};
+
 export const ProductsView: React.FC = () => {
-    const { products, addProduct, updateProduct, deleteProduct, inventoryViewState, onInventoryViewUpdate, formatCurrency } = useAppContext();
+    // FIX: Replaced useAppContext with specific context hooks.
+    const { products, addProduct, updateProduct, deleteProduct } = useProducts();
+    const { inventoryViewState, onInventoryViewUpdate, showToast } = useUIState();
+    const { formatCurrency } = useSettings();
+
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [productToDelete, setProductToDelete] = useState<Product | null>(null);
-    const [feedback, setFeedback] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [receivingProduct, setReceivingProduct] = useState<Product | null>(null);
     const [adjustingProduct, setAdjustingProduct] = useState<Product | null>(null);
-    const [historyProduct, setHistoryProduct] = useState<Product | null>(null);
+    const [stockHistoryProduct, setStockHistoryProduct] = useState<Product | null>(null);
+    const [priceHistoryProduct, setPriceHistoryProduct] = useState<Product | null>(null);
 
     const { searchTerm, stockFilter, sortConfig, currentPage, itemsPerPage } = inventoryViewState;
     
     type SortableProductKeys = 'sku' | 'name' | 'stock' | 'retailPrice' | 'costPrice';
-
-    useEffect(() => { if (feedback) { const timer = setTimeout(() => setFeedback(null), 5000); return () => clearTimeout(timer); } }, [feedback]);
 
     const requestSort = (key: SortableProductKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -161,13 +209,14 @@ export const ProductsView: React.FC = () => {
 
     const paginatedProducts = useMemo(() => filteredAndSortedProducts.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage), [filteredAndSortedProducts, currentPage, itemsPerPage]);
 
-    const handleFormSubmit = (data: Omit<Product, 'id' | 'stock'>) => {
+    const handleFormSubmit = (data: Omit<Product, 'id' | 'stock' | 'priceHistory'>) => {
         if (editingProduct) {
             updateProduct({ ...editingProduct, ...data });
-            setFeedback({ type: 'success', text: 'Product updated successfully.' });
+            showToast('Product updated successfully.', 'success');
         } else {
-            addProduct({ ...data, stock: 0 });
-            setFeedback({ type: 'success', text: 'Product added successfully.' });
+            // FIX: The `addProduct` function handles setting the initial stock, so it should not be passed here.
+            addProduct(data);
+            showToast('Product added successfully.', 'success');
         }
         setIsProductModalOpen(false);
     };
@@ -175,8 +224,7 @@ export const ProductsView: React.FC = () => {
     const confirmDelete = () => {
         if (productToDelete) {
             const result = deleteProduct(productToDelete.id);
-            // FIX: Map the result from deleteProduct to the feedback state shape.
-            setFeedback({ type: result.success ? 'success' : 'error', text: result.message || 'An error occurred.' });
+            showToast(result.message || 'An error occurred.', result.success ? 'success' : 'error');
             setProductToDelete(null);
         }
     };
@@ -213,10 +261,9 @@ export const ProductsView: React.FC = () => {
                     </div>
                 </div>
             </div>
-            {feedback && <div className={`mx-4 mb-4 px-4 py-2 rounded-md text-sm ${feedback.type === 'success' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' : 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'}`}>{feedback.text}</div>}
             <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                    <thead className="text-xs text-gray-700 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700">
+                <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
+                    <thead className="text-xs text-gray-700 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700 sticky top-0 z-10">
                         <tr>
                             <SortableHeader sortKey="sku">SKU</SortableHeader>
                             <SortableHeader sortKey="name">Name</SortableHeader>
@@ -228,13 +275,17 @@ export const ProductsView: React.FC = () => {
                     </thead>
                     <tbody>
                         {paginatedProducts.map(p => (
-                            <tr key={p.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                                <td className="px-6 py-4 font-mono">{p.sku}</td><td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{p.name}</td>
-                                <td className="px-6 py-4">{p.stock}</td><td className="px-6 py-4">{formatCurrency(p.retailPrice)}</td><td className="px-6 py-4">{formatCurrency(p.costPrice)}</td>
-                                <td className="px-6 py-4 flex items-center gap-1">
+                            <tr key={p.id}>
+                                <td data-label="SKU" className="px-6 py-4 font-mono">{p.sku}</td>
+                                <td data-label="Name" className="px-6 py-4 font-medium text-gray-900 dark:text-white">{p.name}</td>
+                                <td data-label="Stock" className="px-6 py-4">{p.stock}</td>
+                                <td data-label="Retail Price" className="px-6 py-4">{formatCurrency(p.retailPrice)}</td>
+                                <td data-label="Cost Price" className="px-6 py-4">{formatCurrency(p.costPrice)}</td>
+                                <td data-label="Actions" className="px-6 py-4 flex items-center gap-1 justify-end flex-nowrap">
                                     <button onClick={() => setReceivingProduct(p)} title="Receive Stock" className="p-2 text-green-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><ReceiveIcon /></button>
                                     <button onClick={() => setAdjustingProduct(p)} title="Adjust Stock" className="p-2 text-yellow-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><AdjustIcon /></button>
-                                    <button onClick={() => setHistoryProduct(p)} title="View History" className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><HistoryIcon /></button>
+                                    <button onClick={() => setStockHistoryProduct(p)} title="View Stock History" className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><HistoryIcon /></button>
+                                    <button onClick={() => setPriceHistoryProduct(p)} title="View Price History" className="p-2 text-purple-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><HistoryIcon /></button>
                                     <button onClick={() => { setEditingProduct(p); setIsProductModalOpen(true); }} title="Edit Product" className="p-2 text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><PencilIcon /></button>
                                     <button onClick={() => setProductToDelete(p)} title="Delete Product" className="p-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><TrashIcon /></button>
                                 </td>
@@ -250,7 +301,8 @@ export const ProductsView: React.FC = () => {
             </Modal>
              {receivingProduct && <Modal isOpen={!!receivingProduct} onClose={() => setReceivingProduct(null)} title={`Receive Stock: ${receivingProduct.name}`}><ReceiveStockModal product={receivingProduct} onClose={() => setReceivingProduct(null)} /></Modal>}
              {adjustingProduct && <Modal isOpen={!!adjustingProduct} onClose={() => setAdjustingProduct(null)} title={`Adjust Stock: ${adjustingProduct.name}`}><AdjustStockModal product={adjustingProduct} onClose={() => setAdjustingProduct(null)} /></Modal>}
-             {historyProduct && <Modal isOpen={!!historyProduct} onClose={() => setHistoryProduct(null)} title={`History: ${historyProduct.name}`}><HistoryModal product={historyProduct} onClose={() => setHistoryProduct(null)} /></Modal>}
+             {stockHistoryProduct && <Modal isOpen={!!stockHistoryProduct} onClose={() => setStockHistoryProduct(null)} title={`Stock History: ${stockHistoryProduct.name}`}><StockHistoryModal product={stockHistoryProduct} onClose={() => setStockHistoryProduct(null)} /></Modal>}
+             {priceHistoryProduct && <Modal isOpen={!!priceHistoryProduct} onClose={() => setPriceHistoryProduct(null)} title={`Price History: ${priceHistoryProduct.name}`}><PriceHistoryModal product={priceHistoryProduct} onClose={() => setPriceHistoryProduct(null)} /></Modal>}
         </div>
     );
 };

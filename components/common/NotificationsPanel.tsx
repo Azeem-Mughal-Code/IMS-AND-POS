@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
-import { useAppContext } from '../context/AppContext';
+import { useUIState } from '../context/UIStateContext';
 import { BellIcon, HistoryIcon, TrashIcon } from '../Icons';
 import { Notification } from '../../types';
+import { useSettings } from '../context/SettingsContext';
 
 const timeSince = (date: Date): string => {
     const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
@@ -19,7 +20,7 @@ const timeSince = (date: Date): string => {
 }
 
 const NotificationItem: React.FC<{ notification: Notification }> = ({ notification }) => {
-    const { markNotificationAsRead } = useAppContext();
+    const { markNotificationAsRead } = useUIState();
     return (
         <div 
             className={`flex items-start gap-3 p-3 rounded-lg transition-colors ${notification.isRead ? '' : 'bg-blue-50 dark:bg-gray-700'}`}
@@ -41,28 +42,30 @@ const NotificationItem: React.FC<{ notification: Notification }> = ({ notificati
 };
 
 export const NotificationsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-    const { notifications, markAllNotificationsAsRead, clearNotifications } = useAppContext();
+    const { notifications, markAllNotificationsAsRead, clearNotifications } = useUIState();
+    const { formatDateTime } = useSettings();
 
     const groupedNotifications = useMemo(() => {
         const groups: { [key: string]: Notification[] } = {};
-        const today = new Date();
-        const yesterday = new Date(today);
+        
+        const formatKey = (d: Date) => formatDateTime(d, { year: 'numeric', month: '2-digit', day: '2-digit'});
+        
+        const todayKey = formatKey(new Date());
+        const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
-
-        const isSameDay = (d1: Date, d2: Date) => 
-            d1.getFullYear() === d2.getFullYear() && 
-            d1.getMonth() === d2.getMonth() && 
-            d1.getDate() === d2.getDate();
+        const yesterdayKey = formatKey(yesterday);
 
         notifications.forEach(n => {
             const nDate = new Date(n.timestamp);
+            const nDateKey = formatKey(nDate);
+
             let key: string;
-            if (isSameDay(nDate, today)) {
+            if (nDateKey === todayKey) {
                 key = 'Today';
-            } else if (isSameDay(nDate, yesterday)) {
+            } else if (nDateKey === yesterdayKey) {
                 key = 'Yesterday';
             } else {
-                key = nDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+                key = formatDateTime(nDate, { month: 'long', day: 'numeric' });
             }
 
             if (!groups[key]) {
@@ -71,7 +74,7 @@ export const NotificationsPanel: React.FC<{ onClose: () => void }> = ({ onClose 
             groups[key].push(n);
         });
         return groups;
-    }, [notifications]);
+    }, [notifications, formatDateTime]);
 
     const notificationDates = Object.keys(groupedNotifications);
 
