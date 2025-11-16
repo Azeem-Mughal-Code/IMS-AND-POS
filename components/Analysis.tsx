@@ -61,26 +61,8 @@ const getStartOfWeek = (date: Date): Date => {
 
 
 export const Analysis: React.FC = () => {
-    const { products, sales, analysisViewState, onAnalysisViewUpdate, formatCurrency, verticalPadding, horizontalPadding } = useAppContext();
+    const { products, sales, analysisViewState, onAnalysisViewUpdate, formatCurrency } = useAppContext();
     const { searchTerm, sortConfig, currentPage, itemsPerPage, timeRange } = analysisViewState;
-
-    const paddingClass = useMemo(() => {
-        const verticalPaddingMap = {
-            xs: 'py-2',
-            sm: 'py-3',
-            md: 'py-6',
-            lg: 'py-9',
-            xl: 'py-12',
-        };
-        const horizontalPaddingMap = {
-            xs: 'px-2',
-            sm: 'px-4',
-            md: 'px-6',
-            lg: 'px-8',
-            xl: 'px-10',
-        };
-        return `${verticalPaddingMap[verticalPadding]} ${horizontalPaddingMap[horizontalPadding]}`;
-    }, [verticalPadding, horizontalPadding]);
 
     const filteredSales = useMemo(() => {
         const now = new Date();
@@ -218,7 +200,7 @@ export const Analysis: React.FC = () => {
     };
 
     return (
-        <div className={`${paddingClass} space-y-6`}>
+        <div className="p-6 space-y-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Business Analysis</h1>
                  <div className="flex-shrink-0 bg-gray-200 dark:bg-gray-700 p-1 rounded-lg overflow-x-auto">

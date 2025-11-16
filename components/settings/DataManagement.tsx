@@ -123,7 +123,8 @@ export const DataManagement: React.FC = () => {
                 newProducts.push({ sku: productData.sku, name: productData.name, retailPrice: parseFloat(productData.retailPrice), costPrice: parseFloat(productData.costPrice), stock: parseInt(productData.stock, 10), lowStockThreshold: parseInt(productData.lowStockThreshold, 10) });
             }
             const result = importProducts(newProducts);
-            setImportFeedback(result);
+            // FIX: Map the result from importProducts to the feedback state shape.
+            setImportFeedback({ type: result.success ? 'success' : 'error', message: result.message });
         };
         reader.readAsText(importFile);
     };

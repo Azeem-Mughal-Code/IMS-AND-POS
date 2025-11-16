@@ -175,7 +175,8 @@ export const ProductsView: React.FC = () => {
     const confirmDelete = () => {
         if (productToDelete) {
             const result = deleteProduct(productToDelete.id);
-            setFeedback(result);
+            // FIX: Map the result from deleteProduct to the feedback state shape.
+            setFeedback({ type: result.success ? 'success' : 'error', text: result.message || 'An error occurred.' });
             setProductToDelete(null);
         }
     };

@@ -119,7 +119,8 @@ export interface InventoryViewState {
 }
 
 type SaleSortKeys = 'id' | 'date' | 'type' | 'salespersonName' | 'total' | 'profit';
-type ProductReportSortKeys = 'sku' | 'name' | 'stock';
+// FIX: Added 'lowStockThreshold' to allow sorting by it in reports.
+type ProductReportSortKeys = 'sku' | 'name' | 'stock' | 'lowStockThreshold';
 type InventoryValuationSortKeys = 'sku' | 'name' | 'stock' | 'totalCostValue' | 'totalRetailValue' | 'potentialProfit';
 
 export interface ReportsViewState {
@@ -186,6 +187,9 @@ export interface ProcurementViewState {
     purchaseOrders: POViewState;
 }
 
+// FIX: Added missing PaddingLevel type for the unused PaddingSelector component.
+export type PaddingLevel = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+
 export type PruneTarget = 'sales' | 'purchaseOrders' | 'stockHistory' | 'notifications';
 
 export enum NotificationType {
@@ -214,5 +218,3 @@ export interface Toast {
   message: string;
   type: 'success' | 'error';
 }
-
-export type PaddingLevel = 'xs' | 'sm' | 'md' | 'lg' | 'xl';

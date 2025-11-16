@@ -34,6 +34,8 @@ interface AppContextType {
     discountThreshold: number;
     activeView: View;
     theme: 'light' | 'dark' | 'system';
+    zoomLevel: number;
+    // FIX: Add padding properties for unused PaddingSelector component
     verticalPadding: PaddingLevel;
     horizontalPadding: PaddingLevel;
     inventoryViewState: InventoryViewState;
@@ -74,8 +76,10 @@ interface AppContextType {
     restoreBackup: (backupData: any) => { success: boolean, message: string };
     setActiveView: (view: View) => void;
     setTheme: (theme: 'light' | 'dark' | 'system') => void;
-    setVerticalPadding: (padding: PaddingLevel) => void;
-    setHorizontalPadding: (padding: PaddingLevel) => void;
+    setZoomLevel: (level: number) => void;
+    // FIX: Add padding setters for unused PaddingSelector component
+    setVerticalPadding: (level: PaddingLevel) => void;
+    setHorizontalPadding: (level: PaddingLevel) => void;
     setItemsPerPage: (size: number) => void;
     setCurrency: (currencyCode: string) => void;
     addCurrency: (currency: Currency) => { success: boolean, message?: string };
@@ -148,21 +152,14 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
 
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [theme, setTheme] = useLocalStorage<'light' | 'dark' | 'system'>('ims-theme', 'system');
-    
-    const [rawVerticalPadding, setRawVerticalPadding] = useLocalStorage<PaddingLevel | 'compact' | 'default' | 'spacious'>(`${ls_prefix}-verticalPadding`, 'md');
-    const verticalPadding = useMemo<PaddingLevel>(() => {
-        switch (rawVerticalPadding) {
-            case 'compact': return 'sm';
-            case 'default': return 'md';
-            case 'spacious': return 'lg';
-            default: return rawVerticalPadding;
-        }
-    }, [rawVerticalPadding]);
-    const setVerticalPadding = (padding: PaddingLevel) => {
-        setRawVerticalPadding(padding);
-    };
-
+    const [zoomLevel, setZoomLevel] = useLocalStorage<number>(`${ls_prefix}-zoomLevel`, 1.0);
+    // FIX: Add state for unused PaddingSelector component to resolve compile errors.
+    const [verticalPadding, setVerticalPadding] = useLocalStorage<PaddingLevel>(`${ls_prefix}-verticalPadding`, 'md');
     const [horizontalPadding, setHorizontalPadding] = useLocalStorage<PaddingLevel>(`${ls_prefix}-horizontalPadding`, 'md');
+
+    useEffect(() => {
+        document.documentElement.style.fontSize = `${zoomLevel * 100}%`;
+    }, [zoomLevel]);
     
     const [toasts, setToasts] = useState<Toast[]>([]);
     
@@ -639,11 +636,11 @@ export const AppProvider: React.FC<{ children: ReactNode; businessName: string }
     const value: AppContextType = {
         businessName, products, sales, inventoryAdjustments, users, purchaseOrders, currentUser, notifications, toasts, itemsPerPage, currency,
         currencies, currencyDisplay, isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled,
-        discountRate, discountThreshold, activeView, theme, verticalPadding, horizontalPadding, inventoryViewState, reportsViewState, usersViewState,
-        analysisViewState, poViewState, cashierPermissions,
+        discountRate, discountThreshold, activeView, theme, zoomLevel, inventoryViewState, reportsViewState, usersViewState,
+        analysisViewState, poViewState, cashierPermissions, verticalPadding, horizontalPadding,
         login, signup, onLogout, addUser, updateUser, deleteUser, addProduct, updateProduct, deleteProduct, deleteSale, receiveStock,
         adjustStock, processSale, importProducts, clearSales, factoryReset, pruneData, addPurchaseOrder, updatePurchaseOrder,
-        deletePurchaseOrder, receivePOItems, addNotification, markNotificationAsRead, markAllNotificationsAsRead, clearNotifications, showToast, dismissToast, restoreBackup, setActiveView, setTheme, setVerticalPadding, setHorizontalPadding, setItemsPerPage, setCurrency, addCurrency, updateCurrency, deleteCurrency, setCurrencyDisplay, formatCurrency, setIsSplitPaymentEnabled,
+        deletePurchaseOrder, receivePOItems, addNotification, markNotificationAsRead, markAllNotificationsAsRead, clearNotifications, showToast, dismissToast, restoreBackup, setActiveView, setTheme, setZoomLevel, setVerticalPadding, setHorizontalPadding, setItemsPerPage, setCurrency, addCurrency, updateCurrency, deleteCurrency, setCurrencyDisplay, formatCurrency, setIsSplitPaymentEnabled,
         setIsChangeDueEnabled, setIsIntegerCurrency, setIsTaxEnabled, setTaxRate, setIsDiscountEnabled, setDiscountRate,
         setDiscountThreshold, setCashierPermissions, onInventoryViewUpdate, onReportsSalesViewUpdate, onReportsProductsViewUpdate,
         onReportsInventoryValuationViewUpdate, onUsersViewUpdate, onAnalysisViewUpdate, onPOViewUpdate

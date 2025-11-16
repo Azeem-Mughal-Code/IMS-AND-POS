@@ -188,7 +188,7 @@ const PaymentModalContent: React.FC<{
 
 
 export const POS: React.FC<POSProps> = () => {
-  const { products, sales, processSale, currentUser, isSplitPaymentEnabled, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, isIntegerCurrency, cashierPermissions, formatCurrency, verticalPadding, horizontalPadding } = useAppContext();
+  const { products, sales, processSale, currentUser, isSplitPaymentEnabled, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, isIntegerCurrency, cashierPermissions, formatCurrency } = useAppContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -201,24 +201,6 @@ export const POS: React.FC<POSProps> = () => {
   const printableAreaRef = useRef<HTMLDivElement>(null);
 
   const canProcessReturns = currentUser.role === UserRole.Admin || cashierPermissions.canProcessReturns;
-
-  const paddingClass = useMemo(() => {
-    const verticalPaddingMap = {
-        xs: 'py-1',
-        sm: 'py-2',
-        md: 'py-4',
-        lg: 'py-6',
-        xl: 'py-8',
-    };
-    const horizontalPaddingMap = {
-        xs: 'px-1',
-        sm: 'px-2',
-        md: 'px-4',
-        lg: 'px-6',
-        xl: 'px-8',
-    };
-    return `${verticalPaddingMap[verticalPadding]} ${horizontalPaddingMap[horizontalPadding]}`;
-  }, [verticalPadding, horizontalPadding]);
 
   const handleSaveAsImage = () => {
     if (printableAreaRef.current) {
@@ -579,7 +561,7 @@ export const POS: React.FC<POSProps> = () => {
                                 max={maxReturnable}
                                 value={currentReturnQty ?? ''}
                                 onChange={e => handleReturnQtyChange(item, e.target.value)}
-                                className="w-20 text-center p-1 border rounded-md dark:bg-gray-700 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                                className="w-20 text-center p-1 border rounded-md dark:bg-gray-700 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500 dark:text-white"
                             />
                         </td>
                     </tr>
@@ -596,7 +578,7 @@ export const POS: React.FC<POSProps> = () => {
   return (
     <div className="flex flex-col md:flex-row h-full bg-gray-100 dark:bg-gray-900">
       {/* Left side: Product Search & Cart */}
-      <div className={`w-full md:w-3/5 ${paddingClass} flex flex-col`}>
+      <div className="w-full md:w-3/5 p-4 flex flex-col">
         <div className="flex mb-4 rounded-lg bg-gray-200 dark:bg-gray-700 p-1">
             <button 
                 onClick={() => switchMode('Sale')}
@@ -622,7 +604,7 @@ export const POS: React.FC<POSProps> = () => {
       </div>
       
       {/* Right side: Totals & Payment */}
-      <div className={`w-full md:w-2/5 ${paddingClass} flex flex-col`}>
+      <div className="w-full md:w-2/5 p-4 flex flex-col">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 flex-grow flex flex-col">
           <h2 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">{mode === 'Sale' ? 'Order Summary' : 'Return Summary'}</h2>
           <div className="space-y-3 text-lg flex-grow">

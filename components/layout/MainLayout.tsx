@@ -32,7 +32,8 @@ export const MainLayout: React.FC = () => {
 
     const availableViews = useMemo(() => {
         if (currentUser.role === UserRole.Admin) {
-            return ['dashboard', 'pos', 'inventory', 'reports', 'analysis', 'settings'];
+            // FIX: Cast array of strings to View[] to resolve type error.
+            return ['dashboard', 'pos', 'inventory', 'reports', 'analysis', 'settings'] as View[];
         }
         // For Cashier
         const views: View[] = [];
@@ -70,9 +71,10 @@ export const MainLayout: React.FC = () => {
         </button>
     );
 
-    const BottomNavItem: React.FC<{ view: View; icon: React.ReactNode; label: string }> = ({ view, icon, label }) => (
+    // FIX: Changed icon prop type from React.ReactElement to React.ReactElement<{ className?: string }> to fix cloneElement error.
+    const BottomNavItem: React.FC<{ view: View; icon: React.ReactElement<{ className?: string }>; label: string }> = ({ view, icon, label }) => (
         <button onClick={() => setActiveView(view)} className={`flex flex-col items-center justify-center w-full pt-2 pb-1 transition-colors ${activeView === view ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
-        {React.cloneElement(icon as React.ReactElement, { className: 'h-6 w-6' })}
+        {React.cloneElement(icon, { className: 'h-6 w-6' })}
         <span className="text-xs font-medium">{label}</span>
         </button>
     );

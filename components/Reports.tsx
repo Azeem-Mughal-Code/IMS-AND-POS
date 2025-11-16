@@ -44,31 +44,13 @@ export const Reports: React.FC = () => {
   const { 
     sales, products, currentUser, users, processSale, deleteSale, reportsViewState, 
     onReportsSalesViewUpdate, onReportsProductsViewUpdate, 
-    formatCurrency, verticalPadding, horizontalPadding
+    formatCurrency
   } = useAppContext();
     
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const printableAreaRef = useRef<HTMLDivElement>(null);
-
-  const paddingClass = useMemo(() => {
-    const verticalPaddingMap = {
-        xs: 'py-2',
-        sm: 'py-3',
-        md: 'py-6',
-        lg: 'py-9',
-        xl: 'py-12',
-    };
-    const horizontalPaddingMap = {
-        xs: 'px-2',
-        sm: 'px-4',
-        md: 'px-6',
-        lg: 'px-8',
-        xl: 'px-10',
-    };
-    return `${verticalPaddingMap[verticalPadding]} ${horizontalPaddingMap[horizontalPadding]}`;
-  }, [verticalPadding, horizontalPadding]);
 
   const handleSaveAsImage = () => {
     if (printableAreaRef.current && viewingSale) {
@@ -357,7 +339,7 @@ export const Reports: React.FC = () => {
   
 
   return (
-    <div className={`${paddingClass} space-y-6`}>
+    <div className="p-6 space-y-6">
       <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Reports</h1>
 
       {statusMessage && (
@@ -370,17 +352,15 @@ export const Reports: React.FC = () => {
       )}
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
-        <div className="p-4">
-            <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
-                 <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200">Transaction History</h2>
-                 <div className="flex-shrink-0 bg-gray-200 dark:bg-gray-700 p-1 rounded-lg overflow-x-auto">
-                    <div className="flex items-center space-x-1">
-                        <TimeRangeButton label="Today" range="today" currentTimeRange={saleTimeRange} setTimeRange={(range) => onReportsSalesViewUpdate({ timeRange: range })} />
-                        <TimeRangeButton label="Week" range="weekly" currentTimeRange={saleTimeRange} setTimeRange={(range) => onReportsSalesViewUpdate({ timeRange: range })} />
-                        <TimeRangeButton label="Month" range="monthly" currentTimeRange={saleTimeRange} setTimeRange={(range) => onReportsSalesViewUpdate({ timeRange: range })} />
-                        <TimeRangeButton label="Year" range="yearly" currentTimeRange={saleTimeRange} setTimeRange={(range) => onReportsSalesViewUpdate({ timeRange: range })} />
-                        <TimeRangeButton label="All Time" range="all" currentTimeRange={saleTimeRange} setTimeRange={(range) => onReportsSalesViewUpdate({ timeRange: range })} />
-                    </div>
+        <div className="p-4 space-y-4">
+            <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200">Transaction History</h2>
+            <div className="bg-gray-200 dark:bg-gray-700 p-1 rounded-lg self-start">
+                <div className="flex items-center space-x-1 overflow-x-auto">
+                    <TimeRangeButton label="Today" range="today" currentTimeRange={saleTimeRange} setTimeRange={(range) => onReportsSalesViewUpdate({ timeRange: range })} />
+                    <TimeRangeButton label="Week" range="weekly" currentTimeRange={saleTimeRange} setTimeRange={(range) => onReportsSalesViewUpdate({ timeRange: range })} />
+                    <TimeRangeButton label="Month" range="monthly" currentTimeRange={saleTimeRange} setTimeRange={(range) => onReportsSalesViewUpdate({ timeRange: range })} />
+                    <TimeRangeButton label="Year" range="yearly" currentTimeRange={saleTimeRange} setTimeRange={(range) => onReportsSalesViewUpdate({ timeRange: range })} />
+                    <TimeRangeButton label="All Time" range="all" currentTimeRange={saleTimeRange} setTimeRange={(range) => onReportsSalesViewUpdate({ timeRange: range })} />
                 </div>
             </div>
             <div className="flex items-center gap-4">

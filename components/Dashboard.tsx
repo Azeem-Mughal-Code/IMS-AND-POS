@@ -41,27 +41,9 @@ const toLocalDateKey = (date: Date): string => {
 };
 
 export const Dashboard: React.FC = () => {
-  const { products, sales, notifications, formatCurrency, verticalPadding, horizontalPadding } = useAppContext();
+  const { products, sales, notifications, formatCurrency } = useAppContext();
   const [timeRange, setTimeRange] = useState<TimeRange>('weekly');
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-
-  const paddingClass = useMemo(() => {
-    const verticalPaddingMap = {
-        xs: 'py-2',
-        sm: 'py-3',
-        md: 'py-6',
-        lg: 'py-9',
-        xl: 'py-12',
-    };
-    const horizontalPaddingMap = {
-        xs: 'px-2',
-        sm: 'px-4',
-        md: 'px-6',
-        lg: 'px-8',
-        xl: 'px-10',
-    };
-    return `${verticalPaddingMap[verticalPadding]} ${horizontalPaddingMap[horizontalPadding]}`;
-  }, [verticalPadding, horizontalPadding]);
 
   const unreadCount = useMemo(() => notifications.filter(n => !n.isRead).length, [notifications]);
 
@@ -189,7 +171,7 @@ export const Dashboard: React.FC = () => {
   const ChartElement = timeRange === 'today' ? Bar : Line;
 
   return (
-    <div className={`${paddingClass} space-y-6`}>
+    <div className="p-6 space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Dashboard</h1>
