@@ -1,5 +1,6 @@
 import React, { createContext, useContext, ReactNode } from 'react';
-import { User, UserRole } from '../../types';
+// FIX: Added NotificationType to import to fix enum usage.
+import { User, UserRole, NotificationType } from '../../types';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useUIState } from './UIStateContext';
 
@@ -34,7 +35,8 @@ export const AuthProvider: React.FC<{ children: ReactNode; businessName: string 
           setCurrentUser(user);
           setActiveView(user.role === UserRole.Admin ? 'dashboard' : 'pos');
           if (user.role === UserRole.Cashier) {
-            addNotification(`Cashier '${user.username}' logged in.`, 'USER', user.id);
+            // FIX: Used NotificationType.USER enum member instead of string literal.
+            addNotification(`Cashier '${user.username}' logged in.`, NotificationType.USER, user.id);
           }
           return true;
         }
@@ -54,7 +56,8 @@ export const AuthProvider: React.FC<{ children: ReactNode; businessName: string 
 
     const onLogout = (user: User) => {
         if (user.role === UserRole.Cashier) {
-            addNotification(`Cashier '${user.username}' logged out.`, 'USER', user.id);
+            // FIX: Used NotificationType.USER enum member instead of string literal.
+            addNotification(`Cashier '${user.username}' logged out.`, NotificationType.USER, user.id);
         }
         setCurrentUser(null);
     };
