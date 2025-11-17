@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useRef, forwardRef } from 'react';
-import { PurchaseOrder, POItem, Product, Supplier } from '../../types';
+import React, { useState, useMemo, useRef, forwardRef, useEffect } from 'react';
+import { PurchaseOrder, POItem, Product, Supplier, ProductVariant, ProductVariationOption } from '../../types';
 import useLocalStorage from '../../hooks/useLocalStorage';
 // FIX: Replaced useAppContext with specific context hooks to resolve import error.
 import { useProducts } from '../context/ProductContext';
@@ -26,6 +26,7 @@ const PrintablePO = forwardRef<HTMLDivElement, { po: PurchaseOrder }>(({ po }, r
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-3 text-xs">
                 <div><strong>PO Number:</strong> <span className="font-mono">{po.id}</span></div>
                 <div><strong>Supplier:</strong> {po.supplierName}</div>
+                <div><strong>Supplier ID:</strong> <span className="font-mono">{po.supplierId}</span></div>
                 <div><strong>Date Created:</strong> {formatDateTime(po.dateCreated, { year: 'numeric', month: 'numeric', day: 'numeric' })}</div>
                 <div><strong>Date Expected:</strong> {formatDateTime(po.dateExpected, { year: 'numeric', month: 'numeric', day: 'numeric' })}</div>
                 <div><strong>Status:</strong> {po.status}</div>
@@ -42,7 +43,7 @@ const PrintablePO = forwardRef<HTMLDivElement, { po: PurchaseOrder }>(({ po }, r
                 </thead>
                 <tbody className="text-gray-900 dark:text-white">
                     {po.items.map(item => (
-                        <tr key={item.productId} className="border-b dark:border-gray-600">
+                        <tr key={item.variantId || item.productId} className="border-b dark:border-gray-600">
                             <td className="py-0.5 px-2">{item.sku}</td>
                             <td className="py-0.5 px-2">{item.name}</td>
                             <td className="py-0.5 px-2 text-right">{item.quantityOrdered}</td>
@@ -68,12 +69,12 @@ const ReceivePOModal: React.FC<{ po: PurchaseOrder; onClose: () => void; }> = ({
     const { receivePOItems } = useSales();
     const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
 
-    const handleQuantityChange = (productId: string, value: string) => {
-        const item = po.items.find(i => i.productId === productId);
+    const handleQuantityChange = (itemId: string, value: string) => {
+        const item = po.items.find(i => (i.variantId || i.productId) === itemId);
         if (!item) return;
         const maxReceivable = item.quantityOrdered - item.quantityReceived;
         const quantity = Math.max(0, Math.min(parseInt(value) || 0, maxReceivable));
-        setReceivedQuantities(prev => ({ ...prev, [productId]: quantity }));
+        setReceivedQuantities(prev => ({ ...prev, [itemId]: quantity }));
     };
 
     const handleReceiveAll = () => {
@@ -81,7 +82,7 @@ const ReceivePOModal: React.FC<{ po: PurchaseOrder; onClose: () => void; }> = ({
         po.items.forEach(item => {
             const maxReceivable = item.quantityOrdered - item.quantityReceived;
             if (maxReceivable > 0) {
-                newQuantities[item.productId] = maxReceivable;
+                newQuantities[item.variantId || item.productId] = maxReceivable;
             }
         });
         setReceivedQuantities(newQuantities);
@@ -89,8 +90,11 @@ const ReceivePOModal: React.FC<{ po: PurchaseOrder; onClose: () => void; }> = ({
 
     const handleSubmit = () => {
         const itemsToReceive = Object.keys(receivedQuantities)
-            .filter((productId) => receivedQuantities[productId] > 0)
-            .map((productId) => ({ productId, quantity: receivedQuantities[productId] }));
+            .filter((itemId) => receivedQuantities[itemId] > 0)
+            .map((itemId) => {
+                const item = po.items.find(i => (i.variantId || i.productId) === itemId)!;
+                return { productId: item.productId, variantId: item.variantId, quantity: receivedQuantities[itemId] };
+            });
 
         if (itemsToReceive.length > 0) {
             receivePOItems(po.id, itemsToReceive);
@@ -112,14 +116,15 @@ const ReceivePOModal: React.FC<{ po: PurchaseOrder; onClose: () => void; }> = ({
                     </thead>
                     <tbody className="text-gray-900 dark:text-white">
                         {po.items.map(item => {
+                            const itemId = item.variantId || item.productId;
                             const maxReceivable = item.quantityOrdered - item.quantityReceived;
                             return (
-                                <tr key={item.productId} className="border-b dark:border-gray-600 bg-white dark:bg-gray-800">
+                                <tr key={itemId} className="border-b dark:border-gray-600 bg-white dark:bg-gray-800">
                                     <td className="p-2">{item.name}</td>
                                     <td className="p-2 text-center">{item.quantityOrdered}</td>
                                     <td className="p-2 text-center">{item.quantityReceived}</td>
                                     <td className="p-2">
-                                        <input type="number" min="0" max={maxReceivable} value={receivedQuantities[item.productId] || ''} onChange={e => handleQuantityChange(item.productId, e.target.value)} className="w-24 text-center rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700" disabled={maxReceivable <= 0} />
+                                        <input type="number" min="0" max={maxReceivable} value={receivedQuantities[itemId] || ''} onChange={e => handleQuantityChange(itemId, e.target.value)} className="w-24 text-center rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700" disabled={maxReceivable <= 0} />
                                     </td>
                                 </tr>
                             )
@@ -136,66 +141,242 @@ const ReceivePOModal: React.FC<{ po: PurchaseOrder; onClose: () => void; }> = ({
     );
 };
 
+const OptionSelector: React.FC<{
+    typeName: string;
+    options: ProductVariationOption[];
+    selectedValue: string | undefined;
+    onSelect: (optionName: string) => void;
+}> = ({ typeName, options, selectedValue, onSelect }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (ref.current && !ref.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        if (isOpen) {
+            document.addEventListener("mousedown", handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [isOpen]);
+
+    return (
+        <div className="relative" ref={ref}>
+            <button
+                type="button"
+                onClick={() => setIsOpen(p => !p)}
+                className="w-full flex justify-between items-center text-left pl-3 pr-2 py-2 text-base border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
+            >
+                <span className={selectedValue ? 'text-gray-900 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}>
+                    {selectedValue || `Select ${typeName}`}
+                </span>
+                <ChevronDownIcon className={`h-5 w-5 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isOpen && (
+                <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg rounded-md max-h-60 overflow-auto border border-gray-200 dark:border-gray-700">
+                    <ul className="py-1">
+                        {options.map(opt => (
+                            <li
+                                key={opt.id}
+                                onClick={() => { onSelect(opt.name); setIsOpen(false); }}
+                                className={`px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 ${selectedValue === opt.name ? 'font-semibold text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-200'}`}
+                            >
+                                {opt.name}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const VariantSelectionModal: React.FC<{
+    product: Product;
+    onAddVariant: (product: Product, variant: ProductVariant) => void;
+    onClose: () => void;
+}> = ({ product, onAddVariant, onClose }) => {
+    const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
+    const { formatCurrency } = useSettings();
+
+    const handleSelectOption = (typeName: string, optionName: string) => {
+        setSelectedOptions(prev => ({ ...prev, [typeName]: optionName }));
+    };
+
+    const selectedVariant = useMemo(() => {
+        const requiredTypeNames = product.variationTypes.map(vt => vt.name);
+        if (requiredTypeNames.length !== Object.keys(selectedOptions).length || requiredTypeNames.some(name => !selectedOptions[name])) {
+            return null;
+        }
+        
+        return product.variants.find(variant => {
+            return requiredTypeNames.every(typeName => variant.options[typeName] === selectedOptions[typeName]);
+        });
+    }, [selectedOptions, product]);
+
+    const handleAddClick = () => {
+        if (selectedVariant) {
+            onAddVariant(product, selectedVariant);
+        }
+    };
+    
+    return (
+        <Modal isOpen={true} onClose={onClose} title={`Select Options for ${product.name}`} size="sm">
+            <div className="space-y-4">
+                 {product.variationTypes.map(vt => (
+                    <div key={vt.id}>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{vt.name}</label>
+                        <OptionSelector
+                            typeName={vt.name}
+                            options={vt.options.filter(o => o.name)}
+                            selectedValue={selectedOptions[vt.name]}
+                            onSelect={(optionName) => handleSelectOption(vt.name, optionName)}
+                        />
+                    </div>
+                ))}
+
+                {selectedVariant && (
+                    <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg mt-4 text-center">
+                        <p className="font-semibold text-lg text-gray-800 dark:text-white">{formatCurrency(selectedVariant.costPrice)} (Cost)</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Stock: {selectedVariant.stock}</p>
+                    </div>
+                )}
+                
+                <div className="flex justify-end gap-2 pt-4">
+                    <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
+                    <button type="button" onClick={handleAddClick} disabled={!selectedVariant} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400">
+                        Add to PO
+                    </button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 const CreatePOModal: React.FC<{ onClose: () => void; }> = ({ onClose }) => {
-    // FIX: Replaced useAppContext with specific context hooks.
     const { products } = useProducts();
     const { addPurchaseOrder } = useSales();
     const { formatCurrency, businessName } = useSettings();
     const [suppliers] = useLocalStorage<Supplier[]>(`ims-${businessName}-suppliers`, []);
 
-    const [selectedSupplier, setSelectedSupplier] = useState('');
+    const [selectedSupplierId, setSelectedSupplierId] = useState('');
     const [customSupplierName, setCustomSupplierName] = useState('');
     const [items, setItems] = useState<POItem[]>([]);
     const [expectedDate, setExpectedDate] = useState<string>(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]); // Default to 1 week from now
     const [notes, setNotes] = useState('');
     const [productSearch, setProductSearch] = useState('');
+    const [variantSelectionProduct, setVariantSelectionProduct] = useState<Product | null>(null);
 
     const filteredProducts = useMemo(() => {
         if (!productSearch) return [];
-        const currentItemIds = new Set(items.map(i => i.productId));
-        return products.filter(p => !currentItemIds.has(p.id) && (p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.sku.toLowerCase().includes(productSearch.toLowerCase()))).slice(0, 5);
+        const currentNonVariantItemIds = new Set(items.filter(i => !i.variantId).map(i => i.productId));
+        
+        return products.filter(p => {
+             const searchMatch = p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.sku.toLowerCase().includes(productSearch.toLowerCase());
+             if (!searchMatch) return false;
+             if (p.variants && p.variants.length > 0) return true;
+             return !currentNonVariantItemIds.has(p.id);
+        }).slice(0, 5);
     }, [productSearch, products, items]);
 
     const handleAutoFill = () => {
-        const lowStockProducts = products.filter(p => p.stock <= p.lowStockThreshold);
-        const newItems: POItem[] = lowStockProducts.map(p => {
-            const reorderQty = Math.max(1, (p.lowStockThreshold * 2) - p.stock);
+        const lowStockProducts = products.flatMap(p => {
+            if (p.variants && p.variants.length > 0) {
+                return p.variants
+                    .filter(v => v.stock <= p.lowStockThreshold)
+                    .map(v => ({ product: p, variant: v }));
+            }
+            if (p.stock <= p.lowStockThreshold) {
+                return [{ product: p, variant: undefined }];
+            }
+            return [];
+        });
+
+        const newItems: POItem[] = lowStockProducts.map(({ product, variant }) => {
+            const reorderQty = Math.max(1, (product.lowStockThreshold * 2) - (variant ? variant.stock : product.stock));
             return {
-                productId: p.id, name: p.name, sku: p.sku,
-                quantityOrdered: reorderQty, quantityReceived: 0, costPrice: p.costPrice
+                productId: product.id,
+                variantId: variant?.id,
+                name: variant ? `${product.name} (${Object.values(variant.options).join(' / ')})` : product.name,
+                sku: variant ? `${product.sku}-${variant.skuSuffix}` : product.sku,
+                quantityOrdered: reorderQty,
+                quantityReceived: 0,
+                costPrice: variant ? variant.costPrice : product.costPrice,
             };
         });
-        const currentItemIds = new Set(items.map(i => i.productId));
-        const itemsToAdd = newItems.filter(i => !currentItemIds.has(i.productId));
+
+        const currentItemIds = new Set(items.map(i => i.variantId || i.productId));
+        const itemsToAdd = newItems.filter(i => !currentItemIds.has(i.variantId || i.productId));
         setItems(prev => [...prev, ...itemsToAdd]);
     };
 
     const handleAddItem = (product: Product) => {
+        if (product.variants && product.variants.length > 0) {
+            setVariantSelectionProduct(product);
+            setProductSearch('');
+            return;
+        }
+
         setItems(prev => [...prev, {
             productId: product.id, name: product.name, sku: product.sku,
             quantityOrdered: 1, quantityReceived: 0, costPrice: product.costPrice
         }]);
         setProductSearch('');
     };
+    
+    const handleAddVariantToPO = (product: Product, variant: ProductVariant) => {
+        setItems(prevItems => {
+            const existingItem = prevItems.find(item => item.variantId === variant.id);
+            if (existingItem) {
+                return prevItems.map(item => item.variantId === variant.id ? { ...item, quantityOrdered: item.quantityOrdered + 1 } : item);
+            }
+            return [...prevItems, {
+                productId: product.id,
+                variantId: variant.id,
+                name: `${product.name} (${Object.values(variant.options).join(' / ')})`,
+                sku: `${product.sku}-${variant.skuSuffix}`,
+                quantityOrdered: 1,
+                quantityReceived: 0,
+                costPrice: variant.costPrice
+            }];
+        });
+        setVariantSelectionProduct(null);
+    };
 
-    const handleRemoveItem = (productId: string) => setItems(prev => prev.filter(i => i.productId !== productId));
+    const handleRemoveItem = (itemId: string) => setItems(prev => prev.filter(i => (i.variantId || i.productId) !== itemId));
 
-    const handleQtyChange = (productId: string, qtyStr: string) => {
+    const handleQtyChange = (itemId: string, qtyStr: string) => {
         const qty = parseInt(qtyStr, 10);
-        setItems(prev => prev.map(item => item.productId === productId ? { ...item, quantityOrdered: Math.max(0, isNaN(qty) ? 0 : qty) } : item));
+        setItems(prev => prev.map(item => (item.variantId || item.productId) === itemId ? { ...item, quantityOrdered: Math.max(0, isNaN(qty) ? 0 : qty) } : item));
     };
 
     const totalCost = useMemo(() => items.reduce((sum, item) => sum + item.costPrice * item.quantityOrdered, 0), [items]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const finalSupplierName = selectedSupplier === '_CUSTOM_' ? customSupplierName.trim() : selectedSupplier;
-        if (!finalSupplierName.trim() || items.length === 0 || !expectedDate) {
+        const CUSTOM_SUPPLIER_ID = 'sup_custom';
+        let supplierId: string;
+        let supplierName: string;
+
+        if (selectedSupplierId === '_CUSTOM_') {
+            supplierId = CUSTOM_SUPPLIER_ID;
+            supplierName = customSupplierName.trim();
+        } else {
+            supplierId = selectedSupplierId;
+            supplierName = suppliers.find(s => s.id === selectedSupplierId)?.name || '';
+        }
+
+        if (!supplierName || items.length === 0 || !expectedDate) {
             return;
         }
 
         addPurchaseOrder({
-            supplierName: finalSupplierName,
+            supplierId,
+            supplierName,
             dateCreated: new Date().toISOString(),
             dateExpected: new Date(expectedDate).toISOString(),
             status: 'Pending',
@@ -207,16 +388,17 @@ const CreatePOModal: React.FC<{ onClose: () => void; }> = ({ onClose }) => {
     };
 
     return (
+        <>
         <form onSubmit={handleSubmit} className="space-y-4">
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Supplier Name</label>
-                    <select value={selectedSupplier} onChange={e => setSelectedSupplier(e.target.value)} required className="block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200">
+                    <select value={selectedSupplierId} onChange={e => setSelectedSupplierId(e.target.value)} required className="block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200">
                         <option value="" disabled>Select a supplier</option>
-                        {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         <option value="_CUSTOM_">-- Enter Custom Name --</option>
                     </select>
-                    {selectedSupplier === '_CUSTOM_' && (
+                    {selectedSupplierId === '_CUSTOM_' && (
                         <input
                             type="text"
                             value={customSupplierName}
@@ -258,15 +440,17 @@ const CreatePOModal: React.FC<{ onClose: () => void; }> = ({ onClose }) => {
                             </tr>
                         </thead>
                         <tbody>
-                            {items.map(item => (
-                                <tr key={item.productId} className="border-t dark:border-gray-600 bg-white dark:bg-gray-800">
+                            {items.map(item => {
+                                const itemId = item.variantId || item.productId;
+                                return (
+                                <tr key={itemId} className="border-t dark:border-gray-600 bg-white dark:bg-gray-800">
                                     <td className="p-2">{item.name}</td>
-                                    <td className="p-2"><input type="number" value={item.quantityOrdered} onChange={e => handleQtyChange(item.productId, e.target.value)} className="w-16 text-center rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"/></td>
+                                    <td className="p-2"><input type="number" value={item.quantityOrdered} onChange={e => handleQtyChange(itemId, e.target.value)} className="w-16 text-center rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"/></td>
                                     <td className="p-2 text-right">{formatCurrency(item.costPrice)}</td>
                                     <td className="p-2 text-right">{formatCurrency(item.costPrice * item.quantityOrdered)}</td>
-                                    <td className="p-2 text-center"><button type="button" onClick={() => handleRemoveItem(item.productId)} className="text-red-500 hover:text-red-700"><TrashIcon /></button></td>
+                                    <td className="p-2 text-center"><button type="button" onClick={() => handleRemoveItem(itemId)} className="text-red-500 hover:text-red-700"><TrashIcon /></button></td>
                                 </tr>
-                            ))}
+                            )})}
                         </tbody>
                     </table>
                      {items.length === 0 && <div className="p-4 text-center text-gray-500 dark:text-gray-400">No items in this order.</div>}
@@ -284,6 +468,14 @@ const CreatePOModal: React.FC<{ onClose: () => void; }> = ({ onClose }) => {
                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Create PO</button>
             </div>
         </form>
+        {variantSelectionProduct && (
+            <VariantSelectionModal
+                product={variantSelectionProduct}
+                onAddVariant={handleAddVariantToPO}
+                onClose={() => setVariantSelectionProduct(null)}
+            />
+        )}
+        </>
     );
 };
 
@@ -291,7 +483,8 @@ export const PurchaseOrdersView: React.FC = () => {
     // FIX: Replaced useAppContext with specific context hooks.
     const { purchaseOrders, deletePurchaseOrder } = useSales();
     const { poViewState, onPOViewUpdate, showToast } = useUIState();
-    const { formatCurrency, formatDateTime } = useSettings();
+    const { formatCurrency, formatDateTime, businessName } = useSettings();
+    const [suppliers] = useLocalStorage<Supplier[]>(`ims-${businessName}-suppliers`, []);
     
     const [viewingPO, setViewingPO] = useState<PurchaseOrder | null>(null);
     const [receivingPO, setReceivingPO] = useState<PurchaseOrder | null>(null);
@@ -334,10 +527,16 @@ export const PurchaseOrdersView: React.FC = () => {
         }
     }
 
-    const { searchTerm, statusFilter, sortConfig, currentPage, itemsPerPage } = poViewState;
+    const { searchTerm, statusFilter, supplierFilter, sortConfig, currentPage, itemsPerPage } = poViewState;
     type SortablePOKeys = 'id' | 'supplierName' | 'dateCreated' | 'status' | 'totalCost';
     
     const statusOptions = [{value: 'All', label: 'All Statuses'}, {value: 'Pending', label: 'Pending'}, {value: 'Partial', label: 'Partial'}, {value: 'Received', label: 'Received'}];
+    const supplierOptions = useMemo(() => {
+        const options = suppliers.map(s => ({ value: s.id, label: s.name }));
+        options.push({ value: 'sup_custom', label: 'Custom Supplier' });
+        return [{ value: 'All', label: 'All Suppliers' }, ...options];
+    }, [suppliers]);
+
 
     const requestSort = (key: SortablePOKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -351,6 +550,7 @@ export const PurchaseOrdersView: React.FC = () => {
         return purchaseOrders
             .filter(po => 
                 (statusFilter === 'All' || po.status === statusFilter) &&
+                (supplierFilter === 'All' || po.supplierId === supplierFilter) &&
                 (po.id.toLowerCase().includes(searchTerm.toLowerCase()) || po.supplierName.toLowerCase().includes(searchTerm.toLowerCase()))
             )
             .sort((a,b) => {
@@ -369,7 +569,7 @@ export const PurchaseOrdersView: React.FC = () => {
                 
                 return sortConfig.direction === 'ascending' ? comparison : -comparison;
             });
-    }, [purchaseOrders, searchTerm, statusFilter, sortConfig]);
+    }, [purchaseOrders, searchTerm, statusFilter, supplierFilter, sortConfig]);
 
     const paginated = filteredAndSorted.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
@@ -410,8 +610,9 @@ export const PurchaseOrdersView: React.FC = () => {
                          <button onClick={() => setIsCreatePOModalOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2 w-full sm:w-auto justify-center">
                             <PlusIcon /> Create Purchase Order
                         </button>
-                        <FilterMenu activeFilterCount={statusFilter !== 'All' ? 1 : 0}>
+                        <FilterMenu activeFilterCount={(statusFilter !== 'All' ? 1 : 0) + (supplierFilter !== 'All' ? 1 : 0)}>
                             <FilterSelectItem label="Status" value={statusFilter} onChange={v => onPOViewUpdate({statusFilter: v})} options={statusOptions} />
+                            <FilterSelectItem label="Supplier" value={supplierFilter} onChange={v => onPOViewUpdate({supplierFilter: v})} options={supplierOptions} />
                         </FilterMenu>
                     </div>
                 </div>
@@ -421,6 +622,7 @@ export const PurchaseOrdersView: React.FC = () => {
                     <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
                         <tr>
                             <SortableHeader sortKey="id">PO ID</SortableHeader>
+                            <th className="px-6 py-3">Supplier ID</th>
                             <SortableHeader sortKey="supplierName">Supplier</SortableHeader>
                             <SortableHeader sortKey="dateCreated">Date</SortableHeader>
                             <SortableHeader sortKey="status">Status</SortableHeader>
@@ -436,6 +638,7 @@ export const PurchaseOrdersView: React.FC = () => {
                                         {po.id}
                                     </button>
                                 </td>
+                                <td data-label="Supplier ID" className="px-6 py-4 font-mono text-xs">{po.supplierId}</td>
                                 <td data-label="Supplier" className="px-6 py-4 text-gray-900 dark:text-white">{po.supplierName}</td>
                                 <td data-label="Date" className="px-6 py-4 text-gray-900 dark:text-white">{formatDateTime(po.dateCreated, { year: 'numeric', month: 'numeric', day: 'numeric' })}</td>
                                 <td data-label="Status" className="px-6 py-4">{getStatusChip(po.status)}</td>

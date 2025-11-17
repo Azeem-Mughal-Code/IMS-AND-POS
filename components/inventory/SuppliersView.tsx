@@ -129,6 +129,7 @@ export const SuppliersView: React.FC = () => {
                 <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
                      <thead className="text-xs text-gray-700 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700 sticky top-0 z-10">
                         <tr>
+                            <th className="px-6 py-3">Supplier ID</th>
                             <th className="px-6 py-3">Name</th>
                             <th className="px-6 py-3">Contact Person</th>
                             <th className="px-6 py-3">Email</th>
@@ -139,12 +140,13 @@ export const SuppliersView: React.FC = () => {
                     <tbody>
                         {paginated.map(s => (
                             <tr key={s.id}>
+                                <td data-label="ID" className="px-6 py-4 font-mono text-xs">{s.id}</td>
                                 <td data-label="Name" className="px-6 py-4 font-medium text-gray-900 dark:text-white">{s.name}</td>
                                 <td data-label="Contact" className="px-6 py-4">{s.contactPerson}</td>
                                 <td data-label="Email" className="px-6 py-4">{s.email}</td>
                                 <td data-label="Phone" className="px-6 py-4">{s.phone}</td>
                                 <td data-label="Actions" className="px-6 py-4 flex items-center gap-2 justify-end">
-                                    <button onClick={() => { setEditingSupplier(s); setIsModalOpen(true); }} className="p-1"><PencilIcon /></button>
+                                    <button onClick={() => { setEditingSupplier(s); setIsModalOpen(true); }} className="p-1 text-blue-500 hover:text-blue-700"><PencilIcon /></button>
                                     <button onClick={() => setDeletingSupplier(s)} className="p-1 text-red-500"><TrashIcon /></button>
                                 </td>
                             </tr>

@@ -10,6 +10,9 @@ export const INITIAL_PRODUCTS: Product[] = [
     stock: 25,
     lowStockThreshold: 10,
     priceHistory: [],
+    categoryIds: ['cat_electronics', 'cat_computers'],
+    variationTypes: [],
+    variants: [],
   },
   {
     id: 'prod_2',
@@ -20,6 +23,9 @@ export const INITIAL_PRODUCTS: Product[] = [
     stock: 40,
     lowStockThreshold: 15,
     priceHistory: [],
+    categoryIds: ['cat_electronics', 'cat_accessories'],
+    variationTypes: [],
+    variants: [],
   },
   {
     id: 'prod_3',
@@ -30,6 +36,9 @@ export const INITIAL_PRODUCTS: Product[] = [
     stock: 75,
     lowStockThreshold: 20,
     priceHistory: [],
+    categoryIds: ['cat_electronics', 'cat_accessories'],
+    variationTypes: [],
+    variants: [],
   },
   {
     id: 'prod_4',
@@ -40,6 +49,9 @@ export const INITIAL_PRODUCTS: Product[] = [
     stock: 120,
     lowStockThreshold: 30,
     priceHistory: [],
+    categoryIds: ['cat_electronics', 'cat_accessories'],
+    variationTypes: [],
+    variants: [],
   },
   {
     id: 'prod_5',
@@ -50,6 +62,9 @@ export const INITIAL_PRODUCTS: Product[] = [
     stock: 8,
     lowStockThreshold: 10,
     priceHistory: [],
+    categoryIds: ['cat_electronics', 'cat_accessories'],
+    variationTypes: [],
+    variants: [],
   },
   {
     id: 'prod_6',
@@ -60,6 +75,40 @@ export const INITIAL_PRODUCTS: Product[] = [
     stock: 50,
     lowStockThreshold: 15,
     priceHistory: [],
+    categoryIds: ['cat_electronics', 'cat_accessories'],
+    variationTypes: [],
+    variants: [],
+  },
+  {
+    id: 'prod_7',
+    sku: 'AP-TSH-007',
+    name: 'Classic Crew T-Shirt',
+    retailPrice: 24.99,
+    costPrice: 10.00,
+    stock: 127,
+    lowStockThreshold: 10,
+    priceHistory: [],
+    categoryIds: ['cat_apparel'],
+    variationTypes: [
+      {
+        id: 'vt_color_1',
+        name: 'Color',
+        options: [ { id: 'opt_c_1', name: 'White' }, { id: 'opt_c_2', name: 'Black' } ],
+      },
+      {
+        id: 'vt_size_1',
+        name: 'Size',
+        options: [ { id: 'opt_s_1', name: 'S' }, { id: 'opt_s_2', name: 'M' }, { id: 'opt_s_3', name: 'L' } ],
+      },
+    ],
+    variants: [
+      { id: 'var_1', options: { Color: 'White', Size: 'S' }, skuSuffix: 'WH-S', retailPrice: 24.99, costPrice: 10.00, stock: 20 },
+      { id: 'var_2', options: { Color: 'White', Size: 'M' }, skuSuffix: 'WH-M', retailPrice: 24.99, costPrice: 10.00, stock: 30 },
+      { id: 'var_3', options: { Color: 'White', Size: 'L' }, skuSuffix: 'WH-L', retailPrice: 24.99, costPrice: 10.00, stock: 15 },
+      { id: 'var_4', options: { Color: 'Black', Size: 'S' }, skuSuffix: 'BK-S', retailPrice: 24.99, costPrice: 10.00, stock: 22 },
+      { id: 'var_5', options: { Color: 'Black', Size: 'M' }, skuSuffix: 'BK-M', retailPrice: 24.99, costPrice: 10.00, stock: 28 },
+      { id: 'var_6', options: { Color: 'Black', Size: 'L' }, skuSuffix: 'BK-L', retailPrice: 24.99, costPrice: 10.00, stock: 12 },
+    ],
   },
 ];
 

@@ -12,7 +12,7 @@ interface SalesContextType {
     clearSales: (options?: { statuses?: (Sale['status'])[] }) => void;
     pruneData: (target: 'sales' | 'purchaseOrders', options: { days: number; statuses?: Sale['status'][] }) => { success: boolean; message: string };
     addPurchaseOrder: (poData: Omit<PurchaseOrder, 'id'>) => PurchaseOrder;
-    receivePOItems: (poId: string, items: { productId: string; quantity: number }[]) => void;
+    receivePOItems: (poId: string, items: { productId: string; variantId?: string; quantity: number }[]) => void;
     deletePurchaseOrder: (poId: string) => { success: boolean; message?: string };
     factoryReset: () => void;
 }
@@ -43,17 +43,27 @@ export const SalesProvider: React.FC<{ children: ReactNode; businessName: string
             newSale.status = 'Completed';
             // Decrease stock for sales
             saleData.items.forEach(item => {
-                const product = products.find(p => p.id === item.id);
+                const product = products.find(p => p.id === item.productId);
                 if (product) {
-                    adjustStock(item.id, product.stock - item.quantity, `Sale #${newSale.id}`);
+                    const currentStock = item.variantId 
+                        ? product.variants.find(v => v.id === item.variantId)?.stock 
+                        : product.stock;
+                    if (typeof currentStock !== 'undefined') {
+                        adjustStock(item.productId, currentStock - item.quantity, `Sale #${newSale.id}`, item.variantId);
+                    }
                 }
             });
         } else { // Return
             // Increase stock for returns
             saleData.items.forEach(item => {
-                const product = products.find(p => p.id === item.id);
+                const product = products.find(p => p.id === item.productId);
                 if (product) {
-                    adjustStock(item.id, product.stock + item.quantity, `Return for Sale #${saleData.originalSaleId}`);
+                    const currentStock = item.variantId 
+                        ? product.variants.find(v => v.id === item.variantId)?.stock 
+                        : product.stock;
+                    if (typeof currentStock !== 'undefined') {
+                        adjustStock(item.productId, currentStock + item.quantity, `Return for Sale #${saleData.originalSaleId}`, item.variantId);
+                    }
                 }
             });
             // Update original sale status
@@ -133,18 +143,24 @@ export const SalesProvider: React.FC<{ children: ReactNode; businessName: string
         return newPO;
     };
     
-    const receivePOItems = (poId: string, items: { productId: string; quantity: number }[]) => {
+    const receivePOItems = (poId: string, items: { productId: string; variantId?: string; quantity: number }[]) => {
         items.forEach(item => {
             const product = products.find(p => p.id === item.productId);
             if (product) {
-                adjustStock(item.productId, product.stock + item.quantity, `Received from PO #${poId}`);
+                const currentStock = item.variantId
+                    ? product.variants.find(v => v.id === item.variantId)?.stock
+                    : product.stock;
+                
+                if (typeof currentStock !== 'undefined') {
+                    adjustStock(item.productId, currentStock + item.quantity, `Received from PO #${poId}`, item.variantId);
+                }
             }
         });
 
         setPurchaseOrders(prev => prev.map(po => {
             if (po.id === poId) {
                 const updatedItems = po.items.map(poItem => {
-                    const received = items.find(r => r.productId === poItem.productId);
+                    const received = items.find(r => r.productId === poItem.productId && r.variantId === poItem.variantId);
                     if (received) {
                         return { ...poItem, quantityReceived: poItem.quantityReceived + received.quantity };
                     }

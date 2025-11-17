@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Product, CartItem, PaymentType, Sale, Payment } from '../types';
-import { SearchIcon, PlusIcon, MinusIcon, TrashIcon, PhotoIcon } from './Icons';
+import { Product, CartItem, PaymentType, Sale, Payment, ProductVariant, ProductVariationOption } from '../types';
+import { SearchIcon, PlusIcon, MinusIcon, TrashIcon, PhotoIcon, ChevronDownIcon } from './Icons';
 import { Modal } from './common/Modal';
 import { PrintableReceipt } from './common/PrintableReceipt';
 import { UserRole } from '../types';
@@ -11,6 +11,122 @@ import { useSettings } from './context/SettingsContext';
 import { useUIState } from './context/UIStateContext';
 
 declare var html2canvas: any;
+
+const OptionSelector: React.FC<{
+    typeName: string;
+    options: ProductVariationOption[];
+    selectedValue: string | undefined;
+    onSelect: (optionName: string) => void;
+}> = ({ typeName, options, selectedValue, onSelect }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (ref.current && !ref.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        if (isOpen) {
+            document.addEventListener("mousedown", handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [isOpen]);
+
+    return (
+        <div className="relative" ref={ref}>
+            <button
+                type="button"
+                onClick={() => setIsOpen(p => !p)}
+                className="w-full flex justify-between items-center text-left pl-3 pr-2 py-2 text-base border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
+            >
+                <span className={selectedValue ? 'text-gray-900 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}>
+                    {selectedValue || `Select ${typeName}`}
+                </span>
+                <ChevronDownIcon className={`h-5 w-5 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isOpen && (
+                <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg rounded-md max-h-60 overflow-auto border border-gray-200 dark:border-gray-700">
+                    <ul className="py-1">
+                        {options.map(opt => (
+                            <li
+                                key={opt.id}
+                                onClick={() => { onSelect(opt.name); setIsOpen(false); }}
+                                className={`px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 ${selectedValue === opt.name ? 'font-semibold text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-200'}`}
+                            >
+                                {opt.name}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const VariantSelectionModal: React.FC<{
+    product: Product;
+    onAddToCart: (product: Product, variant: ProductVariant) => void;
+    onClose: () => void;
+}> = ({ product, onAddToCart, onClose }) => {
+    const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
+    const { formatCurrency } = useSettings();
+
+    const handleSelectOption = (typeName: string, optionName: string) => {
+        setSelectedOptions(prev => ({ ...prev, [typeName]: optionName }));
+    };
+
+    const selectedVariant = useMemo(() => {
+        const requiredTypeNames = product.variationTypes.map(vt => vt.name);
+        if (requiredTypeNames.length !== Object.keys(selectedOptions).length || requiredTypeNames.some(name => !selectedOptions[name])) {
+            return null;
+        }
+        
+        return product.variants.find(variant => {
+            return requiredTypeNames.every(typeName => variant.options[typeName] === selectedOptions[typeName]);
+        });
+    }, [selectedOptions, product]);
+
+    const handleAddToCartClick = () => {
+        if (selectedVariant) {
+            onAddToCart(product, selectedVariant);
+        }
+    };
+    
+    return (
+        <Modal isOpen={true} onClose={onClose} title={`Select Options for ${product.name}`} size="sm">
+            <div className="space-y-4">
+                {product.variationTypes.map(vt => (
+                    <div key={vt.id}>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{vt.name}</label>
+                        <OptionSelector
+                            typeName={vt.name}
+                            options={vt.options.filter(o => o.name)}
+                            selectedValue={selectedOptions[vt.name]}
+                            onSelect={(optionName) => handleSelectOption(vt.name, optionName)}
+                        />
+                    </div>
+                ))}
+
+                {selectedVariant && (
+                    <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg mt-4 text-center">
+                        <p className="font-semibold text-lg text-gray-800 dark:text-white">{formatCurrency(selectedVariant.retailPrice)}</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Stock: {selectedVariant.stock}</p>
+                    </div>
+                )}
+                
+                <div className="flex justify-end gap-2 pt-4">
+                    <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
+                    <button type="button" onClick={handleAddToCartClick} disabled={!selectedVariant || selectedVariant.stock <= 0} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400">
+                        {selectedVariant && selectedVariant.stock <= 0 ? 'Out of Stock' : 'Add to Cart'}
+                    </button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
 
 interface POSProps {
 }
@@ -208,6 +324,7 @@ export const POS: React.FC<POSProps> = () => {
   const [selectedSaleForReturn, setSelectedSaleForReturn] = useState<Sale | null>(null);
   const [returnSearchTerm, setReturnSearchTerm] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [variantSelectionProduct, setVariantSelectionProduct] = useState<Product | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const printableAreaRef = useRef<HTMLDivElement>(null);
 
@@ -279,7 +396,47 @@ export const POS: React.FC<POSProps> = () => {
     setReturnSearchTerm('');
   };
   
+  const handleAddVariantToCart = (product: Product, variant: ProductVariant) => {
+    setCart(prevCart => {
+        const existingItem = prevCart.find(item => item.id === variant.id);
+        if (existingItem) {
+            if (existingItem.quantity < variant.stock) {
+                return prevCart.map(item =>
+                    item.id === variant.id ? { ...item, quantity: item.quantity + 1 } : item
+                );
+            }
+            return prevCart;
+        } else {
+            if (variant.stock > 0) {
+                const composedName = `${product.name} (${Object.values(variant.options).join(' / ')})`;
+                const composedSku = `${product.sku}-${variant.skuSuffix}`;
+                const newItem: CartItem = {
+                    id: variant.id,
+                    productId: product.id,
+                    variantId: variant.id,
+                    name: composedName,
+                    sku: composedSku,
+                    retailPrice: variant.retailPrice,
+                    costPrice: variant.costPrice,
+                    stock: variant.stock,
+                    quantity: 1,
+                };
+                return [...prevCart, newItem];
+            }
+        }
+        return prevCart;
+    });
+    setVariantSelectionProduct(null);
+};
+
+
   const addToCart = (product: Product) => {
+    if (product.variants && product.variants.length > 0) {
+        setVariantSelectionProduct(product);
+        setSearchTerm('');
+        setHighlightedIndex(-1);
+        return;
+    }
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item.id === product.id);
       if (existingItem) {
@@ -291,7 +448,17 @@ export const POS: React.FC<POSProps> = () => {
         return prevCart;
       }
       if (product.stock > 0) {
-        return [...prevCart, { ...product, quantity: 1 }];
+        const newItem: CartItem = {
+            id: product.id,
+            productId: product.id,
+            name: product.name,
+            sku: product.sku,
+            retailPrice: product.retailPrice,
+            costPrice: product.costPrice,
+            stock: product.stock,
+            quantity: 1,
+        };
+        return [...prevCart, newItem];
       }
       return prevCart;
     });
@@ -299,10 +466,10 @@ export const POS: React.FC<POSProps> = () => {
     setHighlightedIndex(-1);
   };
 
-  const updateQuantity = (productId: string, change: number) => {
+  const updateQuantity = (itemId: string, change: number) => {
     setCart(prevCart => {
       return prevCart.map(item => {
-        if (item.id === productId) {
+        if (item.id === itemId) {
           const newQuantity = item.quantity + change;
           if (newQuantity > 0 && newQuantity <= item.stock) {
             return { ...item, quantity: newQuantity };
@@ -332,8 +499,8 @@ export const POS: React.FC<POSProps> = () => {
     });
   };
 
-  const removeFromCart = (productId: string) => {
-    setCart(cart.filter(item => item.id !== productId));
+  const removeFromCart = (itemId: string) => {
+    setCart(cart.filter(item => item.id !== itemId));
   }
 
   const totals = useMemo(() => {
@@ -722,6 +889,13 @@ export const POS: React.FC<POSProps> = () => {
           </div>
         )}
       </Modal>
+      {variantSelectionProduct && (
+          <VariantSelectionModal 
+              product={variantSelectionProduct}
+              onAddToCart={handleAddVariantToCart}
+              onClose={() => setVariantSelectionProduct(null)}
+          />
+      )}
     </div>
   );
 };

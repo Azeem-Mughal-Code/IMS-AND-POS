@@ -1,10 +1,10 @@
 import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
-import { View, Toast, Notification, NotificationType, InventoryViewState, ReportsViewState, UsersViewState, AnalysisViewState, POViewState, PruneTarget } from '../../types';
+import { View, Toast, Notification, NotificationType, InventoryViewState, ReportsViewState, UsersViewState, AnalysisViewState, POViewState, PruneTarget, CategoriesViewState } from '../../types';
 import useLocalStorage from '../../hooks/useLocalStorage';
 
 // Define initial states for each view's state
 const initialInventoryViewState: InventoryViewState = {
-    searchTerm: '', stockFilter: 'All', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1, itemsPerPage: 10,
+    searchTerm: '', stockFilter: 'All', categoryFilter: 'All', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1, itemsPerPage: 10,
 };
 const initialReportsSalesViewState: ReportsViewState['sales'] = {
     searchTerm: '', typeFilter: 'All', statusFilter: 'All', salespersonFilter: 'All', timeRange: 'all', sortConfig: { key: 'id', direction: 'descending' }, currentPage: 1, itemsPerPage: 10,
@@ -22,7 +22,10 @@ const initialAnalysisViewState: AnalysisViewState = {
     timeRange: 'weekly', searchTerm: '', sortConfig: { key: 'profit', direction: 'descending' }, currentPage: 1, itemsPerPage: 10,
 };
 const initialPOViewState: POViewState = {
-    searchTerm: '', statusFilter: 'All', sortConfig: { key: 'dateCreated', direction: 'descending' }, currentPage: 1, itemsPerPage: 10,
+    searchTerm: '', statusFilter: 'All', supplierFilter: 'All', sortConfig: { key: 'dateCreated', direction: 'descending' }, currentPage: 1, itemsPerPage: 10,
+};
+const initialCategoriesViewState: CategoriesViewState = {
+    sortConfig: { key: 'name', direction: 'ascending' },
 };
 
 interface UIStateContextType {
@@ -49,6 +52,8 @@ interface UIStateContextType {
     onAnalysisViewUpdate: (update: Partial<AnalysisViewState>) => void;
     poViewState: POViewState;
     onPOViewUpdate: (update: Partial<POViewState>) => void;
+    categoriesViewState: CategoriesViewState;
+    onCategoriesViewUpdate: (update: Partial<CategoriesViewState>) => void;
     zoomLevel: number;
     setZoomLevel: (level: number) => void;
     factoryReset: () => void;
@@ -76,6 +81,7 @@ export const UIStateProvider: React.FC<{ children: ReactNode; businessName: stri
     const [usersViewState, setUsersViewState] = useLocalStorage<UsersViewState>(`${ls_prefix}-usersViewState`, initialUsersViewState);
     const [analysisViewState, setAnalysisViewState] = useLocalStorage<AnalysisViewState>(`${ls_prefix}-analysisViewState`, initialAnalysisViewState);
     const [poViewState, setPOViewState] = useLocalStorage<POViewState>(`${ls_prefix}-poViewState`, initialPOViewState);
+    const [categoriesViewState, setCategoriesViewState] = useLocalStorage<CategoriesViewState>(`${ls_prefix}-categoriesViewState`, initialCategoriesViewState);
     const [zoomLevel, setZoomLevel] = useLocalStorage<number>(`${ls_prefix}-zoomLevel`, 0.85);
 
     const showToast = (message: string, type: 'success' | 'error') => {
@@ -99,6 +105,7 @@ export const UIStateProvider: React.FC<{ children: ReactNode; businessName: stri
     const onUsersViewUpdate = (update: Partial<UsersViewState>) => setUsersViewState(prev => ({ ...prev, ...update }));
     const onAnalysisViewUpdate = (update: Partial<AnalysisViewState>) => setAnalysisViewState(prev => ({ ...prev, ...update }));
     const onPOViewUpdate = (update: Partial<POViewState>) => setPOViewState(prev => ({ ...prev, ...update }));
+    const onCategoriesViewUpdate = (update: Partial<CategoriesViewState>) => setCategoriesViewState(prev => ({ ...prev, ...update }));
     
     const pruneData = (target: 'notifications' | 'stockHistory', options: { days: number }): { success: boolean; message: string } => {
         const cutoffDate = new Date();
@@ -123,6 +130,7 @@ export const UIStateProvider: React.FC<{ children: ReactNode; businessName: stri
         setUsersViewState(initialUsersViewState);
         setAnalysisViewState(initialAnalysisViewState);
         setPOViewState(initialPOViewState);
+        setCategoriesViewState(initialCategoriesViewState);
     };
 
     const value = {
@@ -135,6 +143,7 @@ export const UIStateProvider: React.FC<{ children: ReactNode; businessName: stri
         usersViewState, onUsersViewUpdate,
         analysisViewState, onAnalysisViewUpdate,
         poViewState, onPOViewUpdate,
+        categoriesViewState, onCategoriesViewUpdate,
         zoomLevel, setZoomLevel,
         factoryReset
     };

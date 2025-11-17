@@ -4,13 +4,14 @@ import { ProductsView } from './inventory/ProductsView';
 import { PurchaseOrdersView } from './inventory/PurchaseOrdersView';
 import { InventoryValuationView } from './inventory/InventoryValuationView';
 import { SuppliersView } from './inventory/SuppliersView';
+import { CategoriesView } from './inventory/CategoriesView';
 import { UserRole } from '../types';
 
 export const Inventory: React.FC = () => {
   const { currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'products' | 'suppliers' | 'purchaseOrders' | 'valuation'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'suppliers' | 'purchaseOrders' | 'valuation'>('products');
 
-  const TabButton: React.FC<{ tabId: 'products' | 'suppliers' | 'purchaseOrders' | 'valuation', label: string }> = ({ tabId, label }) => (
+  const TabButton: React.FC<{ tabId: 'products' | 'categories' | 'suppliers' | 'purchaseOrders' | 'valuation', label: string }> = ({ tabId, label }) => (
     <button
         onClick={() => setActiveTab(tabId)}
         className={`px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
@@ -32,6 +33,7 @@ export const Inventory: React.FC = () => {
        <div className="mb-6 flex-shrink-0 bg-gray-200 dark:bg-gray-700 p-1 rounded-lg self-start overflow-x-auto">
             <div className="flex items-center space-x-1">
                 <TabButton tabId="products" label="Products" />
+                <TabButton tabId="categories" label="Categories" />
                 <TabButton tabId="suppliers" label="Suppliers" />
                 <TabButton tabId="purchaseOrders" label="Purchase Orders" />
                 {currentUser.role === UserRole.Admin && <TabButton tabId="valuation" label="Valuation" />}
@@ -39,6 +41,7 @@ export const Inventory: React.FC = () => {
         </div>
       
       {activeTab === 'products' && <ProductsView />}
+      {activeTab === 'categories' && <CategoriesView />}
       {activeTab === 'suppliers' && <SuppliersView />}
       {activeTab === 'purchaseOrders' && <PurchaseOrdersView />}
       {activeTab === 'valuation' && currentUser.role === UserRole.Admin && <InventoryValuationView />}

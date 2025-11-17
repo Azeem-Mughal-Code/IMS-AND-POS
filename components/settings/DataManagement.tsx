@@ -140,7 +140,8 @@ export const DataManagement: React.FC = () => {
                 const values = rows[i].trim().split(',');
                 const productData: any = {};
                 header.forEach((h, index) => productData[h] = values[index]);
-                newProducts.push({ sku: productData.sku, name: productData.name, retailPrice: parseFloat(productData.retailPrice), costPrice: parseFloat(productData.costPrice), stock: parseInt(productData.stock, 10), lowStockThreshold: parseInt(productData.lowStockThreshold, 10), priceHistory: [] });
+                // FIX: Added missing 'variationTypes' and 'variants' properties to align with the Product type.
+                newProducts.push({ sku: productData.sku, name: productData.name, retailPrice: parseFloat(productData.retailPrice), costPrice: parseFloat(productData.costPrice), stock: parseInt(productData.stock, 10), lowStockThreshold: parseInt(productData.lowStockThreshold, 10), priceHistory: [], categoryIds: [], variationTypes: [], variants: [] });
             }
             const result = importProducts(newProducts);
             showToast(result.message, result.success ? 'success' : 'error');

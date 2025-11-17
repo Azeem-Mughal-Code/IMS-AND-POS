@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Sale, UserRole, ReportsViewState, PaymentType } from '../types';
+import { Sale, UserRole, ReportsViewState, PaymentType, Product } from '../types';
 import { Modal } from './common/Modal';
 import { FilterMenu, FilterSelectItem } from './common/FilterMenu';
 import { Pagination } from './common/Pagination';
@@ -41,6 +41,16 @@ const getStartOfWeek = (date: Date): Date => {
   d.setDate(d.getDate() - d.getDay());
   d.setHours(0, 0, 0, 0);
   return d;
+};
+
+type DisplayableStockItem = {
+    id: string; // productId or variantId
+    productId: string;
+    sku: string;
+    name: string;
+    stock: number;
+    lowStockThreshold: number;
+    isVariant: boolean;
 };
 
 
@@ -270,7 +280,34 @@ export const Reports: React.FC = () => {
   }, [filteredAndSortedSales, saleCurrentPage, saleItemsPerPage]);
 
   const filteredAndSortedProducts = useMemo(() => {
-    const filtered = products
+    const flatProductList: DisplayableStockItem[] = [];
+    products.forEach(p => {
+        if (p.variants && p.variants.length > 0) {
+            p.variants.forEach(v => {
+                flatProductList.push({
+                    id: v.id,
+                    productId: p.id,
+                    sku: `${p.sku}-${v.skuSuffix}`,
+                    name: `${p.name} (${Object.values(v.options).join(' / ')})`,
+                    stock: v.stock,
+                    lowStockThreshold: p.lowStockThreshold,
+                    isVariant: true,
+                });
+            });
+        } else {
+            flatProductList.push({
+                id: p.id,
+                productId: p.id,
+                sku: p.sku,
+                name: p.name,
+                stock: p.stock,
+                lowStockThreshold: p.lowStockThreshold,
+                isVariant: false,
+            });
+        }
+    });
+
+    const filtered = flatProductList
         .filter(p => {
             if (stockFilter === 'In Stock') return p.stock > p.lowStockThreshold;
             if (stockFilter === 'Low Stock') return p.stock > 0 && p.stock <= p.lowStockThreshold;
@@ -474,9 +511,9 @@ export const Reports: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {paginatedProducts.map(p => (
-                <tr key={p.id}>
+                <tr key={p.id} className={p.isVariant ? 'bg-gray-50 dark:bg-gray-800/50' : ''}>
                   <td data-label="SKU" className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{p.sku}</td>
-                  <td data-label="Name" className="px-6 py-4">{p.name}</td>
+                  <td data-label="Name" className="px-6 py-4" style={{ paddingLeft: p.isVariant ? '2rem' : undefined }}>{p.name}</td>
                   <td data-label="Stock" className="px-6 py-4">{p.stock}</td>
                   <td data-label="Low Stock Threshold" className="px-6 py-4">{p.lowStockThreshold}</td>
                   <td data-label="Status" className="px-6 py-4">

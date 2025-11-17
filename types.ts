@@ -1,3 +1,5 @@
+import React from 'react';
+
 export enum UserRole {
   Admin = 'Admin',
   Cashier = 'Cashier',
@@ -25,6 +27,34 @@ export interface PriceHistoryEntry {
   userName: string;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  parentId?: string | null;
+}
+
+export interface ProductVariationOption {
+  id: string;
+  name: string;
+}
+
+export interface ProductVariationType {
+  id: string;
+  name: string;
+  options: ProductVariationOption[];
+}
+
+export interface ProductVariant {
+  id: string;
+  // Mapped by variation type id to option name.
+  options: Record<string, string>; 
+  skuSuffix: string;
+  retailPrice: number;
+  costPrice: number;
+  stock: number;
+}
+
+
 export interface Product {
   id: string;
   sku: string;
@@ -34,12 +64,27 @@ export interface Product {
   stock: number;
   lowStockThreshold: number;
   priceHistory: PriceHistoryEntry[];
+  categoryIds: string[];
+  variationTypes: ProductVariationType[];
+  variants: ProductVariant[];
 }
 
-export interface CartItem extends Product {
+export interface CartItem {
+  id: string; // Unique ID for the cart line item (productId or variantId)
+  productId: string; // ID of the base product
+  variantId?: string;
+
+  name: string; // Composed name for display
+  sku: string; // Composed SKU
+  
+  retailPrice: number;
+  costPrice: number;
+  
+  stock: number; // Stock of the specific item at the time of adding to cart
   quantity: number;
   returnedQuantity?: number;
 }
+
 
 // NEW: For Split Payments
 export interface Payment {
@@ -80,6 +125,7 @@ export type View = 'dashboard' | 'pos' | 'inventory' | 'reports' | 'analysis' | 
 
 export interface InventoryAdjustment {
   productId: string;
+  variantId?: string;
   date: string;
   quantity: number;
   reason: string;
@@ -87,15 +133,18 @@ export interface InventoryAdjustment {
 
 export interface POItem {
   productId: string;
-  name: string; // denormalized for easier display
-  sku: string; // denormalized
+  variantId?: string;
+  name: string; // denormalized, composed name
+  sku: string; // denormalized, composed sku
   quantityOrdered: number;
   quantityReceived: number;
   costPrice: number; // cost at time of order
 }
 
+
 export interface PurchaseOrder {
   id: string;
+  supplierId: string;
   supplierName: string;
   dateCreated: string;
   dateExpected: string;
@@ -123,6 +172,7 @@ type InventorySortKeys = keyof Product;
 export interface InventoryViewState {
     searchTerm: string;
     stockFilter: string;
+    categoryFilter: string;
     sortConfig: SortConfig<InventorySortKeys>;
     currentPage: number;
     itemsPerPage: number;
@@ -180,12 +230,18 @@ type POSortKeys = 'id' | 'supplierName' | 'dateCreated' | 'status' | 'totalCost'
 export interface POViewState {
     searchTerm: string;
     statusFilter: string;
+    supplierFilter: string;
     sortConfig: SortConfig<POSortKeys>;
     currentPage: number;
     itemsPerPage: number;
 }
 
 export type SupplierSortKeys = keyof Omit<Supplier, 'id' | 'address'>;
+
+export type CategorySortKeys = 'name';
+export interface CategoriesViewState {
+    sortConfig: SortConfig<CategorySortKeys>;
+}
 
 // FIX: Added missing PaddingLevel type for the unused PaddingSelector component.
 export type PaddingLevel = 'xs' | 'sm' | 'md' | 'lg' | 'xl';

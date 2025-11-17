@@ -7,13 +7,16 @@ import { useSales } from './context/SalesContext';
 import { useUIState } from './context/UIStateContext';
 import { useSettings } from './context/SettingsContext';
 
+type SellableItem = {
+    id: string; // productId or variantId
+    productId: string;
+    sku: string;
+    name: string;
+    stock: number;
+}
+
 type PerformanceMetric = {
-    product: {
-        id: string;
-        sku: string;
-        name: string;
-        stock: number;
-    };
+    item: SellableItem;
     unitsSold: number;
     revenue: number;
     cogs: number;
@@ -95,28 +98,55 @@ export const Analysis: React.FC = () => {
         }
     }, [sales, timeRange]);
 
+    const sellableItems = useMemo<SellableItem[]>(() => {
+        const items: SellableItem[] = [];
+        products.forEach(p => {
+            if (p.variants && p.variants.length > 0) {
+                p.variants.forEach(v => {
+                    items.push({
+                        id: v.id,
+                        productId: p.id,
+                        sku: `${p.sku}-${v.skuSuffix}`,
+                        name: `${p.name} (${Object.values(v.options).join(' / ')})`,
+                        stock: v.stock
+                    });
+                });
+            } else {
+                items.push({
+                    id: p.id,
+                    productId: p.id,
+                    sku: p.sku,
+                    name: p.name,
+                    stock: p.stock
+                });
+            }
+        });
+        return items;
+    }, [products]);
+
     const productPerformance = useMemo<PerformanceMetric[]>(() => {
-        const metrics: { [key: string]: Omit<PerformanceMetric, 'product'> } = {};
+        const metrics: { [itemId: string]: Omit<PerformanceMetric, 'item'> } = {};
 
         filteredSales.forEach(sale => {
             if (sale.type === 'Sale') {
                 sale.items.forEach(item => {
-                    if (!metrics[item.id]) {
-                        metrics[item.id] = { unitsSold: 0, revenue: 0, cogs: 0, profit: 0 };
+                    const itemId = item.variantId || item.productId;
+                    if (!metrics[itemId]) {
+                        metrics[itemId] = { unitsSold: 0, revenue: 0, cogs: 0, profit: 0 };
                     }
-                    metrics[item.id].unitsSold += item.quantity;
-                    metrics[item.id].revenue += item.retailPrice * item.quantity;
-                    metrics[item.id].cogs += item.costPrice * item.quantity;
-                    metrics[item.id].profit += (item.retailPrice - item.costPrice) * item.quantity;
+                    metrics[itemId].unitsSold += item.quantity;
+                    metrics[itemId].revenue += item.retailPrice * item.quantity;
+                    metrics[itemId].cogs += item.costPrice * item.quantity;
+                    metrics[itemId].profit += (item.retailPrice - item.costPrice) * item.quantity;
                 });
             }
         });
 
-        return products.map(p => ({
-            product: { id: p.id, sku: p.sku, name: p.name, stock: p.stock },
-            ... (metrics[p.id] || { unitsSold: 0, revenue: 0, cogs: 0, profit: 0 })
+        return sellableItems.map(item => ({
+            item: item,
+            ... (metrics[item.id] || { unitsSold: 0, revenue: 0, cogs: 0, profit: 0 })
         }));
-    }, [products, filteredSales]);
+    }, [sellableItems, filteredSales]);
     
     const requestSort = (key: SortableAnalysisKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -129,13 +159,13 @@ export const Analysis: React.FC = () => {
     const filteredAndSortedPerformance = useMemo(() => {
         const withCalculatedMetrics: PerformanceData[] = productPerformance.map(p => {
             const profitMargin = p.revenue > 0 ? (p.profit / p.revenue) * 100 : 0;
-            const sellThrough = p.unitsSold + p.product.stock > 0 ? (p.unitsSold / (p.unitsSold + p.product.stock)) * 100 : 0;
+            const sellThrough = p.unitsSold + p.item.stock > 0 ? (p.unitsSold / (p.unitsSold + p.item.stock)) * 100 : 0;
             return { ...p, profitMargin, sellThrough };
         });
 
         const filtered = withCalculatedMetrics.filter(p =>
-            p.product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            p.product.sku.toLowerCase().includes(searchTerm.toLowerCase())
+            p.item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            p.item.sku.toLowerCase().includes(searchTerm.toLowerCase())
         );
 
         return filtered.sort((a, b) => {
@@ -144,8 +174,8 @@ export const Analysis: React.FC = () => {
             let valB: string | number;
 
             if (key === 'product') {
-                valA = a.product.name;
-                valB = b.product.name;
+                valA = a.item.name;
+                valB = b.item.name;
             } else {
                 valA = a[key];
                 valB = b[key];
@@ -177,10 +207,10 @@ export const Analysis: React.FC = () => {
         const sortedByUnits = [...productPerformance].sort((a, b) => b.unitsSold - a.unitsSold);
         const sortedByProfit = [...productPerformance].sort((a, b) => b.profit - a.profit);
         const slowestMovers = [...productPerformance]
-            .filter(p => p.product.stock > 0)
+            .filter(p => p.item.stock > 0)
             .sort((a, b) => {
-                const aSellThrough = a.unitsSold / (a.unitsSold + a.product.stock);
-                const bSellThrough = b.unitsSold / (b.unitsSold + b.product.stock);
+                const aSellThrough = a.unitsSold / (a.unitsSold + a.item.stock);
+                const bSellThrough = b.unitsSold / (b.unitsSold + b.item.stock);
                 return aSellThrough - bSellThrough;
             });
 
@@ -221,9 +251,9 @@ export const Analysis: React.FC = () => {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <KPICard title="Best Seller (Units)" productName={kpis.bestSellerByUnits?.product.name || 'N/A'} value={`${kpis.bestSellerByUnits?.unitsSold || 0} Units`} />
-                <KPICard title="Most Profitable" productName={kpis.bestSellerByProfit?.product.name || 'N/A'} value={formatCurrency(kpis.bestSellerByProfit?.profit || 0)} />
-                <KPICard title="Slowest Mover" productName={kpis.slowestMover?.product.name || 'N/A'} value={`${kpis.slowestMover?.product.stock || 0} in Stock`} />
+                <KPICard title="Best Seller (Units)" productName={kpis.bestSellerByUnits?.item.name || 'N/A'} value={`${kpis.bestSellerByUnits?.unitsSold || 0} Units`} />
+                <KPICard title="Most Profitable" productName={kpis.bestSellerByProfit?.item.name || 'N/A'} value={formatCurrency(kpis.bestSellerByProfit?.profit || 0)} />
+                <KPICard title="Slowest Mover" productName={kpis.slowestMover?.item.name || 'N/A'} value={`${kpis.slowestMover?.item.stock || 0} in Stock`} />
             </div>
 
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
@@ -256,8 +286,8 @@ export const Analysis: React.FC = () => {
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                             {paginatedPerformance.map(p => (
-                                <tr key={p.product.id}>
-                                    <td data-label="Product" className="px-6 py-4 font-medium text-gray-900 dark:text-white">{p.product.name}</td>
+                                <tr key={p.item.id}>
+                                    <td data-label="Product" className="px-6 py-4 font-medium text-gray-900 dark:text-white">{p.item.name}</td>
                                     <td data-label="Units Sold" className="px-6 py-4">{p.unitsSold}</td>
                                     <td data-label="Revenue" className="px-6 py-4">{formatCurrency(p.revenue)}</td>
                                     <td data-label="Profit" className="px-6 py-4">{formatCurrency(p.profit)}</td>
