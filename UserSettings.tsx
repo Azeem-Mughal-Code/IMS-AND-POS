@@ -234,6 +234,8 @@ export const UserSettings: React.FC = () => {
     );
   };
 
+  const serverSideActionTitle = "This feature requires a server-side Edge Function for security.";
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -241,7 +243,12 @@ export const UserSettings: React.FC = () => {
             <ShieldCheckIcon />
             Cashier Permissions
         </button>
-        <button onClick={openAddModal} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2 w-full sm:w-auto justify-center">
+        <button 
+            onClick={openAddModal} 
+            disabled 
+            title={serverSideActionTitle}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2 w-full sm:w-auto justify-center disabled:bg-gray-400 disabled:cursor-not-allowed"
+        >
             <PlusIcon />
             Add User
         </button>
@@ -278,7 +285,8 @@ export const UserSettings: React.FC = () => {
                   <td data-label="Actions" className="px-6 py-4 text-right space-x-2">
                      <button
                       onClick={() => openEditModal(user)}
-                      disabled={user.role === UserRole.Admin}
+                      disabled={user.role === UserRole.Admin || true}
+                      title={user.role === UserRole.Admin ? "Admin cannot be edited here." : serverSideActionTitle}
                       className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 p-1 disabled:text-gray-400 disabled:cursor-not-allowed"
                       aria-label={`Edit user ${user.username}`}
                     >
@@ -286,7 +294,8 @@ export const UserSettings: React.FC = () => {
                     </button>
                     <button
                       onClick={() => handleDeleteClick(user)}
-                      disabled={user.id === currentUser?.id || user.role === UserRole.Admin}
+                      disabled={user.id === currentUser?.id || user.role === UserRole.Admin || true}
+                      title={user.id === currentUser?.id ? "Cannot delete yourself." : user.role === UserRole.Admin ? "Cannot delete admin." : serverSideActionTitle}
                       className="text-red-500 hover:text-red-700 p-1 disabled:text-gray-400 disabled:cursor-not-allowed"
                       aria-label={`Delete user ${user.username}`}
                     >

@@ -28,28 +28,17 @@ export const AuthProvider: React.FC<{ children: ReactNode; businessName: string 
     const { addNotification } = useUIState();
 
     useEffect(() => {
+        const fetchSession = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                await fetchUserProfile(session.user.id);
+            }
+        };
+        fetchSession();
+
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
             if (session) {
-                const { data: profile, error } = await supabase
-                    .from('users')
-                    .select('*')
-                    .eq('id', session.user.id)
-                    .single();
-
-                if (error) {
-                    console.error('Error fetching user profile:', error);
-                    await supabase.auth.signOut();
-                    setCurrentUser(null);
-                } else if (profile) {
-                    setCurrentUser({
-                        id: profile.id,
-                        username: profile.username,
-                        role: profile.role as UserRole,
-                    });
-                     if (profile.role === UserRole.Admin) {
-                        fetchAllUsers();
-                    }
-                }
+                await fetchUserProfile(session.user.id);
             } else {
                 setCurrentUser(null);
                 setUsers([]);
@@ -58,6 +47,30 @@ export const AuthProvider: React.FC<{ children: ReactNode; businessName: string 
 
         return () => subscription.unsubscribe();
     }, []);
+
+    const fetchUserProfile = async (userId: string) => {
+        const { data: profile, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .single();
+
+        if (error) {
+            console.error('Error fetching user profile:', error);
+            await supabase.auth.signOut();
+            setCurrentUser(null);
+        } else if (profile) {
+            const user: User = {
+                id: profile.id,
+                username: profile.username,
+                role: profile.role as UserRole,
+            };
+            setCurrentUser(user);
+            if (user.role === UserRole.Admin) {
+                await fetchAllUsers();
+            }
+        }
+    };
 
     const fetchAllUsers = async () => {
         const { data, error } = await supabase.from('users').select('id, username, role');
@@ -75,34 +88,41 @@ export const AuthProvider: React.FC<{ children: ReactNode; businessName: string 
     };
       
     const signup = async (email: string, pass: string): Promise<{ success: boolean, message?: string }> => {
-        // Invoke the existing 'create-user' serverless function to handle admin creation securely.
-        // This moves the privileged logic (checking for existing admin, creating user with Admin role) to the backend,
-        // which is more secure and robust than the previous client-side implementation.
-        const { data, error: functionError } = await supabase.functions.invoke('create-user', {
-            body: { email, password: pass, role: UserRole.Admin, username: email }
-        });
+        // Step 1: Sign up the new user. The database trigger will automatically create their profile with 'Cashier' role.
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password: pass });
 
-        if (functionError) {
-            // This could be a network error or a function crash (e.g., 5xx).
-            return { success: false, message: `An unexpected server error occurred. Please try again.` };
+        if (signUpError) {
+            if (signUpError.message.includes('User already registered')) {
+                return { success: false, message: 'This email is already registered. Please try logging in.' };
+            }
+            return { success: false, message: signUpError.message };
+        }
+        if (!signUpData.user) {
+            return { success: false, message: 'Signup failed to create a user. Please try again.' };
         }
 
-        if (data.error) {
-            // The function should return specific, user-friendly errors like "Admin already exists."
-            return { success: false, message: data.error };
+        // After signup, the user is automatically logged in.
+        // Step 2: As the newly authenticated user, attempt to promote themself to 'Admin'.
+        // This relies on the "Allow first user to become admin" RLS policy, which uses a
+        // SECURITY DEFINER function to safely check if any other admins exist.
+        const { error: updateError } = await supabase
+            .from('users')
+            .update({ role: UserRole.Admin })
+            .eq('id', signUpData.user.id);
+        
+        // Step 3: Handle the result of the promotion attempt.
+        if (updateError) {
+            // If the update fails, it's almost certainly because the RLS policy failed.
+            // This means an admin already exists. The user has been created as a 'Cashier'.
+            // For a better user experience on the signup page, we sign them out and inform them.
+            console.warn("Could not promote user to admin, likely because an admin already exists.", updateError.message);
+            await supabase.auth.signOut();
+            return { success: false, message: 'An admin account already exists for this business. Please use the login page.' };
         }
-
-        // After the function successfully creates the user, automatically log them in.
-        // The onAuthStateChange listener will then fetch the profile and update the app state.
-        const loginResult = await login(email, pass);
-
-        if (!loginResult.success) {
-            // This is an edge case where the user was created but login failed.
-            // Prompting the user to log in manually is the best recovery path.
-            return { success: false, message: "Account created successfully, but automatic login failed. Please try logging in manually." };
-        }
-
-        // onAuthStateChange will handle setting the user and navigating to the main app
+        
+        // Success! The user is now an admin.
+        // The onAuthStateChange listener will fetch their updated profile and log them in.
+        addNotification('Admin account created successfully!', NotificationType.USER, signUpData.user.id);
         return { success: true };
     };
 
@@ -114,41 +134,54 @@ export const AuthProvider: React.FC<{ children: ReactNode; businessName: string 
         if (error) console.error('Error logging out:', error);
     };
   
-    // NOTE: The following user management functions require Supabase Edge Functions for security.
-    // The client invokes these functions, but the secure logic (using the service_role key) lives on Supabase servers.
     const addUser = async (email: string, pass: string, role: UserRole): Promise<{ success: boolean, message?: string }> => {
-        const { data, error } = await supabase.functions.invoke('create-user', {
-            body: { email, password: pass, role, username: email }
-        });
-        if (error) return { success: false, message: error.message };
-        if (data.error) return { success: false, message: data.error };
-        await fetchAllUsers();
-        return { success: true };
+        return { success: false, message: 'Adding users requires a secure server-side Edge Function.' };
     };
    
     const deleteUser = async (userId: string): Promise<{ success: boolean; message?: string }> => {
         if (userId === currentUser?.id) return { success: false, message: 'Cannot delete your own account.' };
-        const { data, error } = await supabase.functions.invoke('delete-user', { body: { userId } });
-        if (error) return { success: false, message: error.message };
-        if (data.error) return { success: false, message: data.error };
-        await fetchAllUsers();
-        return { success: true };
+        return { success: false, message: 'Deleting users requires a secure server-side Edge Function.' };
     };
    
     const updateUser = async (userId: string, newUsername: string, newPassword?: string): Promise<{ success: boolean, message?: string }> => {
-        const { data, error } = await supabase.functions.invoke('update-user', {
-            body: { userId, newUsername, newPassword }
-        });
-        if (error) return { success: false, message: error.message };
-        if (data.error) return { success: false, message: data.error };
-        
-        await fetchAllUsers();
-        // If current user was updated, refresh their local state
-        if (currentUser?.id === userId) {
-            setCurrentUser(prev => prev ? { ...prev, username: newUsername } : null);
+        // A user can only update their own profile from the client.
+        if (userId === currentUser?.id) {
+            const updatePayload: { email?: string, password?: string } = {};
+            if (newUsername !== currentUser.username) {
+                updatePayload.email = newUsername;
+            }
+            if (newPassword) {
+                updatePayload.password = newPassword;
+            }
+    
+            // Update auth.users
+            if (Object.keys(updatePayload).length > 0) {
+                const { error: authError } = await supabase.auth.updateUser(updatePayload);
+                if (authError) return { success: false, message: authError.message };
+            }
+    
+            // Update public.users table if username (email) changed
+            if (newUsername !== currentUser.username) {
+                 const { error: profileError } = await supabase
+                    .from('users')
+                    .update({ username: newUsername })
+                    .eq('id', userId);
+    
+                if (profileError) return { success: false, message: `Authentication details updated, but profile update failed: ${profileError.message}` };
+            }
+            
+            // Refresh local state after successful updates
+            await fetchUserProfile(userId);
+            if(currentUser.role === UserRole.Admin) {
+                await fetchAllUsers();
+            }
+
+            return { success: true };
+        } 
+        // Admin trying to update another user is disabled without an edge function.
+        else {
+            return { success: false, message: 'Updating other users requires a secure server-side Edge Function.' };
         }
-        
-        return { success: true };
     };
 
     const value = {
