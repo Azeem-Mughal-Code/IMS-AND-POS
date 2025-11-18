@@ -5,6 +5,7 @@ import { useSettings } from './components/context/SettingsContext';
 import { MainLayout } from './components/layout/MainLayout';
 import useLocalStorage from './hooks/useLocalStorage';
 import { useUIState } from './components/context/UIStateContext';
+import { supabase } from './utils/supabase';
 
 // Component to select a business workspace
 const BusinessSelector: React.FC<{ onSelect: (name: string) => void }> = ({ onSelect }) => {
@@ -50,30 +51,55 @@ const BusinessSelector: React.FC<{ onSelect: (name: string) => void }> = ({ onSe
 // AuthForm Component for Login/Signup within a business context
 const AuthForm: React.FC<{ onGoBack: () => void; }> = ({ onGoBack }) => {
   const { businessName } = useSettings();
-  const { users, login, signup } = useAuth();
+  const { login, signup } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isNewBusiness, setIsNewBusiness] = useState<boolean | null>(null);
 
-  const isNewBusiness = users.length === 0;
+  useEffect(() => {
+    const checkUsers = async () => {
+        // Check if any users exist in the public.users table.
+        const { count, error } = await supabase.from('users').select('*', { count: 'exact', head: true });
+        if (error) {
+            console.error("Error checking for users:", error);
+            setError("Could not connect to the database.");
+            setIsNewBusiness(false); // Fail safe
+        } else {
+            setIsNewBusiness(count === 0);
+        }
+    };
+    checkUsers();
+  }, []);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    let success = false;
+    let result: { success: boolean, message?: string };
+
     if (isNewBusiness) {
-        if (password.length < 4) {
-            setError("Password must be at least 4 characters long.");
+        if (password.length < 6) {
+            setError("Password must be at least 6 characters long.");
             return;
         }
-        const result = signup(username, password);
-        success = result.success;
-        if (!success) setError(result.message || 'Could not create account.');
+        result = await signup(username, password);
     } else {
-        success = login(username, password);
-        if (!success) setError('Invalid username or password.');
+        result = await login(username, password);
     }
+
+    if (!result.success) {
+        setError(result.message || 'An unknown error occurred.');
+    }
+    // On success, the onAuthStateChange listener in AuthContext will handle navigation.
   };
+
+  if (isNewBusiness === null) {
+      return (
+         <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex justify-center items-center">
+            <p className="text-gray-600 dark:text-gray-300">Connecting to database...</p>
+         </div>
+      )
+  }
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col justify-center items-center p-4">
@@ -85,8 +111,8 @@ const AuthForm: React.FC<{ onGoBack: () => void; }> = ({ onGoBack }) => {
           </h2>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
-              <input type="text" value={username} onChange={e => setUsername(e.target.value)} required className="mt-1 block w-full px-3 py-2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
+              <input type="email" value={username} onChange={e => setUsername(e.target.value)} required className="mt-1 block w-full px-3 py-2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>

@@ -7,8 +7,7 @@ export enum UserRole {
 
 export interface User {
   id: string;
-  username: string;
-  password: string; // NOTE: In a real app, this should be hashed.
+  username: string; // This will now be the user's email for authentication
   role: UserRole;
 }
 

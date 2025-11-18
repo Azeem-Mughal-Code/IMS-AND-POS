@@ -1,16 +1,16 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { User, UserRole, CashierPermissions } from '../types';
-import { Modal } from './common/Modal';
-import { Pagination } from './common/Pagination';
-import { TrashIcon, PlusIcon, SearchIcon, ChevronUpIcon, ChevronDownIcon, PencilIcon, ShieldCheckIcon } from './Icons';
-import { ToggleSwitch } from './common/ToggleSwitch';
-import { useAuth } from './context/AuthContext';
-import { useUIState } from './context/UIStateContext';
-import { useSettings } from './context/SettingsContext';
+import { User, UserRole, CashierPermissions } from './types';
+import { Modal } from './components/common/Modal';
+import { Pagination } from './components/common/Pagination';
+import { TrashIcon, PlusIcon, SearchIcon, ChevronUpIcon, ChevronDownIcon, PencilIcon, ShieldCheckIcon } from './components/Icons';
+import { ToggleSwitch } from './components/common/ToggleSwitch';
+import { useAuth } from './components/context/AuthContext';
+import { useUIState } from './components/context/UIStateContext';
+import { useSettings } from './components/context/SettingsContext';
 
 const UserForm: React.FC<{
     user?: User | null;
-    onSubmit: (userId: string | null, data: { username: string, pass: string }) => void,
+    onSubmit: (userId: string | null, data: { username: string, pass: string }) => Promise<void>,
     onCancel: () => void,
     errorMessage?: string,
 }> = ({ user, onSubmit, onCancel, errorMessage }) => {
@@ -26,20 +26,20 @@ const UserForm: React.FC<{
     }, [user, isEditMode]);
 
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        onSubmit(isEditMode ? user.id : null, { username, pass: password });
+        await onSubmit(isEditMode ? user.id : null, { username, pass: password });
     };
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
-                <input type="text" value={username} onChange={e => setUsername(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
+                <input type="email" value={username} onChange={e => setUsername(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
             </div>
             <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
-                <input type="password" value={password} onChange={e => setPassword(e.target.value)} required={!isEditMode} minLength={isEditMode && !password ? 0 : 4} placeholder={isEditMode ? "Leave blank to keep current" : ""} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} required={!isEditMode} minLength={isEditMode && !password ? 0 : 6} placeholder={isEditMode ? "Leave blank to keep current" : ""} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
             </div>
              <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Role</label>
@@ -147,6 +147,7 @@ export const UserSettings: React.FC = () => {
     const filtered = users.filter(u => u.username.toLowerCase().includes(searchTerm.toLowerCase()));
     
     return filtered.sort((a, b) => {
+        if (!sortConfig.key) return 0;
         const valA = a[sortConfig.key];
         const valB = b[sortConfig.key];
         const comparison = valA.localeCompare(valB);
@@ -164,12 +165,12 @@ export const UserSettings: React.FC = () => {
     );
   }, [filteredAndSortedUsers, currentPage, itemsPerPage]);
 
-  const handleUserFormSubmit = (userId: string | null, data: { username: string, pass: string }) => {
+  const handleUserFormSubmit = async (userId: string | null, data: { username: string, pass: string }) => {
     setFormError('');
     const isEditMode = !!userId;
-    const result = isEditMode
+    const result = await (isEditMode
         ? updateUser(userId!, data.username, data.pass)
-        : addUser(data.username, data.pass, UserRole.Cashier);
+        : addUser(data.username, data.pass, UserRole.Cashier));
     
     if (result.success) {
         showToast(`User ${isEditMode ? 'updated' : 'added'} successfully!`, 'success');
@@ -180,13 +181,13 @@ export const UserSettings: React.FC = () => {
   };
 
   const handleDeleteClick = (user: User) => {
-    if (user.id === currentUser.id) return;
+    if (user.id === currentUser?.id) return;
     setUserToDelete(user);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (userToDelete) {
-      const result = deleteUser(userToDelete.id);
+      const result = await deleteUser(userToDelete.id);
       if (!result.success) {
         showToast(result.message || 'Failed to delete user.', 'error');
       } else {
@@ -204,7 +205,7 @@ export const UserSettings: React.FC = () => {
 
   const openEditModal = (user: User) => {
       if (user.role === UserRole.Admin) {
-          showToast('Admin accounts cannot be edited.', 'error');
+          showToast('Admin accounts cannot be edited from this panel.', 'error');
           return;
       }
       setEditingUser(user);
@@ -253,7 +254,7 @@ export const UserSettings: React.FC = () => {
                 </div>
                 <input
                     type="text"
-                    placeholder="Search by username..."
+                    placeholder="Search by email..."
                     value={searchTerm}
                     onChange={e => onUsersViewUpdate({ searchTerm: e.target.value, currentPage: 1 })}
                     className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 focus:ring-blue-500 focus:border-blue-500"
@@ -264,7 +265,7 @@ export const UserSettings: React.FC = () => {
           <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
             <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
               <tr>
-                <SortableHeader sortKey="username">Username</SortableHeader>
+                <SortableHeader sortKey="username">Email</SortableHeader>
                 <SortableHeader sortKey="role">Role</SortableHeader>
                 <th scope="col" className="px-6 py-3 text-right">Actions</th>
               </tr>
@@ -272,7 +273,7 @@ export const UserSettings: React.FC = () => {
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {paginatedUsers.map(user => (
                 <tr key={user.id}>
-                  <td data-label="Username" className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{user.username} {user.id === currentUser.id && <span className="text-xs font-normal text-gray-500 dark:text-gray-400">(You)</span>}</td>
+                  <td data-label="Username" className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{user.username} {user.id === currentUser?.id && <span className="text-xs font-normal text-gray-500 dark:text-gray-400">(You)</span>}</td>
                   <td data-label="Role" className="px-6 py-4">{user.role}</td>
                   <td data-label="Actions" className="px-6 py-4 text-right space-x-2">
                      <button
@@ -285,7 +286,7 @@ export const UserSettings: React.FC = () => {
                     </button>
                     <button
                       onClick={() => handleDeleteClick(user)}
-                      disabled={user.id === currentUser.id || user.role === UserRole.Admin}
+                      disabled={user.id === currentUser?.id || user.role === UserRole.Admin}
                       className="text-red-500 hover:text-red-700 p-1 disabled:text-gray-400 disabled:cursor-not-allowed"
                       aria-label={`Delete user ${user.username}`}
                     >
