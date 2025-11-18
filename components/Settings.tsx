@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { UserRole } from '../types';
-import { UserSettings } from '../UserSettings';
+import { UserSettings } from './UserSettings';
 import { Modal } from './common/Modal';
 import { LogoutIcon } from './Icons';
 import { AccordionSection } from './common/AccordionSection';
@@ -27,7 +27,7 @@ export const Settings: React.FC = () => {
 
     const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
     
-    const [profileUsername, setProfileUsername] = useState(currentUser?.username || '');
+    const [profileUsername, setProfileUsername] = useState(currentUser.username);
     const [profilePassword, setProfilePassword] = useState('');
     const [profileConfirmPassword, setProfileConfirmPassword] = useState('');
     const [profileError, setProfileError] = useState('');
@@ -35,8 +35,6 @@ export const Settings: React.FC = () => {
 
     const [expandedSection, setExpandedSection] = useState<string | null>('profile');
     
-    if (!currentUser) return null;
-
     const canEditProfile = currentUser.role === UserRole.Admin || cashierPermissions.canEditOwnProfile;
     const canEditBehavior = currentUser.role === UserRole.Admin || cashierPermissions.canEditBehaviorSettings;
 
@@ -50,12 +48,12 @@ export const Settings: React.FC = () => {
         }
     }, [isEditProfileModalOpen, currentUser.username]);
 
-    const handleProfileUpdate = async () => {
+    const handleProfileUpdate = () => {
         setProfileError('');
         setProfileSuccess('');
 
-        if (profilePassword && profilePassword.length < 6) {
-            setProfileError("New password must be at least 6 characters long.");
+        if (profilePassword && profilePassword.length < 4) {
+            setProfileError("New password must be at least 4 characters long.");
             return;
         }
 
@@ -64,7 +62,7 @@ export const Settings: React.FC = () => {
             return;
         }
         
-        const result = await updateUser(currentUser.id, profileUsername, profilePassword);
+        const result = updateUser(currentUser.id, profileUsername, profilePassword);
         
         if (result.success) {
             setProfileSuccess("Profile updated successfully!");
@@ -281,8 +279,8 @@ export const Settings: React.FC = () => {
             <Modal isOpen={isEditProfileModalOpen} onClose={() => setIsEditProfileModalOpen(false)} title="Edit Profile" size="md">
                 <div className="space-y-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
-                        <input type="email" value={profileUsername} onChange={e => setProfileUsername(e.target.value)} required className="mt-1 block w-full px-3 py-2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
+                        <input type="text" value={profileUsername} onChange={e => setProfileUsername(e.target.value)} required className="mt-1 block w-full px-3 py-2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">New Password (optional)</label>

@@ -5,7 +5,6 @@ import { useSettings } from './components/context/SettingsContext';
 import { MainLayout } from './components/layout/MainLayout';
 import useLocalStorage from './hooks/useLocalStorage';
 import { useUIState } from './components/context/UIStateContext';
-import { supabase } from './utils/supabase';
 
 // Component to select a business workspace
 const BusinessSelector: React.FC<{ onSelect: (name: string) => void }> = ({ onSelect }) => {
@@ -51,41 +50,30 @@ const BusinessSelector: React.FC<{ onSelect: (name: string) => void }> = ({ onSe
 // AuthForm Component for Login/Signup within a business context
 const AuthForm: React.FC<{ onGoBack: () => void; }> = ({ onGoBack }) => {
   const { businessName } = useSettings();
-  const { login, signup } = useAuth();
+  const { users, login, signup } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
 
-  const handleSubmit = async (e: FormEvent) => {
+  const isNewBusiness = users.length === 0;
+
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    let result: { success: boolean, message?: string };
-
-    if (mode === 'signup') {
-        if (password.length < 6) {
-            setError("Password must be at least 6 characters long.");
+    let success = false;
+    if (isNewBusiness) {
+        if (password.length < 4) {
+            setError("Password must be at least 4 characters long.");
             return;
         }
-        result = await signup(username, password);
+        const result = signup(username, password);
+        success = result.success;
+        if (!success) setError(result.message || 'Could not create account.');
     } else {
-        result = await login(username, password);
+        success = login(username, password);
+        if (!success) setError('Invalid username or password.');
     }
-
-    if (!result.success) {
-        setError(result.message || 'An unknown error occurred.');
-    }
-    // On success, the onAuthStateChange listener in AuthContext will handle navigation.
   };
-  
-  const toggleMode = () => {
-      setMode(prev => prev === 'login' ? 'signup' : 'login');
-      setError('');
-      setPassword('');
-      setUsername('');
-  };
-
-  const isLoginMode = mode === 'login';
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col justify-center items-center p-4">
@@ -93,12 +81,12 @@ const AuthForm: React.FC<{ onGoBack: () => void; }> = ({ onGoBack }) => {
         <div className="bg-white dark:bg-gray-800 shadow-xl rounded-lg p-8">
           <h1 className="text-2xl font-bold text-center text-blue-600 dark:text-blue-400 mb-2 truncate">{businessName}</h1>
           <h2 className="text-xl font-semibold text-center text-gray-800 dark:text-white mb-6">
-            {isLoginMode ? 'Login' : 'Create Admin Account'}
+            {isNewBusiness ? 'Create Admin Account' : 'Login'}
           </h2>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
-              <input type="email" value={username} onChange={e => setUsername(e.target.value)} required className="mt-1 block w-full px-3 py-2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
+              <input type="text" value={username} onChange={e => setUsername(e.target.value)} required className="mt-1 block w-full px-3 py-2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
@@ -106,14 +94,9 @@ const AuthForm: React.FC<{ onGoBack: () => void; }> = ({ onGoBack }) => {
             </div>
             {error && <p className="text-red-500 text-sm text-center">{error}</p>}
             <button type="submit" className="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition-colors">
-              {isLoginMode ? 'Login' : 'Create Account'}
+              {isNewBusiness ? 'Create Account' : 'Login'}
             </button>
           </form>
-           <div className="text-center mt-4">
-            <button onClick={toggleMode} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
-                {isLoginMode ? 'First time? Create an admin account' : 'Already have an account? Login'}
-            </button>
-          </div>
           <div className="text-center mt-6">
             <button onClick={onGoBack} className="text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
               Not your business? Go back.

@@ -26,8 +26,7 @@ const StatusCheckbox: React.FC<{
 );
 
 export const DataManagement: React.FC = () => {
-    // FIX: Destructure 'login' from useAuth to verify admin password for sensitive actions.
-    const { currentUser, users, login } = useAuth();
+    const { currentUser, users } = useAuth();
     const { products, importProducts, factoryReset: productReset } = useProducts();
     const { sales, purchaseOrders, clearSales, factoryReset: salesReset, pruneData: pruneSalesData } = useSales();
     const { 
@@ -158,17 +157,7 @@ export const DataManagement: React.FC = () => {
 
     const handleRestoreBackup = async () => {
         if (!backupFile) { showToast('Please select a backup file.', 'error'); return; }
-        // FIX: The `currentUser` object does not contain a password.
-        // Verify the password by attempting to log in again.
-        if (!currentUser) {
-            showToast('Authentication error. Please log in again.', 'error');
-            return;
-        }
-        const { success } = await login(currentUser.username, restorePassword);
-        if (!success) {
-            showToast('Incorrect admin password.', 'error');
-            return;
-        }
+        if (restorePassword !== currentUser.password) { showToast('Incorrect admin password.', 'error'); return; }
         try {
             const fileContent = await backupFile.text();
             const backupData = JSON.parse(fileContent);
@@ -187,20 +176,10 @@ export const DataManagement: React.FC = () => {
         }
     }, [dangerAction]);
     
-    const handleDangerAction = async () => {
+    const handleDangerAction = () => {
         setDangerError('');
         if (confirmationText.toUpperCase() !== dangerDetails.confirmWord) { setDangerError('Confirmation text does not match.'); return; }
-        // FIX: The `currentUser` object does not contain a password.
-        // Verify the password by attempting to log in again.
-        if (!currentUser) {
-            setDangerError('Authentication error. Please log in again.');
-            return;
-        }
-        const { success } = await login(currentUser.username, confirmationPassword);
-        if (!success) {
-            setDangerError('Incorrect admin password.');
-            return;
-        }
+        if (confirmationPassword !== currentUser.password) { setDangerError('Incorrect admin password.'); return; }
         
         if (dangerAction === 'clearSales') { 
             clearSales(allClearStatusesSelected ? undefined : { statuses: clearSaleStatuses });

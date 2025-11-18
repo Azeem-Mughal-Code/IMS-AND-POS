@@ -1,6 +1,5 @@
 import React, { createContext, useContext, ReactNode, useCallback } from 'react';
-// FIX: Added NotificationType to import to fix enum usage.
-import { Sale, PurchaseOrder, POItem, Product, CartItem, NotificationType } from '../../types';
+import { Sale, PurchaseOrder, POItem, Product, CartItem } from '../../types';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useProducts } from './ProductContext';
 import { useUIState } from './UIStateContext';
@@ -140,8 +139,7 @@ export const SalesProvider: React.FC<{ children: ReactNode; businessName: string
             id: `po_${Date.now()}`,
         };
         setPurchaseOrders(prev => [newPO, ...prev]);
-        // FIX: Used NotificationType.PO enum member instead of string literal.
-        addNotification(`New PO #${newPO.id} created for ${newPO.supplierName}.`, NotificationType.PO, newPO.id);
+        addNotification(`New PO #${newPO.id} created for ${newPO.supplierName}.`, 'PO', newPO.id);
         return newPO;
     };
     
@@ -172,8 +170,7 @@ export const SalesProvider: React.FC<{ children: ReactNode; businessName: string
                 const allReceived = updatedItems.every(item => item.quantityReceived >= item.quantityOrdered);
                 const newStatus = allReceived ? 'Received' : 'Partial';
                 if(newStatus !== po.status) {
-                    // FIX: Used NotificationType.PO enum member instead of string literal.
-                    addNotification(`PO #${poId} is now ${newStatus}.`, NotificationType.PO, poId);
+                    addNotification(`PO #${poId} is now ${newStatus}.`, 'PO', poId);
                 }
                 return { ...po, items: updatedItems, status: newStatus };
             }
