@@ -55,29 +55,14 @@ const AuthForm: React.FC<{ onGoBack: () => void; }> = ({ onGoBack }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [isNewBusiness, setIsNewBusiness] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const checkUsers = async () => {
-        // Check if any users exist in the public.users table.
-        const { count, error } = await supabase.from('users').select('*', { count: 'exact', head: true });
-        if (error) {
-            console.error("Error checking for users:", error);
-            setError("Could not connect to the database.");
-            setIsNewBusiness(false); // Fail safe
-        } else {
-            setIsNewBusiness(count === 0);
-        }
-    };
-    checkUsers();
-  }, []);
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     let result: { success: boolean, message?: string };
 
-    if (isNewBusiness) {
+    if (mode === 'signup') {
         if (password.length < 6) {
             setError("Password must be at least 6 characters long.");
             return;
@@ -92,14 +77,15 @@ const AuthForm: React.FC<{ onGoBack: () => void; }> = ({ onGoBack }) => {
     }
     // On success, the onAuthStateChange listener in AuthContext will handle navigation.
   };
+  
+  const toggleMode = () => {
+      setMode(prev => prev === 'login' ? 'signup' : 'login');
+      setError('');
+      setPassword('');
+      setUsername('');
+  };
 
-  if (isNewBusiness === null) {
-      return (
-         <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex justify-center items-center">
-            <p className="text-gray-600 dark:text-gray-300">Connecting to database...</p>
-         </div>
-      )
-  }
+  const isLoginMode = mode === 'login';
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col justify-center items-center p-4">
@@ -107,7 +93,7 @@ const AuthForm: React.FC<{ onGoBack: () => void; }> = ({ onGoBack }) => {
         <div className="bg-white dark:bg-gray-800 shadow-xl rounded-lg p-8">
           <h1 className="text-2xl font-bold text-center text-blue-600 dark:text-blue-400 mb-2 truncate">{businessName}</h1>
           <h2 className="text-xl font-semibold text-center text-gray-800 dark:text-white mb-6">
-            {isNewBusiness ? 'Create Admin Account' : 'Login'}
+            {isLoginMode ? 'Login' : 'Create Admin Account'}
           </h2>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
@@ -120,9 +106,14 @@ const AuthForm: React.FC<{ onGoBack: () => void; }> = ({ onGoBack }) => {
             </div>
             {error && <p className="text-red-500 text-sm text-center">{error}</p>}
             <button type="submit" className="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition-colors">
-              {isNewBusiness ? 'Create Account' : 'Login'}
+              {isLoginMode ? 'Login' : 'Create Account'}
             </button>
           </form>
+           <div className="text-center mt-4">
+            <button onClick={toggleMode} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+                {isLoginMode ? 'First time? Create an admin account' : 'Already have an account? Login'}
+            </button>
+          </div>
           <div className="text-center mt-6">
             <button onClick={onGoBack} className="text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
               Not your business? Go back.

@@ -75,21 +75,34 @@ export const AuthProvider: React.FC<{ children: ReactNode; businessName: string 
     };
       
     const signup = async (email: string, pass: string): Promise<{ success: boolean, message?: string }> => {
-        const { data: authData, error: authError } = await supabase.auth.signUp({ email, password: pass });
-        if (authError) return { success: false, message: authError.message };
-        if (!authData.user) return { success: false, message: 'Signup failed to return a user.' };
-        
-        const { error: profileError } = await supabase
-            .from('users')
-            .insert({ id: authData.user.id, username: email, role: UserRole.Admin });
+        // Invoke the existing 'create-user' serverless function to handle admin creation securely.
+        // This moves the privileged logic (checking for existing admin, creating user with Admin role) to the backend,
+        // which is more secure and robust than the previous client-side implementation.
+        const { data, error: functionError } = await supabase.functions.invoke('create-user', {
+            body: { email, password: pass, role: UserRole.Admin, username: email }
+        });
 
-        if (profileError) {
-            console.error("Error creating user profile:", profileError);
-            // In a real app, you might want to try and delete the auth.user here
-            return { success: false, message: 'Could not create user profile in database.' };
+        if (functionError) {
+            // This could be a network error or a function crash (e.g., 5xx).
+            return { success: false, message: `An unexpected server error occurred. Please try again.` };
         }
-        
-        // onAuthStateChange will handle setting the current user
+
+        if (data.error) {
+            // The function should return specific, user-friendly errors like "Admin already exists."
+            return { success: false, message: data.error };
+        }
+
+        // After the function successfully creates the user, automatically log them in.
+        // The onAuthStateChange listener will then fetch the profile and update the app state.
+        const loginResult = await login(email, pass);
+
+        if (!loginResult.success) {
+            // This is an edge case where the user was created but login failed.
+            // Prompting the user to log in manually is the best recovery path.
+            return { success: false, message: "Account created successfully, but automatic login failed. Please try logging in manually." };
+        }
+
+        // onAuthStateChange will handle setting the user and navigating to the main app
         return { success: true };
     };
 
