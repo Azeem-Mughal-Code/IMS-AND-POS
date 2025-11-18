@@ -1,10 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
-// These variables are expected to be available in the environment.
-// In a local development or testing environment, they might be sourced from a .env file,
-// but in the production environment they are injected.
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+// Supabase credentials.
+const supabaseUrl = 'https://byhimfheodcxrihelmrz.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5aGltZmhlb2RjeHJpaGVsbXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMyOTMxNjgsImV4cCI6MjA3ODg2OTE2OH0.GTS7ErzJ21aY6709v-3JLq47s7cgFNzDmiK0g2o5BdA';
 
 if (!supabaseUrl || !supabaseAnonKey) {
     // A simple visual error for developers if the environment variables are missing.
