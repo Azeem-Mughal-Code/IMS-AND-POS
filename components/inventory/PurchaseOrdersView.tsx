@@ -1,100 +1,362 @@
-import React, { useState, useMemo, useRef, forwardRef, useEffect } from 'react';
-import { PurchaseOrder, POItem, Product, Supplier, ProductVariant, ProductVariationOption } from '../../types';
-import useLocalStorage from '../../hooks/useLocalStorage';
-// FIX: Replaced useAppContext with specific context hooks to resolve import error.
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { PurchaseOrder, POItem, Product, Supplier, ProductVariant } from '../../types';
 import { useProducts } from '../context/ProductContext';
 import { useSales } from '../context/SalesContext';
 import { useSettings } from '../context/SettingsContext';
 import { useUIState } from '../context/UIStateContext';
 import { Modal } from '../common/Modal';
 import { Pagination } from '../common/Pagination';
-import { SearchIcon, ChevronUpIcon, ChevronDownIcon, PlusIcon, TrashIcon, PhotoIcon, EyeIcon, ReceiveIcon } from '../Icons';
+import { PlusIcon, SearchIcon, ChevronUpIcon, ChevronDownIcon, ReceiveIcon, TrashIcon, EyeIcon, PhotoIcon } from '../Icons';
 import { FilterMenu, FilterSelectItem } from '../common/FilterMenu';
+import { Dropdown } from '../common/Dropdown';
+import usePersistedState from '../../hooks/usePersistedState';
+import { INITIAL_SUPPLIERS } from '../../constants';
+import { VariantSelectionModal } from '../common/ProductVariantSelector';
 
 declare var html2canvas: any;
 
-const PrintablePO = forwardRef<HTMLDivElement, { po: PurchaseOrder }>(({ po }, ref) => {
-    // FIX: Replaced useAppContext with useSettings hook.
-    const { businessName, formatCurrency, formatDateTime } = useSettings();
+// Helper to get suppliers
+const useSuppliers = (workspaceId: string) => {
+    const [suppliers] = usePersistedState<Supplier[]>(`ims-${workspaceId}-suppliers`, INITIAL_SUPPLIERS);
+    return suppliers;
+};
 
-    return (
-        <div className="printable-area text-gray-900 dark:text-white" ref={ref}>
-            <div className="text-center mb-4">
-                <h2 className="text-2xl font-bold">{businessName}</h2>
-                <p className="text-lg">Purchase Order</p>
-            </div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-3 text-xs">
-                <div><strong>PO Number:</strong> <span className="font-mono">{po.id}</span></div>
-                <div><strong>Supplier:</strong> {po.supplierName}</div>
-                <div><strong>Supplier ID:</strong> <span className="font-mono">{po.supplierId}</span></div>
-                <div><strong>Date Created:</strong> {formatDateTime(po.dateCreated, { year: 'numeric', month: 'numeric', day: 'numeric' })}</div>
-                <div><strong>Date Expected:</strong> {formatDateTime(po.dateExpected, { year: 'numeric', month: 'numeric', day: 'numeric' })}</div>
-                <div><strong>Status:</strong> {po.status}</div>
-            </div>
-            <table className="w-full text-xs text-left">
-                <thead className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
-                    <tr>
-                        <th className="py-0.5 px-2">SKU</th>
-                        <th className="py-0.5 px-2">Product</th>
-                        <th className="py-0.5 px-2 text-right">Qty</th>
-                        <th className="py-0.5 px-2 text-right">Cost</th>
-                        <th className="py-0.5 px-2 text-right">Total</th>
-                    </tr>
-                </thead>
-                <tbody className="text-gray-900 dark:text-white">
-                    {po.items.map(item => (
-                        <tr key={item.variantId || item.productId} className="border-b dark:border-gray-600">
-                            <td className="py-0.5 px-2">{item.sku}</td>
-                            <td className="py-0.5 px-2">{item.name}</td>
-                            <td className="py-0.5 px-2 text-right">{item.quantityOrdered}</td>
-                            <td className="py-0.5 px-2 text-right">{formatCurrency(item.costPrice)}</td>
-                            <td className="py-0.5 px-2 text-right">{formatCurrency(item.costPrice * item.quantityOrdered)}</td>
-                        </tr>
-                    ))}
-                </tbody>
-                <tfoot className="text-gray-900 dark:text-white">
-                    <tr className="font-bold">
-                        <td colSpan={4} className="py-0.5 px-2 text-right">Grand Total</td>
-                        <td className="py-0.5 px-2 text-right">{formatCurrency(po.totalCost)}</td>
-                    </tr>
-                </tfoot>
-            </table>
-            {po.notes && <div className="mt-4 text-xs"><strong>Notes:</strong> {po.notes}</div>}
-        </div>
-    );
-});
+const POForm: React.FC<{
+    onSubmit: (data: Omit<PurchaseOrder, 'id'>) => void;
+    onCancel: () => void;
+}> = ({ onSubmit, onCancel }) => {
+    const { workspaceId, formatCurrency } = useSettings();
+    const suppliers = useSuppliers(workspaceId);
+    const { products } = useProducts();
+    
+    const [supplierId, setSupplierId] = useState('');
+    const [customSupplierName, setCustomSupplierName] = useState('');
+    const [dateExpected, setDateExpected] = useState('');
+    const [notes, setNotes] = useState('');
+    const [items, setItems] = useState<{productId: string, variantId?: string, quantityOrdered: number, costPrice: number}[]>([]);
+    
+    // Item selection state
+    const [productSearchTerm, setProductSearchTerm] = useState('');
+    const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false);
+    const [variantSelectionProduct, setVariantSelectionProduct] = useState<Product | null>(null);
+    
+    const productSearchRef = useRef<HTMLDivElement>(null);
 
-const ReceivePOModal: React.FC<{ po: PurchaseOrder; onClose: () => void; }> = ({ po, onClose }) => {
-    // FIX: Replaced useAppContext with useSales hook.
-    const { receivePOItems } = useSales();
-    const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (productSearchRef.current && !productSearchRef.current.contains(event.target as Node)) {
+                setIsProductDropdownOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
-    const handleQuantityChange = (itemId: string, value: string) => {
-        const item = po.items.find(i => (i.variantId || i.productId) === itemId);
-        if (!item) return;
-        const maxReceivable = item.quantityOrdered - item.quantityReceived;
-        const quantity = Math.max(0, Math.min(parseInt(value) || 0, maxReceivable));
-        setReceivedQuantities(prev => ({ ...prev, [itemId]: quantity }));
+    const filteredProducts = useMemo(() => {
+        if (!productSearchTerm) return [];
+        const lower = productSearchTerm.toLowerCase();
+        return products.filter(p => p.name.toLowerCase().includes(lower) || p.sku.toLowerCase().includes(lower));
+    }, [products, productSearchTerm]);
+
+    const handleAddItemToTable = (product: Product, variant?: ProductVariant) => {
+        const cost = variant ? variant.costPrice : product.costPrice;
+        
+        setItems(prev => {
+            // Check if item already exists to update quantity? 
+            // For POs, sometimes distinct lines are preferred, but usually aggregation is better.
+            const existingIndex = prev.findIndex(i => i.productId === product.id && i.variantId === variant?.id);
+            
+            if (existingIndex >= 0) {
+                const newItems = [...prev];
+                newItems[existingIndex].quantityOrdered += 1;
+                return newItems;
+            }
+
+            return [
+                ...prev, 
+                { 
+                    productId: product.id, 
+                    variantId: variant?.id, 
+                    quantityOrdered: 1, 
+                    costPrice: cost 
+                }
+            ];
+        });
     };
 
-    const handleReceiveAll = () => {
-        const newQuantities: Record<string, number> = {};
-        po.items.forEach(item => {
-            const maxReceivable = item.quantityOrdered - item.quantityReceived;
-            if (maxReceivable > 0) {
-                newQuantities[item.variantId || item.productId] = maxReceivable;
+    const handleProductSelect = (product: Product) => {
+        setProductSearchTerm('');
+        setIsProductDropdownOpen(false);
+
+        if (product.variants.length > 0) {
+            setVariantSelectionProduct(product);
+        } else {
+            handleAddItemToTable(product);
+        }
+    };
+
+    const handleAutoFillLowStock = () => {
+        const newItems: {productId: string, variantId?: string, quantityOrdered: number, costPrice: number}[] = [];
+        products.forEach(p => {
+            if (p.variants.length > 0) {
+                p.variants.forEach(v => {
+                    if (v.stock <= p.lowStockThreshold) {
+                        newItems.push({
+                            productId: p.id,
+                            variantId: v.id,
+                            quantityOrdered: Math.max(1, p.lowStockThreshold - v.stock + 5), // Refill to threshold + 5 buffer
+                            costPrice: v.costPrice
+                        });
+                    }
+                });
+            } else {
+                if (p.stock <= p.lowStockThreshold) {
+                    newItems.push({
+                        productId: p.id,
+                        quantityOrdered: Math.max(1, p.lowStockThreshold - p.stock + 5), // Refill to threshold + 5 buffer
+                        costPrice: p.costPrice
+                    });
+                }
             }
         });
-        setReceivedQuantities(newQuantities);
+        // Merge with existing items to avoid duplicates logic
+        const existingKeys = new Set(items.map(i => `${i.productId}_${i.variantId || ''}`));
+        const filteredNewItems = newItems.filter(i => !existingKeys.has(`${i.productId}_${i.variantId || ''}`));
+        
+        setItems(prev => [...prev, ...filteredNewItems]);
     };
 
+    const handleRemoveItem = (index: number) => {
+        setItems(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleItemChange = (index: number, field: 'quantityOrdered' | 'costPrice', value: number) => {
+        setItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item));
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if ((!supplierId && !customSupplierName) || items.length === 0) return;
+        
+        let finalSupplierName = 'Unknown';
+        if (supplierId === 'sup_0') {
+            finalSupplierName = customSupplierName || 'Custom Supplier';
+        } else {
+            const supplier = suppliers.find(s => s.id === supplierId);
+            if (supplier) finalSupplierName = supplier.name;
+        }
+
+        const poItems: POItem[] = items.map(item => {
+            const product = products.find(p => p.id === item.productId);
+            const variant = product?.variants.find(v => v.id === item.variantId);
+            return {
+                productId: item.productId,
+                variantId: item.variantId,
+                name: variant 
+                    ? `${product?.name} (${Object.values(variant.options).join('/')})` 
+                    : product?.name || 'Unknown Product',
+                sku: variant ? `${product?.sku}-${variant.skuSuffix}` : product?.sku || 'UNKNOWN',
+                quantityOrdered: item.quantityOrdered,
+                quantityReceived: 0,
+                costPrice: item.costPrice
+            };
+        });
+
+        const totalCost = poItems.reduce((sum, item) => sum + (item.costPrice * item.quantityOrdered), 0);
+
+        onSubmit({
+            supplierId,
+            supplierName: finalSupplierName,
+            dateCreated: new Date().toISOString(),
+            dateExpected: dateExpected ? new Date(dateExpected).toISOString() : '',
+            status: 'Pending',
+            items: poItems,
+            notes,
+            totalCost
+        });
+    };
+
+    const supplierOptions = useMemo(() => [
+        { value: '', label: 'Select Supplier' },
+        { value: 'sup_0', label: 'Custom Supplier' },
+        ...suppliers.map(s => ({ value: s.id, label: s.name }))
+    ], [suppliers]);
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4 text-gray-900 dark:text-gray-100">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Supplier</label>
+                    <Dropdown
+                        options={supplierOptions}
+                        value={supplierId}
+                        onChange={(val) => setSupplierId(String(val))}
+                    />
+                    {supplierId === 'sup_0' && (
+                        <input
+                            type="text"
+                            value={customSupplierName}
+                            onChange={e => setCustomSupplierName(e.target.value)}
+                            placeholder="Enter Custom Supplier Name"
+                            className="mt-2 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm py-2 px-3 focus:ring-blue-500 focus:border-blue-500"
+                            autoFocus
+                        />
+                    )}
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Expected Date</label>
+                    <input type="date" value={dateExpected} onChange={e => setDateExpected(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm py-2 px-3" />
+                </div>
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Notes</label>
+                <textarea value={notes} onChange={e => setNotes(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm" rows={2} />
+            </div>
+            
+            <div className="border-t pt-4 dark:border-gray-700">
+                <div className="flex justify-between items-center mb-2">
+                    <h4 className="text-sm font-medium text-gray-800 dark:text-gray-200">Items</h4>
+                    <button type="button" onClick={handleAutoFillLowStock} className="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 rounded hover:bg-yellow-200 dark:hover:bg-yellow-900/50">
+                        Auto Fill Low-Stock
+                    </button>
+                </div>
+                
+                <div className="mb-2 bg-gray-50 dark:bg-gray-800 p-2 rounded-md border border-gray-200 dark:border-gray-700">
+                    <div className="relative" ref={productSearchRef}>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Add Product</label>
+                        <div className="relative">
+                            <input 
+                                type="text" 
+                                value={productSearchTerm}
+                                onChange={e => { setProductSearchTerm(e.target.value); setIsProductDropdownOpen(true); }}
+                                onFocus={() => setIsProductDropdownOpen(true)}
+                                placeholder="Search product to add..."
+                                className="w-full pl-8 pr-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                            />
+                            <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none text-gray-400">
+                                <SearchIcon />
+                            </div>
+                        </div>
+                        {isProductDropdownOpen && productSearchTerm && filteredProducts.length > 0 && (
+                            <div className="absolute z-20 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                                {filteredProducts.map(p => (
+                                    <div 
+                                        key={p.id} 
+                                        onClick={() => handleProductSelect(p)} 
+                                        className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-200"
+                                    >
+                                        <div className="font-medium">{p.name}</div>
+                                        <div className="text-xs text-gray-500">{p.sku}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+                
+                <div className="max-h-60 overflow-y-auto border rounded-md dark:border-gray-600">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0 text-gray-700 dark:text-gray-300">
+                            <tr>
+                                <th className="p-2">Product</th>
+                                <th className="p-2 w-24 text-center">Qty</th>
+                                <th className="p-2 w-32 text-center">Cost</th>
+                                <th className="p-2 text-right">Total</th>
+                                <th className="p-2 w-8"></th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                            {items.map((item, idx) => {
+                                const p = products.find(prod => prod.id === item.productId);
+                                const v = p?.variants.find(vary => vary.id === item.variantId);
+                                const name = v ? `${p?.name} (${Object.values(v.options).join('/')})` : p?.name;
+                                return (
+                                    <tr key={idx} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                                        <td className="p-2">{name}</td>
+                                        <td className="p-2 text-center">
+                                            <input 
+                                                type="number" 
+                                                min="1" 
+                                                value={item.quantityOrdered} 
+                                                onChange={e => handleItemChange(idx, 'quantityOrdered', parseInt(e.target.value) || 0)} 
+                                                className="w-full px-1 py-1 text-center border rounded bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                            />
+                                        </td>
+                                        <td className="p-2 text-center">
+                                            <input 
+                                                type="number" 
+                                                min="0" 
+                                                step="0.01" 
+                                                value={item.costPrice} 
+                                                onChange={e => handleItemChange(idx, 'costPrice', parseFloat(e.target.value) || 0)} 
+                                                className="w-full px-1 py-1 text-center border rounded bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                            />
+                                        </td>
+                                        <td className="p-2 text-right">{formatCurrency(item.quantityOrdered * item.costPrice)}</td>
+                                        <td className="p-2 text-center">
+                                            <button type="button" onClick={() => handleRemoveItem(idx)} className="text-red-500 hover:text-red-700"><TrashIcon className="h-4 w-4" /></button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {items.length === 0 && (
+                                <tr>
+                                    <td colSpan={5} className="p-4 text-center text-gray-500">No items added yet.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+                <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Create PO</button>
+            </div>
+
+            {variantSelectionProduct && (
+                <VariantSelectionModal 
+                    product={variantSelectionProduct} 
+                    onConfirm={(prod, variant) => {
+                        handleAddItemToTable(prod, variant);
+                        setVariantSelectionProduct(null);
+                    }} 
+                    onClose={() => setVariantSelectionProduct(null)} 
+                    confirmLabel="Add to Order"
+                    priceType="cost"
+                    showStock={true}
+                />
+            )}
+        </form>
+    );
+};
+
+const ReceivePOModal: React.FC<{ po: PurchaseOrder; onClose: () => void }> = ({ po, onClose }) => {
+    const { receivePOItems } = useSales();
+    const [receivedQuantities, setReceivedQuantities] = useState<{[key: string]: number}>({});
+
+    useEffect(() => {
+        const initial: {[key: string]: number} = {};
+        po.items.forEach((item, idx) => {
+            // Use index as key since item doesn't have a unique ID inside POItem currently
+            initial[idx] = Math.max(0, item.quantityOrdered - item.quantityReceived);
+        });
+        setReceivedQuantities(initial);
+    }, [po]);
+
     const handleSubmit = () => {
-        const itemsToReceive = Object.keys(receivedQuantities)
-            .filter((itemId) => receivedQuantities[itemId] > 0)
-            .map((itemId) => {
-                const item = po.items.find(i => (i.variantId || i.productId) === itemId)!;
-                return { productId: item.productId, variantId: item.variantId, quantity: receivedQuantities[itemId] };
-            });
+        const itemsToReceive: { productId: string; variantId?: string; quantity: number }[] = [];
+        
+        po.items.forEach((item, idx) => {
+            const qty = receivedQuantities[idx];
+            if (qty > 0) {
+                itemsToReceive.push({
+                    productId: item.productId,
+                    variantId: item.variantId,
+                    quantity: qty
+                });
+            }
+        });
 
         if (itemsToReceive.length > 0) {
             receivePOItems(po.id, itemsToReceive);
@@ -104,403 +366,109 @@ const ReceivePOModal: React.FC<{ po: PurchaseOrder; onClose: () => void; }> = ({
 
     return (
         <div className="space-y-4">
-            <div className="max-h-80 overflow-y-auto">
-                <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 text-xs text-gray-600 dark:text-gray-400 uppercase">
+            <div className="max-h-60 overflow-y-auto border rounded-md dark:border-gray-600">
+                <table className="w-full text-sm text-left">
+                    <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0 text-gray-700 dark:text-gray-300">
                         <tr>
-                            <th className="p-2 text-left">Product</th>
-                            <th className="p-2">Ordered</th>
-                            <th className="p-2">Received</th>
-                            <th className="p-2">Receiving Now</th>
+                            <th className="p-2">Item</th>
+                            <th className="p-2 text-center">Ordered</th>
+                            <th className="p-2 text-center">Received</th>
+                            <th className="p-2 text-center">Receive Now</th>
                         </tr>
                     </thead>
-                    <tbody className="text-gray-900 dark:text-white">
-                        {po.items.map(item => {
-                            const itemId = item.variantId || item.productId;
-                            const maxReceivable = item.quantityOrdered - item.quantityReceived;
-                            return (
-                                <tr key={itemId} className="border-b dark:border-gray-600 bg-white dark:bg-gray-800">
-                                    <td className="p-2">{item.name}</td>
-                                    <td className="p-2 text-center">{item.quantityOrdered}</td>
-                                    <td className="p-2 text-center">{item.quantityReceived}</td>
-                                    <td className="p-2">
-                                        <input type="number" min="0" max={maxReceivable} value={receivedQuantities[itemId] || ''} onChange={e => handleQuantityChange(itemId, e.target.value)} className="w-24 text-center rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700" disabled={maxReceivable <= 0} />
-                                    </td>
-                                </tr>
-                            )
-                        })}
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                        {po.items.map((item, idx) => (
+                            <tr key={idx} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+                                <td className="p-2">{item.name}</td>
+                                <td className="p-2 text-center">{item.quantityOrdered}</td>
+                                <td className="p-2 text-center">{item.quantityReceived}</td>
+                                <td className="p-2">
+                                    <input 
+                                        type="number" 
+                                        min="0" 
+                                        max={item.quantityOrdered - item.quantityReceived}
+                                        value={receivedQuantities[idx] || 0}
+                                        onChange={(e) => setReceivedQuantities(prev => ({ ...prev, [idx]: parseInt(e.target.value) || 0 }))}
+                                        className="w-20 text-center rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white"
+                                    />
+                                </td>
+                            </tr>
+                        ))}
                     </tbody>
                 </table>
             </div>
             <div className="flex justify-end gap-2 pt-4">
-                <button type="button" onClick={handleReceiveAll} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Receive All</button>
                 <button onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md">Cancel</button>
-                <button onClick={handleSubmit} className="px-4 py-2 bg-blue-600 text-white rounded-md">Receive Items</button>
+                <button onClick={handleSubmit} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Receive Items</button>
             </div>
         </div>
-    );
-};
-
-const OptionSelector: React.FC<{
-    typeName: string;
-    options: ProductVariationOption[];
-    selectedValue: string | undefined;
-    onSelect: (optionName: string) => void;
-}> = ({ typeName, options, selectedValue, onSelect }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const ref = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (ref.current && !ref.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        };
-        if (isOpen) {
-            document.addEventListener("mousedown", handleClickOutside);
-        }
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
-    }, [isOpen]);
-
-    return (
-        <div className="relative" ref={ref}>
-            <button
-                type="button"
-                onClick={() => setIsOpen(p => !p)}
-                className="w-full flex justify-between items-center text-left pl-3 pr-2 py-2 text-base border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
-            >
-                <span className={selectedValue ? 'text-gray-900 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}>
-                    {selectedValue || `Select ${typeName}`}
-                </span>
-                <ChevronDownIcon className={`h-5 w-5 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {isOpen && (
-                <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg rounded-md max-h-60 overflow-auto border border-gray-200 dark:border-gray-700">
-                    <ul className="py-1">
-                        {options.map(opt => (
-                            <li
-                                key={opt.id}
-                                onClick={() => { onSelect(opt.name); setIsOpen(false); }}
-                                className={`px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 ${selectedValue === opt.name ? 'font-semibold text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-200'}`}
-                            >
-                                {opt.name}
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            )}
-        </div>
-    );
-};
-
-const VariantSelectionModal: React.FC<{
-    product: Product;
-    onAddVariant: (product: Product, variant: ProductVariant) => void;
-    onClose: () => void;
-}> = ({ product, onAddVariant, onClose }) => {
-    const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
-    const { formatCurrency } = useSettings();
-
-    const handleSelectOption = (typeName: string, optionName: string) => {
-        setSelectedOptions(prev => ({ ...prev, [typeName]: optionName }));
-    };
-
-    const selectedVariant = useMemo(() => {
-        const requiredTypeNames = product.variationTypes.map(vt => vt.name);
-        if (requiredTypeNames.length !== Object.keys(selectedOptions).length || requiredTypeNames.some(name => !selectedOptions[name])) {
-            return null;
-        }
-        
-        return product.variants.find(variant => {
-            return requiredTypeNames.every(typeName => variant.options[typeName] === selectedOptions[typeName]);
-        });
-    }, [selectedOptions, product]);
-
-    const handleAddClick = () => {
-        if (selectedVariant) {
-            onAddVariant(product, selectedVariant);
-        }
-    };
-    
-    return (
-        <Modal isOpen={true} onClose={onClose} title={`Select Options for ${product.name}`} size="sm">
-            <div className="space-y-4">
-                 {product.variationTypes.map(vt => (
-                    <div key={vt.id}>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{vt.name}</label>
-                        <OptionSelector
-                            typeName={vt.name}
-                            options={vt.options.filter(o => o.name)}
-                            selectedValue={selectedOptions[vt.name]}
-                            onSelect={(optionName) => handleSelectOption(vt.name, optionName)}
-                        />
-                    </div>
-                ))}
-
-                {selectedVariant && (
-                    <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg mt-4 text-center">
-                        <p className="font-semibold text-lg text-gray-800 dark:text-white">{formatCurrency(selectedVariant.costPrice)} (Cost)</p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Stock: {selectedVariant.stock}</p>
-                    </div>
-                )}
-                
-                <div className="flex justify-end gap-2 pt-4">
-                    <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
-                    <button type="button" onClick={handleAddClick} disabled={!selectedVariant} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400">
-                        Add to PO
-                    </button>
-                </div>
-            </div>
-        </Modal>
-    );
-};
-
-const CreatePOModal: React.FC<{ onClose: () => void; }> = ({ onClose }) => {
-    const { products } = useProducts();
-    const { addPurchaseOrder } = useSales();
-    const { formatCurrency, businessName } = useSettings();
-    const [suppliers] = useLocalStorage<Supplier[]>(`ims-${businessName}-suppliers`, []);
-
-    const [selectedSupplierId, setSelectedSupplierId] = useState('');
-    const [customSupplierName, setCustomSupplierName] = useState('');
-    const [items, setItems] = useState<POItem[]>([]);
-    const [expectedDate, setExpectedDate] = useState<string>(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]); // Default to 1 week from now
-    const [notes, setNotes] = useState('');
-    const [productSearch, setProductSearch] = useState('');
-    const [variantSelectionProduct, setVariantSelectionProduct] = useState<Product | null>(null);
-
-    const filteredProducts = useMemo(() => {
-        if (!productSearch) return [];
-        const currentNonVariantItemIds = new Set(items.filter(i => !i.variantId).map(i => i.productId));
-        
-        return products.filter(p => {
-             const searchMatch = p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.sku.toLowerCase().includes(productSearch.toLowerCase());
-             if (!searchMatch) return false;
-             if (p.variants && p.variants.length > 0) return true;
-             return !currentNonVariantItemIds.has(p.id);
-        }).slice(0, 5);
-    }, [productSearch, products, items]);
-
-    const handleAutoFill = () => {
-        const lowStockProducts = products.flatMap(p => {
-            if (p.variants && p.variants.length > 0) {
-                return p.variants
-                    .filter(v => v.stock <= p.lowStockThreshold)
-                    .map(v => ({ product: p, variant: v }));
-            }
-            if (p.stock <= p.lowStockThreshold) {
-                return [{ product: p, variant: undefined }];
-            }
-            return [];
-        });
-
-        const newItems: POItem[] = lowStockProducts.map(({ product, variant }) => {
-            const reorderQty = Math.max(1, (product.lowStockThreshold * 2) - (variant ? variant.stock : product.stock));
-            return {
-                productId: product.id,
-                variantId: variant?.id,
-                name: variant ? `${product.name} (${Object.values(variant.options).join(' / ')})` : product.name,
-                sku: variant ? `${product.sku}-${variant.skuSuffix}` : product.sku,
-                quantityOrdered: reorderQty,
-                quantityReceived: 0,
-                costPrice: variant ? variant.costPrice : product.costPrice,
-            };
-        });
-
-        const currentItemIds = new Set(items.map(i => i.variantId || i.productId));
-        const itemsToAdd = newItems.filter(i => !currentItemIds.has(i.variantId || i.productId));
-        setItems(prev => [...prev, ...itemsToAdd]);
-    };
-
-    const handleAddItem = (product: Product) => {
-        if (product.variants && product.variants.length > 0) {
-            setVariantSelectionProduct(product);
-            setProductSearch('');
-            return;
-        }
-
-        setItems(prev => [...prev, {
-            productId: product.id, name: product.name, sku: product.sku,
-            quantityOrdered: 1, quantityReceived: 0, costPrice: product.costPrice
-        }]);
-        setProductSearch('');
-    };
-    
-    const handleAddVariantToPO = (product: Product, variant: ProductVariant) => {
-        setItems(prevItems => {
-            const existingItem = prevItems.find(item => item.variantId === variant.id);
-            if (existingItem) {
-                return prevItems.map(item => item.variantId === variant.id ? { ...item, quantityOrdered: item.quantityOrdered + 1 } : item);
-            }
-            return [...prevItems, {
-                productId: product.id,
-                variantId: variant.id,
-                name: `${product.name} (${Object.values(variant.options).join(' / ')})`,
-                sku: `${product.sku}-${variant.skuSuffix}`,
-                quantityOrdered: 1,
-                quantityReceived: 0,
-                costPrice: variant.costPrice
-            }];
-        });
-        setVariantSelectionProduct(null);
-    };
-
-    const handleRemoveItem = (itemId: string) => setItems(prev => prev.filter(i => (i.variantId || i.productId) !== itemId));
-
-    const handleQtyChange = (itemId: string, qtyStr: string) => {
-        const qty = parseInt(qtyStr, 10);
-        setItems(prev => prev.map(item => (item.variantId || item.productId) === itemId ? { ...item, quantityOrdered: Math.max(0, isNaN(qty) ? 0 : qty) } : item));
-    };
-
-    const totalCost = useMemo(() => items.reduce((sum, item) => sum + item.costPrice * item.quantityOrdered, 0), [items]);
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        const CUSTOM_SUPPLIER_ID = 'sup_custom';
-        let supplierId: string;
-        let supplierName: string;
-
-        if (selectedSupplierId === '_CUSTOM_') {
-            supplierId = CUSTOM_SUPPLIER_ID;
-            supplierName = customSupplierName.trim();
-        } else {
-            supplierId = selectedSupplierId;
-            supplierName = suppliers.find(s => s.id === selectedSupplierId)?.name || '';
-        }
-
-        if (!supplierName || items.length === 0 || !expectedDate) {
-            return;
-        }
-
-        addPurchaseOrder({
-            supplierId,
-            supplierName,
-            dateCreated: new Date().toISOString(),
-            dateExpected: new Date(expectedDate).toISOString(),
-            status: 'Pending',
-            items,
-            notes,
-            totalCost
-        });
-        onClose();
-    };
-
-    return (
-        <>
-        <form onSubmit={handleSubmit} className="space-y-4">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Supplier Name</label>
-                    <select value={selectedSupplierId} onChange={e => setSelectedSupplierId(e.target.value)} required className="block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200">
-                        <option value="" disabled>Select a supplier</option>
-                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        <option value="_CUSTOM_">-- Enter Custom Name --</option>
-                    </select>
-                    {selectedSupplierId === '_CUSTOM_' && (
-                        <input
-                            type="text"
-                            value={customSupplierName}
-                            onChange={e => setCustomSupplierName(e.target.value)}
-                            required
-                            placeholder="Custom Supplier Name"
-                            className="mt-2 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
-                        />
-                    )}
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expected Delivery</label>
-                    <input type="date" value={expectedDate} onChange={e => setExpectedDate(e.target.value)} required className="block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
-                </div>
-            </div>
-
-            <div className="border-t pt-4 dark:border-gray-700">
-                 <div className="flex flex-col sm:flex-row justify-between items-center gap-2 mb-2">
-                     <div className="relative flex-grow w-full">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><SearchIcon /></div>
-                        <input type="text" value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search to add products..." className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
-                        {filteredProducts.length > 0 && (
-                            <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-md shadow-lg">
-                                {filteredProducts.map(p => <div key={p.id} onClick={() => handleAddItem(p)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">{p.name}</div>)}
-                            </div>
-                        )}
-                    </div>
-                    <button type="button" onClick={handleAutoFill} className="w-full sm:w-auto px-4 py-2 text-sm bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-md hover:bg-green-200 dark:hover:bg-green-800">Auto-fill low stock</button>
-                 </div>
-                 <div className="max-h-60 overflow-y-auto border rounded-md dark:border-gray-600">
-                    <table className="w-full text-sm text-gray-900 dark:text-white">
-                        <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 text-xs text-gray-600 dark:text-gray-400 uppercase">
-                            <tr>
-                                <th className="p-2 text-left">Product</th>
-                                <th className="p-2">Qty</th>
-                                <th className="p-2 text-right">Cost</th>
-                                <th className="p-2 text-right">Total</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {items.map(item => {
-                                const itemId = item.variantId || item.productId;
-                                return (
-                                <tr key={itemId} className="border-t dark:border-gray-600 bg-white dark:bg-gray-800">
-                                    <td className="p-2">{item.name}</td>
-                                    <td className="p-2"><input type="number" value={item.quantityOrdered} onChange={e => handleQtyChange(itemId, e.target.value)} className="w-16 text-center rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"/></td>
-                                    <td className="p-2 text-right">{formatCurrency(item.costPrice)}</td>
-                                    <td className="p-2 text-right">{formatCurrency(item.costPrice * item.quantityOrdered)}</td>
-                                    <td className="p-2 text-center"><button type="button" onClick={() => handleRemoveItem(itemId)} className="text-red-500 hover:text-red-700"><TrashIcon /></button></td>
-                                </tr>
-                            )})}
-                        </tbody>
-                    </table>
-                     {items.length === 0 && <div className="p-4 text-center text-gray-500 dark:text-gray-400">No items in this order.</div>}
-                 </div>
-                 <div className="text-right font-bold text-lg mt-2 text-gray-800 dark:text-white">Total: {formatCurrency(totalCost)}</div>
-            </div>
-
-             <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes (optional)</label>
-                <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"></textarea>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-4 border-t dark:border-gray-700">
-                <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Create PO</button>
-            </div>
-        </form>
-        {variantSelectionProduct && (
-            <VariantSelectionModal
-                product={variantSelectionProduct}
-                onAddVariant={handleAddVariantToPO}
-                onClose={() => setVariantSelectionProduct(null)}
-            />
-        )}
-        </>
     );
 };
 
 export const PurchaseOrdersView: React.FC = () => {
-    // FIX: Replaced useAppContext with specific context hooks.
-    const { purchaseOrders, deletePurchaseOrder } = useSales();
+    const { purchaseOrders, addPurchaseOrder, deletePurchaseOrder } = useSales();
+    const { workspaceId, formatCurrency, formatDateTime, paginationConfig, workspaceName } = useSettings();
     const { poViewState, onPOViewUpdate, showToast } = useUIState();
-    const { formatCurrency, formatDateTime, businessName } = useSettings();
-    const [suppliers] = useLocalStorage<Supplier[]>(`ims-${businessName}-suppliers`, []);
-    
-    const [viewingPO, setViewingPO] = useState<PurchaseOrder | null>(null);
-    const [receivingPO, setReceivingPO] = useState<PurchaseOrder | null>(null);
-    const [isCreatePOModalOpen, setIsCreatePOModalOpen] = useState(false);
-    const [poToDelete, setPoToDelete] = useState<PurchaseOrder | null>(null);
-    const printableAreaRef = useRef<HTMLDivElement>(null);
+    const suppliers = useSuppliers(workspaceId);
 
-    const handleSaveAsImage = () => {
-        if (printableAreaRef.current && viewingPO) {
-            html2canvas(printableAreaRef.current, {
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [receivingPO, setReceivingPO] = useState<PurchaseOrder | null>(null);
+    const [viewingPO, setViewingPO] = useState<PurchaseOrder | null>(null);
+    const [poToDelete, setPoToDelete] = useState<PurchaseOrder | null>(null);
+    const printablePORef = useRef<HTMLDivElement>(null);
+
+    const { searchTerm, statusFilter, supplierFilter, sortConfig, currentPage } = poViewState;
+    const itemsPerPage = paginationConfig.purchaseOrders || 10;
+
+    const filteredPOs = useMemo(() => {
+        return purchaseOrders
+            .filter(po => 
+                (statusFilter === 'All' || po.status === statusFilter) &&
+                (supplierFilter === 'All' || po.supplierId === supplierFilter) &&
+                (po.id.toLowerCase().includes(searchTerm.toLowerCase()) || po.supplierName.toLowerCase().includes(searchTerm.toLowerCase()))
+            )
+            .sort((a, b) => {
+                const key = sortConfig.key;
+                let valA = a[key] as string | number;
+                let valB = b[key] as string | number;
+                
+                if (key === 'dateCreated') {
+                    valA = new Date(a.dateCreated).getTime();
+                    valB = new Date(b.dateCreated).getTime();
+                }
+
+                if (valA < valB) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (valA > valB) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+    }, [purchaseOrders, searchTerm, statusFilter, supplierFilter, sortConfig]);
+
+    const paginatedPOs = filteredPOs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+    const totalPages = Math.ceil(filteredPOs.length / itemsPerPage);
+
+    const handleCreatePO = (data: Omit<PurchaseOrder, 'id'>) => {
+        addPurchaseOrder(data);
+        setIsFormOpen(false);
+        showToast('Purchase Order created.', 'success');
+    };
+
+    const handleDeletePO = () => {
+        if (poToDelete) {
+            const result = deletePurchaseOrder(poToDelete.id);
+            showToast(result.message || 'Deleted', result.success ? 'success' : 'error');
+            setPoToDelete(null);
+        }
+    };
+
+    const handleSavePOImage = () => {
+        if (printablePORef.current && viewingPO) {
+            html2canvas(printablePORef.current, { 
                 backgroundColor: '#ffffff',
                 onclone: (clonedDoc: Document) => {
                     clonedDoc.documentElement.classList.remove('dark');
                 }
             }).then((canvas: HTMLCanvasElement) => {
-                const PADDING = 40;
+                const PADDING = 20;
                 const newCanvas = document.createElement('canvas');
                 newCanvas.width = canvas.width + PADDING * 2;
                 newCanvas.height = canvas.height + PADDING * 2;
@@ -512,147 +480,88 @@ export const PurchaseOrdersView: React.FC = () => {
                 }
 
                 const link = document.createElement('a');
-                link.download = `po-${viewingPO.id}.png`;
+                link.download = `PO-${viewingPO.id}.png`;
                 link.href = newCanvas.toDataURL('image/png');
                 link.click();
             });
         }
     };
 
-    const handleDelete = (po: PurchaseOrder) => {
-        const result = deletePurchaseOrder(po.id);
-        showToast(result.message || `PO #${po.id} deleted.`, result.success ? 'success' : 'error');
-        if(result.success) {
-            setPoToDelete(null);
-        }
-    }
-
-    const { searchTerm, statusFilter, supplierFilter, sortConfig, currentPage, itemsPerPage } = poViewState;
-    type SortablePOKeys = 'id' | 'supplierName' | 'dateCreated' | 'status' | 'totalCost';
-    
+    const supplierOptions = useMemo(() => [{value: 'All', label: 'All Suppliers'}, ...suppliers.map(s => ({value: s.id, label: s.name}))], [suppliers]);
     const statusOptions = [{value: 'All', label: 'All Statuses'}, {value: 'Pending', label: 'Pending'}, {value: 'Partial', label: 'Partial'}, {value: 'Received', label: 'Received'}];
-    const supplierOptions = useMemo(() => {
-        const options = suppliers.map(s => ({ value: s.id, label: s.name }));
-        options.push({ value: 'sup_custom', label: 'Custom Supplier' });
-        return [{ value: 'All', label: 'All Suppliers' }, ...options];
-    }, [suppliers]);
 
-
-    const requestSort = (key: SortablePOKeys) => {
-        let direction: 'ascending' | 'descending' = 'ascending';
-        if (sortConfig.key === key && sortConfig.direction === 'ascending') {
-            direction = 'descending';
-        }
-        onPOViewUpdate({ sortConfig: { key, direction } });
-    };
-
-    const filteredAndSorted = useMemo(() => {
-        return purchaseOrders
-            .filter(po => 
-                (statusFilter === 'All' || po.status === statusFilter) &&
-                (supplierFilter === 'All' || po.supplierId === supplierFilter) &&
-                (po.id.toLowerCase().includes(searchTerm.toLowerCase()) || po.supplierName.toLowerCase().includes(searchTerm.toLowerCase()))
-            )
-            .sort((a,b) => {
-                const key = sortConfig.key;
-                const valA = a[key];
-                const valB = b[key];
-                let comparison = 0;
-
-                if (key === 'dateCreated') {
-                    comparison = new Date(valB).getTime() - new Date(valA).getTime();
-                } else if (typeof valA === 'string' && typeof valB === 'string') {
-                    comparison = valA.localeCompare(valB);
-                } else if (typeof valA === 'number' && typeof valB === 'number') {
-                    comparison = valA - valB;
-                }
-                
-                return sortConfig.direction === 'ascending' ? comparison : -comparison;
-            });
-    }, [purchaseOrders, searchTerm, statusFilter, supplierFilter, sortConfig]);
-
-    const paginated = filteredAndSorted.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-
-    const getStatusChip = (status: 'Pending' | 'Partial' | 'Received') => {
-        const styles = {
-            Pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-            Partial: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-            Received: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-        };
-        return <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${styles[status]}`}>{status}</span>;
-    };
-    
+    type SortablePOKeys = 'id' | 'supplierName' | 'dateCreated' | 'status' | 'totalCost';
     const SortableHeader: React.FC<{ children: React.ReactNode, sortKey: SortablePOKeys }> = ({ children, sortKey }) => {
         const isSorted = sortConfig.key === sortKey;
         return (
-            <th scope="col" className="px-6 py-3">
-                <button onClick={() => requestSort(sortKey)} className="flex items-center gap-1.5 group">
+            <th scope="col" className="px-6 py-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700" onClick={() => {
+                let direction: 'ascending' | 'descending' = 'ascending';
+                if (sortConfig.key === sortKey && sortConfig.direction === 'ascending') direction = 'descending';
+                onPOViewUpdate({ sortConfig: { key: sortKey, direction } });
+            }}>
+                <div className="flex items-center gap-1.5">
                     <span>{children}</span>
                     {isSorted ? (
                         sortConfig.direction === 'ascending' ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />
-                    ) : (
-                        <ChevronDownIcon className="h-4 w-4 invisible" />
-                    )}
-                </button>
+                    ) : <ChevronDownIcon className="h-4 w-4 invisible" />}
+                </div>
             </th>
         );
     };
 
     return (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
-            <div className="p-4">
-                 <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div className="p-4 flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
                     <div className="relative flex-grow w-full sm:w-auto">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><SearchIcon /></div>
-                        <input type="text" value={searchTerm} onChange={e => onPOViewUpdate({searchTerm: e.target.value})} placeholder="Search POs..." className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
+                        <input type="text" value={searchTerm} onChange={e => onPOViewUpdate({ searchTerm: e.target.value })} placeholder="Search POs..." className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500" />
                     </div>
-                     <div className="flex items-center gap-4 w-full sm:w-auto">
-                         <button onClick={() => setIsCreatePOModalOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2 w-full sm:w-auto justify-center">
-                            <PlusIcon /> Create Purchase Order
-                        </button>
+                    <div className="flex items-center gap-4 w-full sm:w-auto">
+                        <button onClick={() => setIsFormOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2 w-full sm:w-auto justify-center"><PlusIcon /> Create PO</button>
                         <FilterMenu activeFilterCount={(statusFilter !== 'All' ? 1 : 0) + (supplierFilter !== 'All' ? 1 : 0)}>
-                            <FilterSelectItem label="Status" value={statusFilter} onChange={v => onPOViewUpdate({statusFilter: v})} options={statusOptions} />
-                            <FilterSelectItem label="Supplier" value={supplierFilter} onChange={v => onPOViewUpdate({supplierFilter: v})} options={supplierOptions} />
+                            <FilterSelectItem label="Status" value={statusFilter} onChange={v => onPOViewUpdate({ statusFilter: v })} options={statusOptions} />
+                            <FilterSelectItem label="Supplier" value={supplierFilter} onChange={v => onPOViewUpdate({ supplierFilter: v })} options={supplierOptions} />
                         </FilterMenu>
                     </div>
                 </div>
             </div>
+
             <div className="overflow-x-auto">
-                 <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
-                    <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
+                <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
+                    <thead className="text-xs text-gray-700 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700 sticky top-0 z-10">
                         <tr>
-                            <SortableHeader sortKey="id">PO ID</SortableHeader>
-                            <th className="px-6 py-3">Supplier ID</th>
+                            <SortableHeader sortKey="id">PO #</SortableHeader>
                             <SortableHeader sortKey="supplierName">Supplier</SortableHeader>
                             <SortableHeader sortKey="dateCreated">Date</SortableHeader>
+                            <SortableHeader sortKey="totalCost">Total Cost</SortableHeader>
                             <SortableHeader sortKey="status">Status</SortableHeader>
-                            <SortableHeader sortKey="totalCost">Total</SortableHeader>
                             <th className="px-6 py-3 text-right">Actions</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        {paginated.map(po => (
-                            <tr key={po.id}>
-                                <td data-label="PO ID" className="px-6 py-4 font-mono text-gray-900 dark:text-white">
-                                    <button onClick={() => setViewingPO(po)} className="text-blue-600 dark:text-blue-400 hover:underline">
-                                        {po.id}
-                                    </button>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                        {paginatedPOs.map(po => (
+                            <tr key={po.id} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
+                                <td data-label="PO #" className="px-6 py-4 font-mono text-xs">{po.id}</td>
+                                <td data-label="Supplier" className="px-6 py-4 font-medium text-gray-900 dark:text-white">{po.supplierName}</td>
+                                <td data-label="Date" className="px-6 py-4">{formatDateTime(po.dateCreated)}</td>
+                                <td data-label="Total Cost" className="px-6 py-4">{formatCurrency(po.totalCost)}</td>
+                                <td data-label="Status" className="px-6 py-4">
+                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                        po.status === 'Received' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                                        po.status === 'Partial' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                                        'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                                    }`}>
+                                        {po.status}
+                                    </span>
                                 </td>
-                                <td data-label="Supplier ID" className="px-6 py-4 font-mono text-xs">{po.supplierId}</td>
-                                <td data-label="Supplier" className="px-6 py-4 text-gray-900 dark:text-white">{po.supplierName}</td>
-                                <td data-label="Date" className="px-6 py-4 text-gray-900 dark:text-white">{formatDateTime(po.dateCreated, { year: 'numeric', month: 'numeric', day: 'numeric' })}</td>
-                                <td data-label="Status" className="px-6 py-4">{getStatusChip(po.status)}</td>
-                                <td data-label="Total" className="px-6 py-4 text-gray-900 dark:text-white">{formatCurrency(po.totalCost)}</td>
-                                <td data-label="Actions" className="px-6 py-4 text-right flex items-center justify-end gap-1">
-                                    {po.status !== 'Received' && <button onClick={() => setReceivingPO(po)} title="Receive Items" className="p-2 text-green-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><ReceiveIcon /></button>}
+                                <td data-label="Actions" className="px-6 py-4 flex items-center gap-2 justify-end">
+                                    <button onClick={() => setViewingPO(po)} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" title="View Details"><EyeIcon /></button>
+                                    {po.status !== 'Received' && (
+                                        <button onClick={() => setReceivingPO(po)} className="p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Receive Items"><ReceiveIcon /></button>
+                                    )}
                                     {po.status === 'Pending' && (
-                                        <button
-                                            onClick={() => setPoToDelete(po)}
-                                            title="Delete PO"
-                                            className="p-2 rounded-full text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                        >
-                                            <TrashIcon />
-                                        </button>
+                                        <button onClick={() => setPoToDelete(po)} className="p-1 text-red-500 hover:text-red-700" title="Delete PO"><TrashIcon /></button>
                                     )}
                                 </td>
                             </tr>
@@ -660,40 +569,86 @@ export const PurchaseOrdersView: React.FC = () => {
                     </tbody>
                 </table>
             </div>
-             <Pagination currentPage={currentPage} totalPages={Math.ceil(filteredAndSorted.length / itemsPerPage)} onPageChange={page => onPOViewUpdate({ currentPage: page })} itemsPerPage={itemsPerPage} totalItems={filteredAndSorted.length} />
-             
-             <Modal isOpen={isCreatePOModalOpen} onClose={() => setIsCreatePOModalOpen(false)} title="Create Purchase Order" size="lg">
-                <CreatePOModal onClose={() => setIsCreatePOModalOpen(false)} />
+            <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={page => onPOViewUpdate({ currentPage: page })} itemsPerPage={itemsPerPage} totalItems={filteredPOs.length} />
+
+            <Modal isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title="Create Purchase Order" size="lg">
+                <POForm onSubmit={handleCreatePO} onCancel={() => setIsFormOpen(false)} />
             </Modal>
 
-             {viewingPO &&
-                <Modal isOpen={!!viewingPO} onClose={() => setViewingPO(null)} title={`Purchase Order - ${viewingPO.id}`}>
-                    <PrintablePO ref={printableAreaRef} po={viewingPO} />
-                    <div className="flex justify-end items-center gap-2 pt-4 no-print">
-                         <button onClick={handleSaveAsImage} title="Save as Image" className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                            <PhotoIcon className="h-5 w-5" />
-                        </button>
-                        <button onClick={() => window.print()} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md">Print</button>
-                        <button onClick={() => setViewingPO(null)} className="px-4 py-2 bg-blue-600 text-white rounded-md">Close</button>
-                    </div>
-                </Modal>
-             }
-             {receivingPO &&
-                <Modal isOpen={!!receivingPO} onClose={() => setReceivingPO(null)} title={`Receive Items for PO #${receivingPO.id}`}>
-                    <ReceivePOModal po={receivingPO} onClose={() => setReceivingPO(null)} />
-                </Modal>
-             }
-              {poToDelete && (
-                <Modal isOpen={!!poToDelete} onClose={() => setPoToDelete(null)} title="Confirm Deletion">
-                    <div>
-                        <p className="mb-4">Are you sure you want to delete PO #{poToDelete.id}? This action cannot be undone.</p>
-                        <div className="flex justify-end gap-2 pt-4">
-                            <button onClick={() => setPoToDelete(null)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
-                            <button onClick={() => handleDelete(poToDelete)} className="px-4 py-2 bg-red-600 text-white rounded-md">Delete</button>
+            <Modal isOpen={!!receivingPO} onClose={() => setReceivingPO(null)} title={`Receive Items: PO #${receivingPO?.id}`} size="lg">
+                {receivingPO && <ReceivePOModal po={receivingPO} onClose={() => setReceivingPO(null)} />}
+            </Modal>
+
+            <Modal isOpen={!!viewingPO} onClose={() => setViewingPO(null)} title={`PO Details: #${viewingPO?.id}`} size="lg">
+                {viewingPO && (
+                    <div className="flex flex-col h-full">
+                        <div className="printable-area flex-grow" ref={printablePORef}>
+                            <div className="mb-4">
+                                <h2 className="text-lg font-bold text-gray-900 dark:text-white">{workspaceName} - Purchase Order</h2>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">PO #: {viewingPO.id}</p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 text-sm mb-4 text-gray-800 dark:text-gray-200">
+                                <div><span className="font-bold">Supplier:</span> {viewingPO.supplierName}</div>
+                                <div><span className="font-bold">Date:</span> {formatDateTime(viewingPO.dateCreated)}</div>
+                                <div><span className="font-bold">Status:</span> {viewingPO.status}</div>
+                                <div><span className="font-bold">Expected:</span> {viewingPO.dateExpected ? formatDateTime(viewingPO.dateExpected) : 'N/A'}</div>
+                            </div>
+                            {viewingPO.notes && <div className="text-sm bg-gray-50 dark:bg-gray-700 p-2 rounded mb-4 text-gray-800 dark:text-gray-200"><strong>Notes:</strong> {viewingPO.notes}</div>}
+                            
+                            <div className="border rounded-md overflow-hidden dark:border-gray-600">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
+                                        <tr>
+                                            <th className="p-1 pl-2">Item</th>
+                                            <th className="p-1 text-right">Ordered</th>
+                                            <th className="p-1 text-right">Received</th>
+                                            <th className="p-1 text-right">Cost</th>
+                                            <th className="p-1 pr-2 text-right">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                        {viewingPO.items.map((item, idx) => (
+                                            <tr key={idx} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                                                <td className="p-1 pl-2">{item.name}</td>
+                                                <td className="p-1 text-right">{item.quantityOrdered}</td>
+                                                <td className="p-1 text-right">{item.quantityReceived}</td>
+                                                <td className="p-1 text-right">{formatCurrency(item.costPrice)}</td>
+                                                <td className="p-1 pr-2 text-right">{formatCurrency(item.quantityOrdered * item.costPrice)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                    <tfoot className="bg-gray-50 dark:bg-gray-700 font-bold text-gray-900 dark:text-white">
+                                        <tr>
+                                            <td colSpan={4} className="p-1 pl-2 text-right">Total Cost:</td>
+                                            <td className="p-1 pr-2 text-right">{formatCurrency(viewingPO.totalCost)}</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <div className="flex justify-end gap-2 pt-4 mt-2 border-t dark:border-gray-700 no-print">
+                            <button onClick={handleSavePOImage} className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Save Image">
+                                <PhotoIcon className="h-5 w-5" />
+                            </button>
+                            <button onClick={() => window.print()} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md">Print</button>
+                            <button onClick={() => setViewingPO(null)} className="px-4 py-2 bg-blue-600 text-white rounded-md">Close</button>
                         </div>
                     </div>
-                </Modal>
-             )}
+                )}
+            </Modal>
+
+            <Modal isOpen={!!poToDelete} onClose={() => setPoToDelete(null)} title="Confirm Delete PO">
+                {poToDelete && (
+                    <div>
+                        <p className="text-gray-800 dark:text-gray-200">Are you sure you want to delete PO #{poToDelete.id}?</p>
+                        <div className="flex justify-end gap-2 pt-4">
+                            <button onClick={() => setPoToDelete(null)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md text-gray-800 dark:text-white">Cancel</button>
+                            <button onClick={handleDeletePO} className="px-4 py-2 bg-red-600 text-white rounded-md">Delete</button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
         </div>
     );
 };

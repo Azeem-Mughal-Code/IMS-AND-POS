@@ -1,12 +1,15 @@
-import React, { createContext, useContext, ReactNode, useCallback } from 'react';
-import { Sale, PurchaseOrder, POItem, Product, CartItem } from '../../types';
-import useLocalStorage from '../../hooks/useLocalStorage';
+
+import React, { createContext, useContext, ReactNode, useCallback, useMemo } from 'react';
+import { Sale, PurchaseOrder, POItem, Product, CartItem, Shift, PaymentType, HeldOrder } from '../../types';
+import usePersistedState from '../../hooks/usePersistedState';
 import { useProducts } from './ProductContext';
 import { useUIState } from './UIStateContext';
+import { useAuth } from './AuthContext';
 
 interface SalesContextType {
     sales: Sale[];
     purchaseOrders: PurchaseOrder[];
+    heldOrders: HeldOrder[];
     processSale: (saleData: Omit<Sale, 'id' | 'date'>) => Sale;
     deleteSale: (saleId: string) => { success: boolean, message?: string };
     clearSales: (options?: { statuses?: (Sale['status'])[] }) => void;
@@ -15,6 +18,11 @@ interface SalesContextType {
     receivePOItems: (poId: string, items: { productId: string; variantId?: string; quantity: number }[]) => void;
     deletePurchaseOrder: (poId: string) => { success: boolean; message?: string };
     factoryReset: () => void;
+    currentShift: Shift | null;
+    openShift: (float: number) => void;
+    closeShift: (actualCash: number, notes: string) => { success: boolean, message?: string };
+    holdOrder: (order: Omit<HeldOrder, 'id' | 'date'>) => void;
+    deleteHeldOrder: (orderId: string) => void;
 }
 
 const SalesContext = createContext<SalesContextType | null>(null);
@@ -25,61 +33,110 @@ export const useSales = () => {
     return context;
 };
 
-export const SalesProvider: React.FC<{ children: ReactNode; businessName: string }> = ({ children, businessName }) => {
-    const ls_prefix = `ims-${businessName}`;
-    const [sales, setSales] = useLocalStorage<Sale[]>(`${ls_prefix}-sales`, []);
-    const [purchaseOrders, setPurchaseOrders] = useLocalStorage<PurchaseOrder[]>(`${ls_prefix}-purchaseOrders`, []);
+export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string }> = ({ children, workspaceId }) => {
+    const ls_prefix = `ims-${workspaceId}`;
+    const { currentUser } = useAuth();
+    const [sales, setSales] = usePersistedState<Sale[]>(`${ls_prefix}-sales`, []);
+    const [purchaseOrders, setPurchaseOrders] = usePersistedState<PurchaseOrder[]>(`${ls_prefix}-purchaseOrders`, []);
+    const [heldOrders, setHeldOrders] = usePersistedState<HeldOrder[]>(`${ls_prefix}-heldOrders`, []);
+    const [shifts, setShifts] = usePersistedState<Shift[]>(`${ls_prefix}-shifts`, []);
+    
     const { products, adjustStock, removeStockHistoryByReason } = useProducts();
     const { addNotification } = useUIState();
 
+    // Derived current shift
+    const currentShift = useMemo(() => shifts.find(s => s.status === 'Open') || null, [shifts]);
+
     const processSale = (saleData: Omit<Sale, 'id' | 'date'>): Sale => {
+        // Determine type based on total if not explicitly set correctly for mixed carts
+        // Although POS usually passes it, for mixed carts with positive total, it's a sale (Exchange).
+        // If negative total, it's a Return.
+        let finalType: 'Sale' | 'Return' = saleData.total >= 0 ? 'Sale' : 'Return';
+        
+        // If explicitly 'Return' passed but total is positive (weird?), trust calculations
+        // But generally, POS should set this. If mixed, 'Sale' is appropriate for Exchange.
+        
+        const prefix = finalType === 'Return' ? 'return' : 'sale';
         const newSale: Sale = {
             ...saleData,
-            id: `sale_${Date.now()}`,
+            type: finalType,
+            id: `${prefix}_${Date.now()}`,
             date: new Date().toISOString(),
+            status: 'Completed', // Default status
         };
 
-        if (saleData.type === 'Sale') {
-            newSale.status = 'Completed';
-            // Decrease stock for sales
-            saleData.items.forEach(item => {
-                const product = products.find(p => p.id === item.productId);
-                if (product) {
-                    const currentStock = item.variantId 
-                        ? product.variants.find(v => v.id === item.variantId)?.stock 
-                        : product.stock;
-                    if (typeof currentStock !== 'undefined') {
-                        adjustStock(item.productId, currentStock - item.quantity, `Sale #${newSale.id}`, item.variantId);
-                    }
+        // Process each item for stock adjustment
+        // This handles both sales (qty > 0) and returns (qty < 0) in a single loop
+        newSale.items.forEach(item => {
+            const product = products.find(p => p.id === item.productId);
+            if (product) {
+                const currentStock = item.variantId 
+                    ? product.variants.find(v => v.id === item.variantId)?.stock 
+                    : product.stock;
+                
+                if (typeof currentStock !== 'undefined') {
+                    // item.quantity is positive for sale (stock goes down), negative for return (stock goes up)
+                    // newStock = currentStock - quantity
+                    adjustStock(item.productId, currentStock - item.quantity, `Transaction #${newSale.id}`, item.variantId);
                 }
-            });
-        } else { // Return
-            // Increase stock for returns
-            saleData.items.forEach(item => {
-                const product = products.find(p => p.id === item.productId);
-                if (product) {
-                    const currentStock = item.variantId 
-                        ? product.variants.find(v => v.id === item.variantId)?.stock 
-                        : product.stock;
-                    if (typeof currentStock !== 'undefined') {
-                        adjustStock(item.productId, currentStock + item.quantity, `Return for Sale #${saleData.originalSaleId}`, item.variantId);
-                    }
-                }
-            });
-            // Update original sale status
-            if (saleData.originalSaleId) {
-                setSales(prev => prev.map(s => {
-                    if (s.id === saleData.originalSaleId) {
-                        const updatedItems = s.items.map(origItem => {
-                            const returnedItem = saleData.items.find(retItem => retItem.id === origItem.id);
-                            if (returnedItem) {
-                                return { ...origItem, returnedQuantity: (origItem.returnedQuantity || 0) + returnedItem.quantity };
-                            }
-                            return origItem;
-                        });
+            }
+        });
+
+        // Process updates to ORIGINAL sales if any items are returns linked to history
+        const salesToUpdate = new Map<string, CartItem[]>(); // Map<SaleID, ItemsToUpdate[]>
+
+        newSale.items.forEach(item => {
+            if (item.quantity < 0 && item.originalSaleId) {
+                // This is a return item linked to a past sale
+                const existing = salesToUpdate.get(item.originalSaleId) || [];
+                existing.push(item);
+                salesToUpdate.set(item.originalSaleId, existing);
+            }
+        });
+
+        if (salesToUpdate.size > 0) {
+            setSales(prev => prev.map(s => {
+                if (salesToUpdate.has(s.id)) {
+                    const returnItems = salesToUpdate.get(s.id)!;
+                    const updatedItems = s.items.map(origItem => {
+                        // Find corresponding return items for this original item
+                        // Logic: match productId and variantId
+                        const matchingReturns = returnItems.filter(ri => 
+                            ri.productId === origItem.productId && 
+                            ri.variantId === origItem.variantId
+                        );
                         
-                        const allReturned = updatedItems.every(item => (item.returnedQuantity || 0) >= item.quantity);
-                        return { ...s, items: updatedItems, status: allReturned ? 'Refunded' : 'Partially Refunded' };
+                        if (matchingReturns.length > 0) {
+                            // Sum the absolute quantity returned in this transaction
+                            const quantityReturnedNow = matchingReturns.reduce((sum, ri) => sum + Math.abs(ri.quantity), 0);
+                            return { ...origItem, returnedQuantity: (origItem.returnedQuantity || 0) + quantityReturnedNow };
+                        }
+                        return origItem;
+                    });
+
+                    // Check if fully refunded
+                    const allReturned = updatedItems.every(item => (item.returnedQuantity || 0) >= item.quantity);
+                    return { ...s, items: updatedItems, status: allReturned ? 'Refunded' : 'Partially Refunded' };
+                }
+                return s;
+            }));
+        }
+
+        // Update Shift Stats if applicable
+        if (currentShift) {
+            // Calculate net cash movement
+            const cashPayment = newSale.payments.find(p => p.type === PaymentType.Cash);
+            if (cashPayment) {
+                // If cash payment is positive, it's money IN (Sale)
+                // If cash payment is negative, it's money OUT (Refund)
+                const cashAmount = cashPayment.amount;
+                setShifts(prev => prev.map(s => {
+                    if (s.id === currentShift.id) {
+                        return {
+                            ...s,
+                            cashSales: cashAmount > 0 ? s.cashSales + cashAmount : s.cashSales,
+                            cashRefunds: cashAmount < 0 ? s.cashRefunds + Math.abs(cashAmount) : s.cashRefunds,
+                        };
                     }
                     return s;
                 }));
@@ -100,8 +157,9 @@ export const SalesProvider: React.FC<{ children: ReactNode; businessName: string
         setSales(prev => prev.filter(s => s.id !== saleId && !associatedReturnIds.includes(s.id)));
 
         // Remove stock history for the sale and its returns
-        removeStockHistoryByReason(`Sale #${saleId}`);
-        removeStockHistoryByReason(`Return for Sale #${saleId}`);
+        removeStockHistoryByReason(`Transaction #${saleId}`); // Updated naming convention
+        removeStockHistoryByReason(`Sale #${saleId}`); // Legacy compat
+        removeStockHistoryByReason(`Return for Sale #${saleId}`); // Legacy compat
 
         return { success: true, message: `Sale ${saleId} and associated returns deleted.` };
     };
@@ -121,6 +179,7 @@ export const SalesProvider: React.FC<{ children: ReactNode; businessName: string
 
         // Process side effects for cleared sales
         salesToClearIds.forEach(id => {
+            removeStockHistoryByReason(`Transaction #${id}`);
             removeStockHistoryByReason(`Sale #${id}`);
             removeStockHistoryByReason(`Return for Sale #${id}`);
         });
@@ -207,6 +266,7 @@ export const SalesProvider: React.FC<{ children: ReactNode; businessName: string
             }
 
             salesToClearIds.forEach(id => {
+                removeStockHistoryByReason(`Transaction #${id}`);
                 removeStockHistoryByReason(`Sale #${id}`);
                 removeStockHistoryByReason(`Return for Sale #${id}`);
             });
@@ -235,11 +295,70 @@ export const SalesProvider: React.FC<{ children: ReactNode; businessName: string
     const factoryReset = () => {
         setSales([]);
         setPurchaseOrders([]);
+        setShifts([]);
+        setHeldOrders([]);
+    };
+
+    // Shift Management Functions
+    const openShift = (float: number) => {
+        if (currentShift) return;
+        const newShift: Shift = {
+            id: `shift_${Date.now()}`,
+            openedByUserId: currentUser?.id || 'unknown',
+            openedByUserName: currentUser?.username || 'Unknown',
+            startTime: new Date().toISOString(),
+            startFloat: float,
+            status: 'Open',
+            cashSales: 0,
+            cashRefunds: 0,
+        };
+        setShifts(prev => [newShift, ...prev]);
+        addNotification(`Shift started by ${newShift.openedByUserName} with float ${float}`, 'USER');
+    };
+
+    const closeShift = (actualCash: number, notes: string) => {
+        if (!currentShift) return { success: false, message: 'No active shift.' };
+        
+        const expectedCash = currentShift.startFloat + currentShift.cashSales - currentShift.cashRefunds;
+        const difference = actualCash - expectedCash;
+
+        setShifts(prev => prev.map(s => {
+            if (s.id === currentShift.id) {
+                return {
+                    ...s,
+                    closedByUserId: currentUser?.id,
+                    closedByUserName: currentUser?.username,
+                    endTime: new Date().toISOString(),
+                    endFloat: expectedCash,
+                    actualCash,
+                    difference,
+                    notes,
+                    status: 'Closed',
+                };
+            }
+            return s;
+        }));
+        addNotification(`Shift closed by ${currentUser?.username}. Difference: ${difference}`, 'USER');
+        return { success: true };
+    };
+
+    const holdOrder = (order: Omit<HeldOrder, 'id' | 'date'>) => {
+        const newHeldOrder: HeldOrder = {
+            ...order,
+            id: `hold_${Date.now()}`,
+            date: new Date().toISOString(),
+        };
+        setHeldOrders(prev => [newHeldOrder, ...prev]);
+    };
+
+    const deleteHeldOrder = (orderId: string) => {
+        setHeldOrders(prev => prev.filter(o => o.id !== orderId));
     };
 
     const value = {
         sales,
         purchaseOrders,
+        heldOrders,
         processSale,
         deleteSale,
         clearSales,
@@ -247,7 +366,12 @@ export const SalesProvider: React.FC<{ children: ReactNode; businessName: string
         addPurchaseOrder,
         receivePOItems,
         deletePurchaseOrder,
-        factoryReset
+        factoryReset,
+        currentShift,
+        openShift,
+        closeShift,
+        holdOrder,
+        deleteHeldOrder
     };
 
     return <SalesContext.Provider value={value}>{children}</SalesContext.Provider>;

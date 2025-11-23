@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { User, UserRole, CashierPermissions } from '../types';
 import { Modal } from './common/Modal';
@@ -87,6 +88,11 @@ const PermissionsModal: React.FC<{
                     label="Can View Inventory Page"
                 />
                 <ToggleSwitch
+                    enabled={!!localPermissions.canManageCustomers}
+                    onChange={(val) => handleToggle('canManageCustomers', val)}
+                    label="Can View Customers Page"
+                />
+                <ToggleSwitch
                     enabled={!!localPermissions.canViewReports}
                     onChange={(val) => handleToggle('canViewReports', val)}
                     label="Can View Reports Page"
@@ -127,13 +133,15 @@ type SortableUserKeys = 'username' | 'role';
 export const UserSettings: React.FC = () => {
   const { users, currentUser, addUser, updateUser, deleteUser } = useAuth();
   const { usersViewState, onUsersViewUpdate, showToast } = useUIState();
+  const { paginationConfig } = useSettings();
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [formError, setFormError] = useState('');
   
-  const { searchTerm, sortConfig, currentPage, itemsPerPage } = usersViewState;
+  const { searchTerm, sortConfig, currentPage } = usersViewState;
+  const itemsPerPage = paginationConfig.users || 10;
 
   const requestSort = (key: SortableUserKeys) => {
     let direction: 'ascending' | 'descending' = 'ascending';

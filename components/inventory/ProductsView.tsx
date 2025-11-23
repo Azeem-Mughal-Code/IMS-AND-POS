@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Product, InventoryAdjustment, PriceHistoryEntry, Category, ProductVariationType, ProductVariant, ProductVariationOption } from '../../types';
 import { useProducts } from '../context/ProductContext';
@@ -5,7 +6,7 @@ import { useUIState } from '../context/UIStateContext';
 import { useSettings } from '../context/SettingsContext';
 import { Modal } from '../common/Modal';
 import { Pagination } from '../common/Pagination';
-import { SearchIcon, PlusIcon, PencilIcon, TrashIcon, AdjustIcon, HistoryIcon, ChevronUpIcon, ChevronDownIcon, ReceiveIcon, ChevronRightIcon } from '../Icons';
+import { SearchIcon, PlusIcon, PencilIcon, TrashIcon, AdjustIcon, HistoryIcon, ChevronUpIcon, ChevronDownIcon, ReceiveIcon, ChevronRightIcon, TagIcon } from '../Icons';
 import { FilterMenu, FilterSelectItem } from '../common/FilterMenu';
 
 const VariationManager: React.FC<{
@@ -91,14 +92,14 @@ const VariationManager: React.FC<{
     
     return (
         <div className="space-y-4 p-4 border rounded-lg dark:border-gray-600">
-            <h3 className="font-semibold text-lg">Variations</h3>
+            <h3 className="font-semibold text-lg text-gray-900 dark:text-white">Variations</h3>
             {variationTypes.map(vt => (
                 <div key={vt.id} className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-md space-y-2">
                     <div className="flex items-center gap-2">
-                        <input type="text" placeholder="Variation Name (e.g. Color)" value={vt.name} onChange={e => updateVariationType(vt.id, e.target.value)} className="flex-grow rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-800" />
+                        <input type="text" placeholder="Variation Name (e.g. Color)" value={vt.name} onChange={e => updateVariationType(vt.id, e.target.value)} className="flex-grow rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
                         <button type="button" onClick={() => removeVariationType(vt.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button>
                     </div>
-                    <input type="text" placeholder="Options, separated by comma (e.g. Red, Blue, Green)" value={vt.options.map(o => o.name).join(', ')} onChange={e => handleOptionsChange(vt.id, e.target.value)} className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-800" />
+                    <input type="text" placeholder="Options, separated by comma (e.g. Red, Blue, Green)" value={vt.options.map(o => o.name).join(', ')} onChange={e => handleOptionsChange(vt.id, e.target.value)} className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
                 </div>
             ))}
             <button type="button" onClick={addVariationType} className="text-sm font-medium text-blue-600 hover:underline">+ Add Variation</button>
@@ -108,21 +109,21 @@ const VariationManager: React.FC<{
                     <table className="w-full text-sm">
                         <thead className="sticky top-0 bg-gray-100 dark:bg-gray-700">
                             <tr>
-                                <th className="p-2 text-left">Variant</th>
-                                <th className="p-2 text-left">SKU Suffix</th>
-                                <th className="p-2 text-right">Retail Price</th>
-                                <th className="p-2 text-right">Cost Price</th>
-                                <th className="p-2 text-right">Stock</th>
+                                <th className="p-2 text-left text-gray-900 dark:text-white">Variant</th>
+                                <th className="p-2 text-left text-gray-900 dark:text-white">SKU Suffix</th>
+                                <th className="p-2 text-right text-gray-900 dark:text-white">Retail Price</th>
+                                <th className="p-2 text-right text-gray-900 dark:text-white">Cost Price</th>
+                                <th className="p-2 text-right text-gray-900 dark:text-white">Stock</th>
                             </tr>
                         </thead>
                         <tbody>
                             {variants.map(v => (
                                 <tr key={v.id} className="border-b dark:border-gray-600">
-                                    <td className="p-2 font-medium">{Object.values(v.options).join(' / ')}</td>
-                                    <td className="p-1"><input type="text" value={v.skuSuffix} onChange={e => updateVariant(v.id, 'skuSuffix', e.target.value)} className="w-full rounded-md border-gray-300 dark:border-gray-600 text-sm p-1 bg-white dark:bg-gray-800" /></td>
-                                    <td className="p-1"><input type="number" value={v.retailPrice} onChange={e => updateVariant(v.id, 'retailPrice', parseFloat(e.target.value))} className="w-24 text-right rounded-md border-gray-300 dark:border-gray-600 text-sm p-1 bg-white dark:bg-gray-800" /></td>
-                                    <td className="p-1"><input type="number" value={v.costPrice} onChange={e => updateVariant(v.id, 'costPrice', parseFloat(e.target.value))} className="w-24 text-right rounded-md border-gray-300 dark:border-gray-600 text-sm p-1 bg-white dark:bg-gray-800" /></td>
-                                    <td className="p-1"><input type="number" value={v.stock} onChange={e => updateVariant(v.id, 'stock', parseInt(e.target.value, 10))} className="w-20 text-right rounded-md border-gray-300 dark:border-gray-600 text-sm p-1 bg-white dark:bg-gray-800" /></td>
+                                    <td className="p-2 font-medium text-gray-900 dark:text-white">{Object.values(v.options).join(' / ')}</td>
+                                    <td className="p-1"><input type="text" value={v.skuSuffix} onChange={e => updateVariant(v.id, 'skuSuffix', e.target.value)} className="w-full rounded-md border-gray-300 dark:border-gray-600 text-sm p-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white" /></td>
+                                    <td className="p-1"><input type="number" value={v.retailPrice} onChange={e => updateVariant(v.id, 'retailPrice', parseFloat(e.target.value))} className="w-24 text-right rounded-md border-gray-300 dark:border-gray-600 text-sm p-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white" /></td>
+                                    <td className="p-1"><input type="number" value={v.costPrice} onChange={e => updateVariant(v.id, 'costPrice', parseFloat(e.target.value))} className="w-24 text-right rounded-md border-gray-300 dark:border-gray-600 text-sm p-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white" /></td>
+                                    <td className="p-1"><input type="number" value={v.stock} onChange={e => updateVariant(v.id, 'stock', parseInt(e.target.value, 10))} className="w-20 text-right rounded-md border-gray-300 dark:border-gray-600 text-sm p-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white" /></td>
                                 </tr>
                             ))}
                         </tbody>
@@ -167,7 +168,7 @@ const ProductForm: React.FC<{ product?: Product | null; onSubmit: (data: Omit<Pr
         onSubmit(formData);
     };
 
-    const CategoryTree: React.FC<{ parentId?: string | null; level: number }> = ({ parentId = null, level }) => {
+    const CategoryTree: React.FC<{ parentId?: string | null; level: number; selectedIds: string[]; onToggle: (id: string, checked: boolean) => void }> = ({ parentId = null, level, selectedIds, onToggle }) => {
         const childCategories = categories.filter(c => c.parentId === parentId);
         if (childCategories.length === 0) return null;
 
@@ -178,13 +179,13 @@ const ProductForm: React.FC<{ product?: Product | null; onSubmit: (data: Omit<Pr
                         <label className="flex items-center space-x-2 py-1">
                             <input
                                 type="checkbox"
-                                checked={formData.categoryIds.includes(cat.id)}
-                                onChange={e => handleCategoryChange(cat.id, e.target.checked)}
+                                checked={selectedIds.includes(cat.id)}
+                                onChange={e => onToggle(cat.id, e.target.checked)}
                                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
-                            <span>{cat.name}</span>
+                            <span className="text-gray-900 dark:text-white">{cat.name}</span>
                         </label>
-                        <CategoryTree parentId={cat.id} level={level + 1} />
+                        <CategoryTree parentId={cat.id} level={level + 1} selectedIds={selectedIds} onToggle={onToggle} />
                     </li>
                 ))}
             </ul>
@@ -194,16 +195,16 @@ const ProductForm: React.FC<{ product?: Product | null; onSubmit: (data: Omit<Pr
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium">SKU</label><input type="text" name="sku" value={formData.sku} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700" /></div>
-                <div><label className="block text-sm font-medium">Name</label><input type="text" name="name" value={formData.name} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">SKU</label><input type="text" name="sku" value={formData.sku} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Name</label><input type="text" name="name" value={formData.name} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" /></div>
             </div>
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border rounded-lg dark:border-gray-600">
                  <p className="text-sm text-gray-500 dark:text-gray-400 md:col-span-2">
                     {hasVariations ? 'Prices for variants are managed below. These values act as defaults.' : 'Enter default prices. You can specify different prices for variants later.'}
                 </p>
-                 <div><label className="block text-sm font-medium">Default Retail Price</label><input type="number" name="retailPrice" value={formData.retailPrice} onChange={handleChange} required step="0.01" min="0" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700" /></div>
-                <div><label className="block text-sm font-medium">Default Cost Price</label><input type="number" name="costPrice" value={formData.costPrice} onChange={handleChange} required step="0.01" min="0" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700" /></div>
-                <div><label className="block text-sm font-medium">Low Stock Threshold</label><input type="number" name="lowStockThreshold" value={formData.lowStockThreshold} onChange={handleChange} required min="0" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700" /></div>
+                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Default Retail Price</label><input type="number" name="retailPrice" value={formData.retailPrice} onChange={handleChange} required step="0.01" min="0" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Default Cost Price</label><input type="number" name="costPrice" value={formData.costPrice} onChange={handleChange} required step="0.01" min="0" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Low Stock Threshold</label><input type="number" name="lowStockThreshold" value={formData.lowStockThreshold} onChange={handleChange} required min="0" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" /></div>
             </div>
 
             <VariationManager
@@ -215,16 +216,96 @@ const ProductForm: React.FC<{ product?: Product | null; onSubmit: (data: Omit<Pr
             />
 
              <div>
-                <label className="block text-sm font-medium mb-1">Categories</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Categories</label>
+                <div className="max-h-48 overflow-y-auto p-3 border rounded-md dark:border-gray-600 bg-gray-50 dark:bg-gray-800">
+                    {categories.length > 0 ? (
+                        <CategoryTree 
+                            level={0} 
+                            selectedIds={formData.categoryIds} 
+                            onToggle={handleCategoryChange} 
+                        />
+                    ) : <p className="text-sm text-gray-500">No categories created yet.</p>}
+                </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+                <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-md">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md">{product ? 'Save Changes' : 'Add Product'}</button>
+            </div>
+        </form>
+    );
+};
+
+const BulkCategoryEditor: React.FC<{ 
+    selectedCount: number; 
+    onSubmit: (categoryIds: string[], action: 'add' | 'replace' | 'remove') => void; 
+    onCancel: () => void; 
+}> = ({ selectedCount, onSubmit, onCancel }) => {
+    const { categories } = useProducts();
+    const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
+    const [action, setAction] = useState<'add' | 'replace' | 'remove'>('add');
+
+    const handleToggle = (categoryId: string, checked: boolean) => {
+        setSelectedCategoryIds(prev => checked ? [...prev, categoryId] : prev.filter(id => id !== categoryId));
+    };
+
+    const CategoryTree: React.FC<{ parentId?: string | null; level: number }> = ({ parentId = null, level }) => {
+        const childCategories = categories.filter(c => c.parentId === parentId);
+        if (childCategories.length === 0) return null;
+
+        return (
+            <ul className={level > 0 ? "pl-4" : ""}>
+                {childCategories.map(cat => (
+                    <li key={cat.id}>
+                        <label className="flex items-center space-x-2 py-1 text-gray-700 dark:text-gray-300">
+                            <input
+                                type="checkbox"
+                                checked={selectedCategoryIds.includes(cat.id)}
+                                onChange={e => handleToggle(cat.id, e.target.checked)}
+                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-gray-900 dark:text-white">{cat.name}</span>
+                        </label>
+                        <CategoryTree parentId={cat.id} level={level + 1} />
+                    </li>
+                ))}
+            </ul>
+        );
+    };
+
+    return (
+        <div className="space-y-4 text-gray-900 dark:text-gray-100">
+            <p className="text-gray-800 dark:text-gray-200">Applying changes to <strong>{selectedCount}</strong> selected products.</p>
+            
+            <div>
+                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Action</label>
+                <div className="flex gap-4 text-gray-800 dark:text-gray-200">
+                    <label className="flex items-center gap-2">
+                        <input type="radio" name="action" checked={action === 'add'} onChange={() => setAction('add')} />
+                        Add to existing
+                    </label>
+                    <label className="flex items-center gap-2">
+                        <input type="radio" name="action" checked={action === 'replace'} onChange={() => setAction('replace')} />
+                        Replace existing
+                    </label>
+                    <label className="flex items-center gap-2">
+                        <input type="radio" name="action" checked={action === 'remove'} onChange={() => setAction('remove')} />
+                        Remove these
+                    </label>
+                </div>
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Select Categories</label>
                 <div className="max-h-48 overflow-y-auto p-3 border rounded-md dark:border-gray-600 bg-gray-50 dark:bg-gray-800">
                     {categories.length > 0 ? <CategoryTree level={0} /> : <p className="text-sm text-gray-500">No categories created yet.</p>}
                 </div>
             </div>
+
             <div className="flex justify-end gap-2 pt-4">
-                <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md">{product ? 'Save Changes' : 'Add Product'}</button>
+                <button onClick={onCancel} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md">Cancel</button>
+                <button onClick={() => onSubmit(selectedCategoryIds, action)} className="px-4 py-2 bg-blue-600 text-white rounded-md">Apply Changes</button>
             </div>
-        </form>
+        </div>
     );
 };
 
@@ -242,13 +323,13 @@ const ReceiveStockModal: React.FC<{ product: Product, variant?: ProductVariant, 
 
     return (
         <div className="space-y-4">
-            <p>Current stock for <strong>{itemName}</strong> is {currentStock}.</p>
+            <p className="text-gray-800 dark:text-gray-200">Current stock for <strong>{itemName}</strong> is {currentStock}.</p>
             <div>
-                <label className="block text-sm font-medium">Quantity to Receive</label>
-                <input type="number" value={quantity} onChange={e => setQuantity(parseInt(e.target.value))} min="1" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700" />
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Quantity to Receive</label>
+                <input type="number" value={quantity} onChange={e => setQuantity(parseInt(e.target.value))} min="1" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
             </div>
             <div className="flex justify-end gap-2 pt-4">
-                <button onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
+                <button onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md">Cancel</button>
                 <button onClick={handleSubmit} className="px-4 py-2 bg-blue-600 text-white rounded-md">Receive Stock</button>
             </div>
         </div>
@@ -270,17 +351,17 @@ const AdjustStockModal: React.FC<{ product: Product, variant?: ProductVariant, o
     };
     return (
         <div className="space-y-4">
-             <p>Current stock for <strong>{itemName}</strong> is {currentStock}.</p>
+             <p className="text-gray-800 dark:text-gray-200">Current stock for <strong>{itemName}</strong> is {currentStock}.</p>
             <div>
-                <label className="block text-sm font-medium">New Stock Level</label>
-                <input type="number" value={newStock} onChange={e => setNewStock(parseInt(e.target.value))} min="0" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700" />
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">New Stock Level</label>
+                <input type="number" value={newStock} onChange={e => setNewStock(parseInt(e.target.value))} min="0" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
             </div>
             <div>
-                <label className="block text-sm font-medium">Reason for Adjustment</label>
-                <input type="text" value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g., Cycle Count" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700" />
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Reason for Adjustment</label>
+                <input type="text" value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g., Cycle Count" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
             </div>
             <div className="flex justify-end gap-2 pt-4">
-                <button onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
+                <button onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md">Cancel</button>
                 <button onClick={handleSubmit} className="px-4 py-2 bg-blue-600 text-white rounded-md">Adjust Stock</button>
             </div>
         </div>
@@ -302,7 +383,7 @@ const StockHistoryModal: React.FC<{ product: Product, onClose: () => void }> = (
         <div>
             <div className="max-h-96 overflow-y-auto">
                 <table className="w-full text-sm text-left">
-                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 text-xs uppercase dark:text-gray-400">
+                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 text-xs uppercase text-gray-700 dark:text-gray-400">
                         <tr><th className="p-2">Date</th><th className="p-2">Variant</th><th className="p-2">Change</th><th className="p-2">Reason</th></tr>
                     </thead>
                     <tbody>
@@ -333,7 +414,7 @@ const PriceHistoryModal: React.FC<{ product: Product, onClose: () => void }> = (
         <div>
             <div className="max-h-96 overflow-y-auto">
                 <table className="w-full text-sm text-left">
-                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 text-xs uppercase dark:text-gray-400">
+                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 text-xs uppercase text-gray-700 dark:text-gray-400">
                         <tr>
                             <th className="p-2">Date</th>
                             <th className="p-2">Type</th>
@@ -364,9 +445,9 @@ const PriceHistoryModal: React.FC<{ product: Product, onClose: () => void }> = (
 };
 
 export const ProductsView: React.FC = () => {
-    const { products, addProduct, updateProduct, deleteProduct, categories } = useProducts();
+    const { products, addProduct, updateProduct, deleteProduct, categories, bulkDeleteProducts, bulkUpdateProductCategories } = useProducts();
     const { inventoryViewState, onInventoryViewUpdate, showToast } = useUIState();
-    const { formatCurrency } = useSettings();
+    const { formatCurrency, paginationConfig } = useSettings();
 
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -376,7 +457,12 @@ export const ProductsView: React.FC = () => {
     const [stockHistoryProduct, setStockHistoryProduct] = useState<Product | null>(null);
     const [priceHistoryProduct, setPriceHistoryProduct] = useState<Product | null>(null);
 
-    const { searchTerm, stockFilter, categoryFilter, sortConfig, currentPage, itemsPerPage } = inventoryViewState;
+    const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+    const [isBulkCategoryModalOpen, setIsBulkCategoryModalOpen] = useState(false);
+    const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+
+    const { searchTerm, stockFilter, categoryFilter, sortConfig, currentPage } = inventoryViewState;
+    const itemsPerPage = paginationConfig.inventory || 10;
     
     type SortableProductKeys = 'sku' | 'name' | 'stock' | 'retailPrice' | 'costPrice';
 
@@ -453,6 +539,43 @@ export const ProductsView: React.FC = () => {
             setProductToDelete(null);
         }
     };
+
+    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.checked) {
+            // Select all on current page
+            const newSet = new Set(selectedProductIds);
+            paginatedProducts.forEach(p => newSet.add(p.id));
+            setSelectedProductIds(newSet);
+        } else {
+            // Deselect all on current page
+            const newSet = new Set(selectedProductIds);
+            paginatedProducts.forEach(p => newSet.delete(p.id));
+            setSelectedProductIds(newSet);
+        }
+    };
+
+    const handleSelectRow = (id: string, checked: boolean) => {
+        const newSet = new Set(selectedProductIds);
+        if (checked) newSet.add(id); else newSet.delete(id);
+        setSelectedProductIds(newSet);
+    };
+
+    const allOnPageSelected = paginatedProducts.length > 0 && paginatedProducts.every(p => selectedProductIds.has(p.id));
+    const someOnPageSelected = paginatedProducts.some(p => selectedProductIds.has(p.id)) && !allOnPageSelected;
+
+    const handleBulkDelete = () => {
+        const result = bulkDeleteProducts(Array.from(selectedProductIds));
+        showToast(result.message, result.success && result.message.includes('skipped') ? 'error' : 'success');
+        setIsBulkDeleteModalOpen(false);
+        setSelectedProductIds(new Set());
+    };
+
+    const handleBulkCategoryUpdate = (categoryIds: string[], action: 'add' | 'replace' | 'remove') => {
+        const result = bulkUpdateProductCategories(Array.from(selectedProductIds), categoryIds, action);
+        showToast(result.message, 'success');
+        setIsBulkCategoryModalOpen(false);
+        setSelectedProductIds(new Set());
+    };
     
     const SortableHeader: React.FC<{ children: React.ReactNode, sortKey: SortableProductKeys }> = ({ children, sortKey }) => {
         const isSorted = sortConfig.key === sortKey;
@@ -470,40 +593,95 @@ export const ProductsView: React.FC = () => {
         );
     };
 
+    const calculateMargin = (retail: number, cost: number) => {
+        if (retail <= 0) return 0;
+        return ((retail - cost) / retail) * 100;
+    };
+
+    const MarginBadge: React.FC<{ margin: number }> = ({ margin }) => {
+        let colorClass = 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+        if (margin >= 50) colorClass = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+        else if (margin >= 20) colorClass = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+        else if (margin < 20) colorClass = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+
+        return (
+            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
+                {margin.toFixed(1)}%
+            </span>
+        );
+    };
+
     return (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
             <div className="p-4">
-                <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-                    <div className="relative flex-grow w-full sm:w-auto">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><SearchIcon /></div>
-                        <input type="text" value={searchTerm} onChange={e => onInventoryViewUpdate({ searchTerm: e.target.value })} placeholder="Search products..." className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-blue-500 focus:border-blue-500" />
+                <div className="flex flex-col gap-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div className="relative flex-grow w-full sm:w-auto">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><SearchIcon /></div>
+                            <input type="text" value={searchTerm} onChange={e => onInventoryViewUpdate({ searchTerm: e.target.value })} placeholder="Search products..." className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500" />
+                        </div>
+                        <div className="flex items-center gap-4 w-full sm:w-auto">
+                            <button onClick={() => { setEditingProduct(null); setIsProductModalOpen(true); }} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2 w-full sm:w-auto justify-center"><PlusIcon /> Add Product</button>
+                            <FilterMenu activeFilterCount={(stockFilter !== 'All' ? 1 : 0) + (categoryFilter !== 'All' ? 1 : 0)}>
+                                <FilterSelectItem label="Stock Status" value={stockFilter} onChange={v => onInventoryViewUpdate({ stockFilter: v })} options={[{ value: 'All', label: 'All' }, { value: 'In Stock', label: 'In Stock' }, { value: 'Low Stock', label: 'Low Stock' }, { value: 'Out of Stock', label: 'Out of Stock' }]} />
+                                <FilterSelectItem label="Category" value={categoryFilter} onChange={v => onInventoryViewUpdate({ categoryFilter: v })} options={[{ value: 'All', label: 'All Categories' }, ...categoryOptions]} />
+                            </FilterMenu>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-4 w-full sm:w-auto">
-                        <button onClick={() => { setEditingProduct(null); setIsProductModalOpen(true); }} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2 w-full sm:w-auto justify-center"><PlusIcon /> Add Product</button>
-                        <FilterMenu activeFilterCount={(stockFilter !== 'All' ? 1 : 0) + (categoryFilter !== 'All' ? 1 : 0)}>
-                            <FilterSelectItem label="Stock Status" value={stockFilter} onChange={v => onInventoryViewUpdate({ stockFilter: v })} options={[{ value: 'All', label: 'All' }, { value: 'In Stock', label: 'In Stock' }, { value: 'Low Stock', label: 'Low Stock' }, { value: 'Out of Stock', label: 'Out of Stock' }]} />
-                             <FilterSelectItem label="Category" value={categoryFilter} onChange={v => onInventoryViewUpdate({ categoryFilter: v })} options={[{ value: 'All', label: 'All Categories' }, ...categoryOptions]} />
-                        </FilterMenu>
-                    </div>
+                    
+                    {selectedProductIds.size > 0 && (
+                        <div className="bg-blue-50 dark:bg-blue-900/30 p-3 rounded-md flex flex-wrap items-center justify-between gap-4 border border-blue-200 dark:border-blue-800 animate-fadeIn">
+                            <span className="font-medium text-blue-900 dark:text-blue-200">{selectedProductIds.size} item{selectedProductIds.size !== 1 ? 's' : ''} selected</span>
+                            <div className="flex gap-2">
+                                <button onClick={() => setIsBulkCategoryModalOpen(true)} className="flex items-center gap-1 px-3 py-1.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-medium shadow-sm transition-colors">
+                                    <TagIcon className="h-4 w-4"/> Categories
+                                </button>
+                                <button onClick={() => setIsBulkDeleteModalOpen(true)} className="flex items-center gap-1 px-3 py-1.5 bg-white dark:bg-gray-800 text-red-600 dark:text-red-400 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-red-50 dark:hover:bg-red-900/20 text-sm font-medium shadow-sm transition-colors">
+                                    <TrashIcon className="h-4 w-4"/> Delete
+                                </button>
+                                <button onClick={() => setSelectedProductIds(new Set())} className="px-3 py-1.5 text-gray-700 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 text-sm transition-colors">
+                                    Clear Selection
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
                     <thead className="text-xs text-gray-700 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700 sticky top-0 z-10">
                         <tr>
+                            <th className="px-4 py-3 w-10">
+                                <input 
+                                    type="checkbox" 
+                                    checked={allOnPageSelected} 
+                                    ref={input => { if (input) input.indeterminate = someOnPageSelected; }}
+                                    onChange={handleSelectAll} 
+                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 bg-white dark:bg-gray-700 dark:border-gray-600 h-4 w-4"
+                                />
+                            </th>
                             <SortableHeader sortKey="sku">SKU</SortableHeader>
                             <SortableHeader sortKey="name">Name</SortableHeader>
                             <th className="px-6 py-3">Categories</th>
                             <SortableHeader sortKey="stock">Stock</SortableHeader>
                             <SortableHeader sortKey="retailPrice">Retail Price</SortableHeader>
                             <SortableHeader sortKey="costPrice">Cost Price</SortableHeader>
+                            <th className="px-6 py-3">Margin</th>
                             <th className="px-6 py-3">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {paginatedProducts.map(p => (
                             <React.Fragment key={p.id}>
-                            <tr>
+                            <tr className={selectedProductIds.has(p.id) ? 'bg-blue-50 dark:bg-blue-900/20' : ''}>
+                                <td className="px-4 py-4">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={selectedProductIds.has(p.id)} 
+                                        onChange={e => handleSelectRow(p.id, e.target.checked)}
+                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 bg-white dark:bg-gray-700 dark:border-gray-600 h-4 w-4"
+                                    />
+                                </td>
                                 <td data-label="SKU" className="px-6 py-4 font-mono">{p.sku}</td>
                                 <td data-label="Name" className="px-6 py-4 font-medium text-gray-900 dark:text-white">
                                     {p.name}
@@ -513,6 +691,9 @@ export const ProductsView: React.FC = () => {
                                 <td data-label="Stock" className="px-6 py-4">{p.stock}</td>
                                 <td data-label="Retail Price" className="px-6 py-4">{formatCurrency(p.retailPrice)}</td>
                                 <td data-label="Cost Price" className="px-6 py-4">{formatCurrency(p.costPrice)}</td>
+                                <td data-label="Margin" className="px-6 py-4">
+                                    {p.variants.length === 0 && <MarginBadge margin={calculateMargin(p.retailPrice, p.costPrice)} />}
+                                </td>
                                 <td data-label="Actions" className="px-6 py-4 flex items-center gap-1 justify-end flex-nowrap">
                                     <button onClick={() => setStockHistoryProduct(p)} title="View Stock History" className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><HistoryIcon /></button>
                                     <button onClick={() => setPriceHistoryProduct(p)} title="View Price History" className="p-2 text-purple-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><HistoryIcon /></button>
@@ -522,6 +703,7 @@ export const ProductsView: React.FC = () => {
                             </tr>
                             {p.variants.length > 0 && p.variants.map(v => (
                                 <tr key={v.id} className="bg-gray-50 dark:bg-gray-800/50">
+                                    <td></td>
                                     <td className="pl-12 pr-6 py-2 font-mono text-sm">{p.sku}-{v.skuSuffix}</td>
                                     <td className="px-6 py-2 text-sm text-gray-600 dark:text-gray-300">
                                         - {Object.values(v.options).join(' / ')}
@@ -530,6 +712,9 @@ export const ProductsView: React.FC = () => {
                                     <td className="px-6 py-2 text-sm">{v.stock}</td>
                                     <td className="px-6 py-2 text-sm">{formatCurrency(v.retailPrice)}</td>
                                     <td className="px-6 py-2 text-sm">{formatCurrency(v.costPrice)}</td>
+                                    <td className="px-6 py-2 text-sm">
+                                        <MarginBadge margin={calculateMargin(v.retailPrice, v.costPrice)} />
+                                    </td>
                                     <td className="px-6 py-2 flex items-center gap-1 justify-end flex-nowrap">
                                         <button onClick={() => setReceivingProduct({product: p, variant: v})} title="Receive Stock" className="p-2 text-green-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><ReceiveIcon /></button>
                                         <button onClick={() => setAdjustingProduct({product: p, variant: v})} title="Adjust Stock" className="p-2 text-yellow-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><AdjustIcon /></button>
@@ -544,12 +729,31 @@ export const ProductsView: React.FC = () => {
             <Pagination currentPage={currentPage} totalPages={Math.ceil(filteredAndSortedProducts.length / itemsPerPage)} onPageChange={page => onInventoryViewUpdate({ currentPage: page })} itemsPerPage={itemsPerPage} totalItems={filteredAndSortedProducts.length} />
             <Modal isOpen={isProductModalOpen} onClose={() => setIsProductModalOpen(false)} title={editingProduct ? 'Edit Product' : 'Add Product'} size="xl"><ProductForm product={editingProduct} onSubmit={handleFormSubmit} onCancel={() => setIsProductModalOpen(false)} /></Modal>
             <Modal isOpen={!!productToDelete} onClose={() => setProductToDelete(null)} title="Confirm Deletion">
-                {productToDelete && <div><p>Are you sure you want to delete {productToDelete.name}? This cannot be undone.</p><div className="flex justify-end gap-2 pt-4"><button onClick={() => setProductToDelete(null)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button><button onClick={confirmDelete} className="px-4 py-2 bg-red-600 text-white rounded-md">Delete</button></div></div>}
+                {productToDelete && <div><p className="text-gray-900 dark:text-white">Are you sure you want to delete {productToDelete.name}? This cannot be undone.</p><div className="flex justify-end gap-2 pt-4"><button onClick={() => setProductToDelete(null)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md">Cancel</button><button onClick={confirmDelete} className="px-4 py-2 bg-red-600 text-white rounded-md">Delete</button></div></div>}
             </Modal>
              {receivingProduct && <Modal isOpen={!!receivingProduct} onClose={() => setReceivingProduct(null)} title={`Receive Stock`}><ReceiveStockModal product={receivingProduct.product} variant={receivingProduct.variant} onClose={() => setReceivingProduct(null)} /></Modal>}
              {adjustingProduct && <Modal isOpen={!!adjustingProduct} onClose={() => setAdjustingProduct(null)} title={`Adjust Stock`}><AdjustStockModal product={adjustingProduct.product} variant={adjustingProduct.variant} onClose={() => setAdjustingProduct(null)} /></Modal>}
              {stockHistoryProduct && <Modal isOpen={!!stockHistoryProduct} onClose={() => setStockHistoryProduct(null)} title={`Stock History: ${stockHistoryProduct.name}`}><StockHistoryModal product={stockHistoryProduct} onClose={() => setStockHistoryProduct(null)} /></Modal>}
              {priceHistoryProduct && <Modal isOpen={!!priceHistoryProduct} onClose={() => setPriceHistoryProduct(null)} title={`Price History: ${priceHistoryProduct.name}`}><PriceHistoryModal product={priceHistoryProduct} onClose={() => setPriceHistoryProduct(null)} /></Modal>}
+             
+             <Modal isOpen={isBulkCategoryModalOpen} onClose={() => setIsBulkCategoryModalOpen(false)} title="Bulk Edit Categories">
+                <BulkCategoryEditor 
+                    selectedCount={selectedProductIds.size} 
+                    onSubmit={handleBulkCategoryUpdate} 
+                    onCancel={() => setIsBulkCategoryModalOpen(false)} 
+                />
+             </Modal>
+
+             <Modal isOpen={isBulkDeleteModalOpen} onClose={() => setIsBulkDeleteModalOpen(false)} title="Confirm Bulk Deletion">
+                <div className="text-gray-900 dark:text-gray-100">
+                    <p className="mb-2 text-gray-900 dark:text-white">Are you sure you want to delete <strong>{selectedProductIds.size}</strong> selected products?</p>
+                    <p className="text-sm text-yellow-600 dark:text-yellow-400 mb-4">Products with active stock will be skipped and not deleted.</p>
+                    <div className="flex justify-end gap-2 pt-4">
+                        <button onClick={() => setIsBulkDeleteModalOpen(false)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md text-gray-900 dark:text-white">Cancel</button>
+                        <button onClick={handleBulkDelete} className="px-4 py-2 bg-red-600 text-white rounded-md">Delete Products</button>
+                    </div>
+                </div>
+             </Modal>
         </div>
     );
 };

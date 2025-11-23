@@ -1,11 +1,13 @@
+
 import React, { useState, useMemo } from 'react';
 import { Supplier, SortConfig, SupplierSortKeys } from '../../types';
-import useLocalStorage from '../../hooks/useLocalStorage';
+import usePersistedState from '../../hooks/usePersistedState';
 import { useSettings } from '../context/SettingsContext';
 import { useUIState } from '../context/UIStateContext';
 import { Modal } from '../common/Modal';
 import { Pagination } from '../common/Pagination';
 import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, ChevronUpIcon, ChevronDownIcon } from '../Icons';
+import { INITIAL_SUPPLIERS } from '../../constants';
 
 // Self-contained Supplier Form
 const SupplierForm: React.FC<{ 
@@ -56,9 +58,9 @@ const SupplierForm: React.FC<{
 
 // Self-contained View for managing suppliers
 export const SuppliersView: React.FC = () => {
-    const { businessName } = useSettings();
+    const { workspaceId } = useSettings();
     const { showToast } = useUIState();
-    const [suppliers, setSuppliers] = useLocalStorage<Supplier[]>(`ims-${businessName}-suppliers`, []);
+    const [suppliers, setSuppliers] = usePersistedState<Supplier[]>(`ims-${workspaceId}-suppliers`, INITIAL_SUPPLIERS);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
@@ -120,7 +122,7 @@ export const SuppliersView: React.FC = () => {
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
                     <div className="relative flex-grow w-full sm:w-auto">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><SearchIcon /></div>
-                        <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search suppliers..." className="w-full pl-10 pr-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600" />
+                        <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search suppliers..." className="w-full pl-10 pr-4 py-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500" />
                     </div>
                     <button onClick={() => setIsModalOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2 w-full sm:w-auto justify-center"><PlusIcon /> Add Supplier</button>
                 </div>
@@ -160,7 +162,15 @@ export const SuppliersView: React.FC = () => {
                 <SupplierForm supplier={editingSupplier} onSubmit={editingSupplier ? handleUpdateSupplier : handleAddSupplier} onCancel={() => { setIsModalOpen(false); setEditingSupplier(null); }} />
             </Modal>
              <Modal isOpen={!!deletingSupplier} onClose={() => setDeletingSupplier(null)} title="Confirm Deletion">
-                {deletingSupplier && <div><p>Are you sure you want to delete {deletingSupplier.name}?</p><div className="flex justify-end gap-2 pt-4"><button onClick={() => setDeletingSupplier(null)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button><button onClick={handleDeleteSupplier} className="px-4 py-2 bg-red-600 text-white rounded-md">Delete</button></div></div>}
+                {deletingSupplier && (
+                    <div>
+                        <p className="text-gray-900 dark:text-gray-200">Are you sure you want to delete <span className="font-bold">{deletingSupplier.name}</span>?</p>
+                        <div className="flex justify-end gap-2 pt-4">
+                            <button onClick={() => setDeletingSupplier(null)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-gray-200 rounded-md">Cancel</button>
+                            <button onClick={handleDeleteSupplier} className="px-4 py-2 bg-red-600 text-white rounded-md">Delete</button>
+                        </div>
+                    </div>
+                )}
             </Modal>
         </div>
     );

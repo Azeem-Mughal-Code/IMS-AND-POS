@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { Card } from './common/Card';
@@ -245,8 +246,8 @@ export const Dashboard: React.FC = () => {
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
         <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-4">Sales & Profit Overview ({chartTitle})</h2>
-        <div style={{ width: '100%', height: 300 }} className="[&_*:focus]:outline-none">
-          <ResponsiveContainer>
+        <div className="w-full min-w-0 relative [&_*:focus]:outline-none" style={{ height: 300 }}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
             <ChartComponent data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#4A5568" />
               <XAxis dataKey="name" stroke="#A0AEC0" />

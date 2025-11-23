@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Sale, UserRole, ReportsViewState, PaymentType, Product } from '../types';
 import { Modal } from './common/Modal';
@@ -59,7 +60,7 @@ export const Reports: React.FC = () => {
   const { products } = useProducts();
   const { currentUser, users } = useAuth();
   const { reportsViewState, onReportsSalesViewUpdate, onReportsProductsViewUpdate, showToast } = useUIState();
-  const { formatCurrency, formatDateTime } = useSettings();
+  const { formatCurrency, formatDateTime, paginationConfig } = useSettings();
     
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -93,8 +94,10 @@ export const Reports: React.FC = () => {
     }
   };
 
-  const { searchTerm: saleSearch, typeFilter, statusFilter, salespersonFilter, timeRange: saleTimeRange, sortConfig: saleSortConfig, currentPage: saleCurrentPage, itemsPerPage: saleItemsPerPage } = reportsViewState.sales;
-  const { searchTerm: productSearch, stockFilter, sortConfig: productSortConfig, currentPage: productCurrentPage, itemsPerPage: productItemsPerPage } = reportsViewState.products;
+  const { searchTerm: saleSearch, typeFilter, statusFilter, salespersonFilter, timeRange: saleTimeRange, sortConfig: saleSortConfig, currentPage: saleCurrentPage } = reportsViewState.sales;
+  const { searchTerm: productSearch, stockFilter, sortConfig: productSortConfig, currentPage: productCurrentPage } = reportsViewState.products;
+  const saleItemsPerPage = paginationConfig.salesReports || 10;
+  const productItemsPerPage = paginationConfig.productReports || 10;
 
   const salesActiveFilterCount = (typeFilter !== 'All' ? 1 : 0) + (statusFilter !== 'All' ? 1 : 0) + (salespersonFilter !== 'All' ? 1 : 0) + (saleTimeRange !== 'all' ? 1 : 0);
   const productsActiveFilterCount = stockFilter !== 'All' ? 1 : 0;
@@ -175,6 +178,8 @@ export const Reports: React.FC = () => {
         originalSaleId: viewingSale.id,
         salespersonId: currentUser.id,
         salespersonName: currentUser.username,
+        customerId: viewingSale.customerId,
+        customerName: viewingSale.customerName,
     };
 
     try {
@@ -259,7 +264,8 @@ export const Reports: React.FC = () => {
         const valB = b[saleSortConfig.key as keyof Sale];
         let comparison = 0;
         if (saleSortConfig.key === 'date') {
-            comparison = new Date(b.date).getTime() - new Date(a.date).getTime();
+            // Standard comparison: a - b
+            comparison = new Date(a.date).getTime() - new Date(b.date).getTime();
         } else if (typeof valA === 'string' && typeof valB === 'string') {
             comparison = valA.localeCompare(valB);
         } else if (typeof valA === 'number' && typeof valB === 'number') {

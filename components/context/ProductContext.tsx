@@ -1,9 +1,9 @@
+
 import React, { createContext, useContext, ReactNode, useCallback } from 'react';
 import { Product, InventoryAdjustment, PriceHistoryEntry, User, Category, ProductVariant } from '../../types';
-import useLocalStorage from '../../hooks/useLocalStorage';
+import usePersistedState from '../../hooks/usePersistedState';
 import { INITIAL_PRODUCTS } from '../../constants';
 import { useAuth } from './AuthContext';
-// import { useSales } from './SalesContext'; // Dependency for checking sales history
 
 interface ProductContextType {
     products: Product[];
@@ -20,6 +20,8 @@ interface ProductContextType {
     removeStockHistoryByReason: (reasonPrefix: string) => void;
     importProducts: (newProducts: Omit<Product, 'id'>[]) => { success: boolean; message: string };
     factoryReset: (adminUser: User) => void;
+    bulkDeleteProducts: (productIds: string[]) => { success: boolean; message: string };
+    bulkUpdateProductCategories: (productIds: string[], categoryIds: string[], action: 'add' | 'replace' | 'remove') => { success: boolean; message: string };
 }
 
 const ProductContext = createContext<ProductContextType | null>(null);
@@ -37,12 +39,12 @@ const DEFAULT_CATEGORIES: Category[] = [
     { id: 'cat_apparel', name: 'Apparel', parentId: null },
 ];
 
-export const ProductProvider: React.FC<{ children: ReactNode; businessName: string }> = ({ children, businessName }) => {
-    const ls_prefix = `ims-${businessName}`;
+export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: string }> = ({ children, workspaceId }) => {
+    const ls_prefix = `ims-${workspaceId}`;
     const { currentUser } = useAuth();
-    const [products, setProducts] = useLocalStorage<Product[]>(`${ls_prefix}-products`, INITIAL_PRODUCTS);
-    const [categories, setCategories] = useLocalStorage<Category[]>(`${ls_prefix}-categories`, DEFAULT_CATEGORIES);
-    const [inventoryAdjustments, setInventoryAdjustments] = useLocalStorage<InventoryAdjustment[]>(`${ls_prefix}-inventoryAdjustments`, []);
+    const [products, setProducts] = usePersistedState<Product[]>(`${ls_prefix}-products`, INITIAL_PRODUCTS);
+    const [categories, setCategories] = usePersistedState<Category[]>(`${ls_prefix}-categories`, DEFAULT_CATEGORIES);
+    const [inventoryAdjustments, setInventoryAdjustments] = usePersistedState<InventoryAdjustment[]>(`${ls_prefix}-inventoryAdjustments`, []);
     
     const addStockHistory = useCallback((productId: string, quantity: number, reason: string, variantId?: string) => {
         const newAdjustment: InventoryAdjustment = {
@@ -113,6 +115,46 @@ export const ProductProvider: React.FC<{ children: ReactNode; businessName: stri
         if (product.stock > 0) return { success: false, message: 'Cannot delete a product that is in stock.'};
         setProducts(prev => prev.filter(p => p.id !== productId));
         return { success: true, message: 'Product deleted successfully.' };
+    };
+
+    const bulkDeleteProducts = (productIds: string[]) => {
+        const idsSet = new Set(productIds);
+        const productsToDelete = products.filter(p => idsSet.has(p.id));
+        const deletable = productsToDelete.filter(p => p.stock <= 0);
+        const deletableIds = new Set(deletable.map(p => p.id));
+        const failedCount = productsToDelete.length - deletable.length;
+        
+        if (deletable.length > 0) {
+            setProducts(prev => prev.filter(p => !deletableIds.has(p.id)));
+        }
+        
+        return { 
+            success: true, 
+            message: `Deleted ${deletable.length} products.${failedCount > 0 ? ` ${failedCount} skipped (in stock).` : ''}` 
+        };
+    };
+
+    const bulkUpdateProductCategories = (productIds: string[], categoryIds: string[], action: 'add' | 'replace' | 'remove') => {
+        setProducts(prev => prev.map(p => {
+            if (!productIds.includes(p.id)) return p;
+            
+            let newCategoryIds = [...p.categoryIds];
+            const targetIds = new Set(categoryIds);
+            
+            if (action === 'replace') {
+                newCategoryIds = categoryIds;
+            } else if (action === 'add') {
+                // Add only ones not already there
+                categoryIds.forEach(id => {
+                    if(!newCategoryIds.includes(id)) newCategoryIds.push(id);
+                });
+            } else if (action === 'remove') {
+                newCategoryIds = newCategoryIds.filter(id => !targetIds.has(id));
+            }
+            
+            return { ...p, categoryIds: newCategoryIds };
+        }));
+        return { success: true, message: 'Categories updated.' };
     };
 
     const addCategory = (categoryData: Omit<Category, 'id'>): { success: boolean, message?: string } => {
@@ -247,7 +289,9 @@ export const ProductProvider: React.FC<{ children: ReactNode; businessName: stri
         adjustStock,
         removeStockHistoryByReason,
         importProducts,
-        factoryReset
+        factoryReset,
+        bulkDeleteProducts,
+        bulkUpdateProductCategories
     };
 
     return (

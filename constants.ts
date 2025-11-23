@@ -1,4 +1,5 @@
-import { Product, Currency } from './types';
+
+import { Product, Currency, Customer, Supplier } from './types';
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
@@ -125,42 +126,14 @@ export const DEFAULT_CURRENCIES: Currency[] = [
     { code: 'PKR', name: 'Pakistani Rupee', symbol: '₨' },
 ];
 
-export const TIMEZONE_OPTIONS = [
-  { value: 'Etc/GMT+11', label: 'UTC-11:00' },
-  { value: 'Etc/GMT+10', label: 'UTC-10:00' },
-  { value: 'Pacific/Marquesas', label: 'UTC-09:30' },
-  { value: 'Etc/GMT+9', label: 'UTC-09:00' },
-  { value: 'Etc/GMT+8', label: 'UTC-08:00' },
-  { value: 'Etc/GMT+7', label: 'UTC-07:00' },
-  { value: 'Etc/GMT+6', label: 'UTC-06:00' },
-  { value: 'Etc/GMT+5', label: 'UTC-05:00' },
-  { value: 'America/Caracas', label: 'UTC-04:30' },
-  { value: 'Etc/GMT+4', label: 'UTC-04:00' },
-  { value: 'America/St_Johns', label: 'UTC-03:30' },
-  { value: 'Etc/GMT+3', label: 'UTC-03:00' },
-  { value: 'Etc/GMT+2', label: 'UTC-02:00' },
-  { value: 'Etc/GMT+1', label: 'UTC-01:00' },
-  { value: 'Etc/GMT+0', label: 'UTC+00:00' },
-  { value: 'Etc/GMT-1', label: 'UTC+01:00' },
-  { value: 'Etc/GMT-2', label: 'UTC+02:00' },
-  { value: 'Etc/GMT-3', label: 'UTC+03:00' },
-  { value: 'Asia/Tehran', label: 'UTC+03:30' },
-  { value: 'Etc/GMT-4', label: 'UTC+04:00' },
-  { value: 'Asia/Kabul', label: 'UTC+04:30' },
-  { value: 'Etc/GMT-5', label: 'UTC+05:00' },
-  { value: 'Asia/Kolkata', label: 'UTC+05:30' },
-  { value: 'Asia/Kathmandu', label: 'UTC+05:45' },
-  { value: 'Etc/GMT-6', label: 'UTC+06:00' },
-  { value: 'Asia/Yangon', label: 'UTC+06:30' },
-  { value: 'Etc/GMT-7', label: 'UTC+07:00' },
-  { value: 'Etc/GMT-8', label: 'UTC+08:00' },
-  { value: 'Australia/Eucla', label: 'UTC+08:45' },
-  { value: 'Etc/GMT-9', label: 'UTC+09:00' },
-  { value: 'Australia/Darwin', label: 'UTC+09:30' },
-  { value: 'Etc/GMT-10', label: 'UTC+10:00' },
-  { value: 'Australia/Lord_Howe', label: 'UTC+10:30' },
-  { value: 'Etc/GMT-11', label: 'UTC+11:00' },
-  { value: 'Etc/GMT-12', label: 'UTC+12:00' },
-  { value: 'Pacific/Chatham', label: 'UTC+12:45' },
-  { value: 'Etc/GMT-13', label: 'UTC+13:00' },
+export const INITIAL_CUSTOMERS: Customer[] = [
+    { id: 'cust_1', name: 'John Doe', email: 'john@example.com', phone: '555-0101', address: '123 Main St', dateAdded: new Date().toISOString() },
+    { id: 'cust_2', name: 'Jane Smith', email: 'jane@example.com', phone: '555-0102', address: '456 Oak Ave', dateAdded: new Date().toISOString() },
+    { id: 'cust_3', name: 'Bob Johnson', email: 'bob@example.com', phone: '555-0103', address: '789 Pine Ln', dateAdded: new Date().toISOString() },
+];
+
+export const INITIAL_SUPPLIERS: Supplier[] = [
+    { id: 'sup_1', name: 'Global Tech Distributors', contactPerson: 'Alice Walker', email: 'alice@globaltech.com', phone: '555-1111', address: '101 Tech Blvd' },
+    { id: 'sup_2', name: 'Office Essentials Co.', contactPerson: 'Mark Davis', email: 'mark@officeessentials.com', phone: '555-2222', address: '202 Paper St' },
+    { id: 'sup_3', name: 'Premium Apparel Wholesalers', contactPerson: 'Sarah Lee', email: 'sarah@premiumapparel.com', phone: '555-3333', address: '303 Fabric Rd' },
 ];

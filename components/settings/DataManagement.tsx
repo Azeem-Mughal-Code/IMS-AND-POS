@@ -30,9 +30,9 @@ export const DataManagement: React.FC = () => {
     const { products, importProducts, factoryReset: productReset } = useProducts();
     const { sales, purchaseOrders, clearSales, factoryReset: salesReset, pruneData: pruneSalesData } = useSales();
     const { 
-        businessName, theme, itemsPerPage, currency, currencies, currencyDisplay, isSplitPaymentEnabled,
+        workspaceId, workspaceName, theme, itemsPerPage, currency, currencies, currencyDisplay, isSplitPaymentEnabled,
         isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled,
-        discountRate, discountThreshold, cashierPermissions, restoreBackup
+        discountRate, discountThreshold, cashierPermissions, restoreBackup, timezoneOffsetMinutes
     } = useSettings();
     const { notifications, factoryReset: uiReset, pruneData: pruneUiData, showToast } = useUIState();
     
@@ -122,7 +122,7 @@ export const DataManagement: React.FC = () => {
         const data = type === 'products' ? products : sales;
         const csv = convertToCSV(data, type);
         const date = new Date().toISOString().split('T')[0];
-        downloadFile(csv, `${businessName}-${type}-export-${date}.csv`, 'text/csv;charset=utf-8;');
+        downloadFile(csv, `${workspaceName}-${type}-export-${date}.csv`, 'text/csv;charset=utf-8;');
     };
 
     const handleImport = () => {
@@ -140,7 +140,6 @@ export const DataManagement: React.FC = () => {
                 const values = rows[i].trim().split(',');
                 const productData: any = {};
                 header.forEach((h, index) => productData[h] = values[index]);
-                // FIX: Added missing 'variationTypes' and 'variants' properties to align with the Product type.
                 newProducts.push({ sku: productData.sku, name: productData.name, retailPrice: parseFloat(productData.retailPrice), costPrice: parseFloat(productData.costPrice), stock: parseInt(productData.stock, 10), lowStockThreshold: parseInt(productData.lowStockThreshold, 10), priceHistory: [], categoryIds: [], variationTypes: [], variants: [] });
             }
             const result = importProducts(newProducts);
@@ -150,9 +149,9 @@ export const DataManagement: React.FC = () => {
     };
 
     const handleCreateBackup = () => {
-        const backupData = { businessName, products, sales, inventoryAdjustments: [], purchaseOrders, notifications, itemsPerPage, currency, currencies, currencyDisplay, isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, cashierPermissions, theme, users };
+        const backupData = { workspaceName, products, sales, inventoryAdjustments: [], purchaseOrders, notifications, itemsPerPage, currency, currencies, currencyDisplay, isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, cashierPermissions, theme, users, timezoneOffsetMinutes };
         const date = new Date().toISOString().split('T')[0];
-        downloadFile(JSON.stringify(backupData, null, 2), `ims-backup-${businessName}-${date}.json`, 'application/json');
+        downloadFile(JSON.stringify(backupData, null, 2), `ims-backup-${workspaceName}-${date}.json`, 'application/json');
     };
 
     const handleRestoreBackup = async () => {

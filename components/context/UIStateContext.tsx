@@ -1,31 +1,35 @@
+
 import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
-import { View, Toast, Notification, NotificationType, InventoryViewState, ReportsViewState, UsersViewState, AnalysisViewState, POViewState, PruneTarget, CategoriesViewState } from '../../types';
-import useLocalStorage from '../../hooks/useLocalStorage';
+import { View, Toast, Notification, NotificationType, InventoryViewState, ReportsViewState, UsersViewState, AnalysisViewState, POViewState, PruneTarget, CategoriesViewState, CustomerViewState } from '../../types';
+import usePersistedState from '../../hooks/usePersistedState';
 
 // Define initial states for each view's state
 const initialInventoryViewState: InventoryViewState = {
-    searchTerm: '', stockFilter: 'All', categoryFilter: 'All', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1, itemsPerPage: 10,
+    searchTerm: '', stockFilter: 'All', categoryFilter: 'All', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1,
 };
 const initialReportsSalesViewState: ReportsViewState['sales'] = {
-    searchTerm: '', typeFilter: 'All', statusFilter: 'All', salespersonFilter: 'All', timeRange: 'all', sortConfig: { key: 'id', direction: 'descending' }, currentPage: 1, itemsPerPage: 10,
+    searchTerm: '', typeFilter: 'All', statusFilter: 'All', salespersonFilter: 'All', timeRange: 'weekly', sortConfig: { key: 'date', direction: 'descending' }, currentPage: 1,
 };
 const initialReportsProductsViewState: ReportsViewState['products'] = {
-    searchTerm: '', stockFilter: 'All', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1, itemsPerPage: 10,
+    searchTerm: '', stockFilter: 'All', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1,
 };
 const initialReportsInventoryValuationViewState: ReportsViewState['inventoryValuation'] = {
-    searchTerm: '', sortConfig: { key: 'potentialProfit', direction: 'descending' }, currentPage: 1, itemsPerPage: 10,
+    searchTerm: '', sortConfig: { key: 'potentialProfit', direction: 'descending' }, currentPage: 1,
 };
 const initialUsersViewState: UsersViewState = {
-    searchTerm: '', sortConfig: { key: 'username', direction: 'ascending' }, currentPage: 1, itemsPerPage: 10,
+    searchTerm: '', sortConfig: { key: 'username', direction: 'ascending' }, currentPage: 1,
 };
 const initialAnalysisViewState: AnalysisViewState = {
-    timeRange: 'weekly', searchTerm: '', sortConfig: { key: 'profit', direction: 'descending' }, currentPage: 1, itemsPerPage: 10,
+    timeRange: 'weekly', searchTerm: '', sortConfig: { key: 'profit', direction: 'descending' }, currentPage: 1,
 };
 const initialPOViewState: POViewState = {
-    searchTerm: '', statusFilter: 'All', supplierFilter: 'All', sortConfig: { key: 'dateCreated', direction: 'descending' }, currentPage: 1, itemsPerPage: 10,
+    searchTerm: '', statusFilter: 'All', supplierFilter: 'All', sortConfig: { key: 'dateCreated', direction: 'descending' }, currentPage: 1,
 };
 const initialCategoriesViewState: CategoriesViewState = {
-    sortConfig: { key: 'name', direction: 'ascending' },
+    searchTerm: '', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1,
+};
+const initialCustomerViewState: CustomerViewState = {
+    searchTerm: '', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1,
 };
 
 interface UIStateContextType {
@@ -54,6 +58,8 @@ interface UIStateContextType {
     onPOViewUpdate: (update: Partial<POViewState>) => void;
     categoriesViewState: CategoriesViewState;
     onCategoriesViewUpdate: (update: Partial<CategoriesViewState>) => void;
+    customersViewState: CustomerViewState;
+    onCustomersViewUpdate: (update: Partial<CustomerViewState>) => void;
     zoomLevel: number;
     setZoomLevel: (level: number) => void;
     factoryReset: () => void;
@@ -67,22 +73,23 @@ export const useUIState = () => {
     return context;
 };
 
-export const UIStateProvider: React.FC<{ children: ReactNode; businessName: string }> = ({ children, businessName }) => {
-    const ls_prefix = `ims-${businessName}`;
-    const [activeView, setActiveView] = useLocalStorage<View>(`${ls_prefix}-activeView`, 'dashboard');
+export const UIStateProvider: React.FC<{ children: ReactNode; workspaceId: string }> = ({ children, workspaceId }) => {
+    const ls_prefix = `ims-${workspaceId}`;
+    const [activeView, setActiveView] = usePersistedState<View>(`${ls_prefix}-activeView`, 'dashboard');
     const [toasts, setToasts] = useState<Toast[]>([]);
-    const [notifications, setNotifications] = useLocalStorage<Notification[]>(`${ls_prefix}-notifications`, []);
-    const [inventoryViewState, setInventoryViewState] = useLocalStorage<InventoryViewState>(`${ls_prefix}-inventoryViewState`, initialInventoryViewState);
-    const [reportsViewState, setReportsViewState] = useLocalStorage<ReportsViewState>(`${ls_prefix}-reportsViewState`, {
+    const [notifications, setNotifications] = usePersistedState<Notification[]>(`${ls_prefix}-notifications`, []);
+    const [inventoryViewState, setInventoryViewState] = usePersistedState<InventoryViewState>(`${ls_prefix}-inventoryViewState`, initialInventoryViewState);
+    const [reportsViewState, setReportsViewState] = usePersistedState<ReportsViewState>(`${ls_prefix}-reportsViewState`, {
         sales: initialReportsSalesViewState,
         products: initialReportsProductsViewState,
         inventoryValuation: initialReportsInventoryValuationViewState,
     });
-    const [usersViewState, setUsersViewState] = useLocalStorage<UsersViewState>(`${ls_prefix}-usersViewState`, initialUsersViewState);
-    const [analysisViewState, setAnalysisViewState] = useLocalStorage<AnalysisViewState>(`${ls_prefix}-analysisViewState`, initialAnalysisViewState);
-    const [poViewState, setPOViewState] = useLocalStorage<POViewState>(`${ls_prefix}-poViewState`, initialPOViewState);
-    const [categoriesViewState, setCategoriesViewState] = useLocalStorage<CategoriesViewState>(`${ls_prefix}-categoriesViewState`, initialCategoriesViewState);
-    const [zoomLevel, setZoomLevel] = useLocalStorage<number>(`${ls_prefix}-zoomLevel`, 0.85);
+    const [usersViewState, setUsersViewState] = usePersistedState<UsersViewState>(`${ls_prefix}-usersViewState`, initialUsersViewState);
+    const [analysisViewState, setAnalysisViewState] = usePersistedState<AnalysisViewState>(`${ls_prefix}-analysisViewState`, initialAnalysisViewState);
+    const [poViewState, setPOViewState] = usePersistedState<POViewState>(`${ls_prefix}-poViewState`, initialPOViewState);
+    const [categoriesViewState, setCategoriesViewState] = usePersistedState<CategoriesViewState>(`${ls_prefix}-categoriesViewState`, initialCategoriesViewState);
+    const [customersViewState, setCustomersViewState] = usePersistedState<CustomerViewState>(`${ls_prefix}-customersViewState`, initialCustomerViewState);
+    const [zoomLevel, setZoomLevel] = usePersistedState<number>(`${ls_prefix}-zoomLevel`, 0.85);
 
     const showToast = (message: string, type: 'success' | 'error') => {
         const id = `toast_${Date.now()}`;
@@ -106,6 +113,7 @@ export const UIStateProvider: React.FC<{ children: ReactNode; businessName: stri
     const onAnalysisViewUpdate = (update: Partial<AnalysisViewState>) => setAnalysisViewState(prev => ({ ...prev, ...update }));
     const onPOViewUpdate = (update: Partial<POViewState>) => setPOViewState(prev => ({ ...prev, ...update }));
     const onCategoriesViewUpdate = (update: Partial<CategoriesViewState>) => setCategoriesViewState(prev => ({ ...prev, ...update }));
+    const onCustomersViewUpdate = (update: Partial<CustomerViewState>) => setCustomersViewState(prev => ({ ...prev, ...update }));
     
     const pruneData = (target: 'notifications' | 'stockHistory', options: { days: number }): { success: boolean; message: string } => {
         const cutoffDate = new Date();
@@ -131,6 +139,7 @@ export const UIStateProvider: React.FC<{ children: ReactNode; businessName: stri
         setAnalysisViewState(initialAnalysisViewState);
         setPOViewState(initialPOViewState);
         setCategoriesViewState(initialCategoriesViewState);
+        setCustomersViewState(initialCustomerViewState);
     };
 
     const value = {
@@ -144,6 +153,7 @@ export const UIStateProvider: React.FC<{ children: ReactNode; businessName: stri
         analysisViewState, onAnalysisViewUpdate,
         poViewState, onPOViewUpdate,
         categoriesViewState, onCategoriesViewUpdate,
+        customersViewState, onCustomersViewUpdate,
         zoomLevel, setZoomLevel,
         factoryReset
     };

@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export enum UserRole {
@@ -11,6 +12,22 @@ export interface User {
   password: string; // NOTE: In a real app, this should be hashed.
   role: UserRole;
 }
+
+// NEW: For Global Authentication
+export interface GlobalUser {
+  id: string;
+  email: string;
+  username: string;
+  passwordHash: string; // In a real app, never store plain text passwords
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  ownerId: string; // The GlobalUser ID of the creator
+  memberIds: string[]; // IDs of GlobalUsers who are members
+}
+
 
 export enum PaymentType {
   Cash = 'Cash',
@@ -70,7 +87,7 @@ export interface Product {
 }
 
 export interface CartItem {
-  id: string; // Unique ID for the cart line item (productId or variantId)
+  id: string; // Unique ID for the cart line item
   productId: string; // ID of the base product
   variantId?: string;
 
@@ -81,8 +98,10 @@ export interface CartItem {
   costPrice: number;
   
   stock: number; // Stock of the specific item at the time of adding to cart
-  quantity: number;
+  quantity: number; // Can be negative for returns
   returnedQuantity?: number;
+  
+  originalSaleId?: string; // For return items, links back to the original sale
 }
 
 
@@ -108,6 +127,29 @@ export interface Sale {
   status?: 'Completed' | 'Partially Refunded' | 'Refunded';
   salespersonId: string; // NEW: Salesperson tracking
   salespersonName: string; // NEW: Salesperson tracking
+  customerId?: string; // NEW: Customer linkage
+  customerName?: string; // NEW: Denormalized customer name
+}
+
+export interface HeldOrder {
+  id: string;
+  date: string;
+  items: CartItem[];
+  customer: Customer | null;
+  discount: { type: 'percent' | 'fixed', value: number } | null;
+  isTaxExempt: boolean;
+  note: string;
+}
+
+// NEW: Customer Interface
+export interface Customer {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  notes?: string;
+  dateAdded: string;
 }
 
 // NEW: For cashier permissions
@@ -119,9 +161,10 @@ export interface CashierPermissions {
   canViewDashboard: boolean;
   canViewInventory: boolean;
   canEditBehaviorSettings: boolean;
+  canManageCustomers: boolean; // NEW
 }
 
-export type View = 'dashboard' | 'pos' | 'inventory' | 'reports' | 'analysis' | 'settings';
+export type View = 'dashboard' | 'pos' | 'inventory' | 'customers' | 'reports' | 'analysis' | 'settings' | 'procurement';
 
 export interface InventoryAdjustment {
   productId: string;
@@ -164,6 +207,27 @@ export interface Supplier {
   address?: string;
 }
 
+export interface Shift {
+  id: string;
+  openedByUserId: string;
+  openedByUserName: string;
+  closedByUserId?: string;
+  closedByUserName?: string;
+  startTime: string;
+  endTime?: string;
+  startFloat: number;
+  endFloat?: number; // The calculated expected cash
+  actualCash?: number; // The counted cash
+  difference?: number; // actual - expected
+  notes?: string;
+  status: 'Open' | 'Closed';
+  cashSales: number; // Total cash sales during shift
+  cashRefunds: number; // Total cash refunds during shift
+}
+
+export type PaginationTarget = 'inventory' | 'inventoryCategories' | 'posCatalog' | 'posSales' | 'salesReports' | 'productReports' | 'inventoryValuation' | 'users' | 'analysis' | 'purchaseOrders' | 'suppliers' | 'customers';
+export type PaginationConfig = Record<PaginationTarget, number>;
+
 // Generic type for sort configuration
 export type SortConfig<T extends string> = { key: T; direction: 'ascending' | 'descending' };
 
@@ -175,7 +239,6 @@ export interface InventoryViewState {
     categoryFilter: string;
     sortConfig: SortConfig<InventorySortKeys>;
     currentPage: number;
-    itemsPerPage: number;
 }
 
 type SaleSortKeys = 'id' | 'date' | 'type' | 'salespersonName' | 'total' | 'profit';
@@ -192,20 +255,17 @@ export interface ReportsViewState {
         timeRange: 'today' | 'weekly' | 'monthly' | 'yearly' | 'all';
         sortConfig: SortConfig<SaleSortKeys>;
         currentPage: number;
-        itemsPerPage: number;
     };
     products: {
         searchTerm: string;
         stockFilter: string;
         sortConfig: SortConfig<ProductReportSortKeys>;
         currentPage: number;
-        itemsPerPage: number;
     };
     inventoryValuation: {
         searchTerm: string;
         sortConfig: SortConfig<InventoryValuationSortKeys>;
         currentPage: number;
-        itemsPerPage: number;
     };
 }
 
@@ -214,7 +274,13 @@ export interface UsersViewState {
     searchTerm: string;
     sortConfig: SortConfig<UserSortKeys>;
     currentPage: number;
-    itemsPerPage: number;
+}
+
+type CustomerSortKeys = 'name' | 'email' | 'phone' | 'dateAdded';
+export interface CustomerViewState {
+    searchTerm: string;
+    sortConfig: SortConfig<CustomerSortKeys>;
+    currentPage: number;
 }
 
 type AnalysisSortKeys = 'product' | 'unitsSold' | 'revenue' | 'profit' | 'profitMargin' | 'sellThrough';
@@ -223,7 +289,6 @@ export interface AnalysisViewState {
     searchTerm: string;
     sortConfig: SortConfig<AnalysisSortKeys>;
     currentPage: number;
-    itemsPerPage: number;
 }
 
 type POSortKeys = 'id' | 'supplierName' | 'dateCreated' | 'status' | 'totalCost';
@@ -233,18 +298,16 @@ export interface POViewState {
     supplierFilter: string;
     sortConfig: SortConfig<POSortKeys>;
     currentPage: number;
-    itemsPerPage: number;
 }
 
 export type SupplierSortKeys = keyof Omit<Supplier, 'id' | 'address'>;
 
 export type CategorySortKeys = 'name';
 export interface CategoriesViewState {
+    searchTerm: string;
     sortConfig: SortConfig<CategorySortKeys>;
+    currentPage: number;
 }
-
-// FIX: Added missing PaddingLevel type for the unused PaddingSelector component.
-export type PaddingLevel = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 export type PruneTarget = 'sales' | 'purchaseOrders' | 'stockHistory' | 'notifications';
 

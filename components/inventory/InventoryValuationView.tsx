@@ -1,6 +1,6 @@
+
 import React, { useMemo, useState } from 'react';
 import { Product } from '../../types';
-// FIX: Replaced useAppContext with specific context hooks to resolve import error.
 import { useProducts } from '../context/ProductContext';
 import { useUIState } from '../context/UIStateContext';
 import { useSettings } from '../context/SettingsContext';
@@ -23,11 +23,11 @@ type ValuationData = {
 type SortableValuationKeys = 'sku' | 'name' | 'stock' | 'totalCostValue' | 'totalRetailValue' | 'potentialProfit';
 
 export const InventoryValuationView: React.FC = () => {
-    // FIX: Replaced useAppContext with specific context hooks.
     const { products } = useProducts();
     const { reportsViewState, onReportsInventoryValuationViewUpdate } = useUIState();
-    const { formatCurrency } = useSettings();
-    const { searchTerm, sortConfig, currentPage, itemsPerPage } = reportsViewState.inventoryValuation;
+    const { formatCurrency, paginationConfig } = useSettings();
+    const { searchTerm, sortConfig, currentPage } = reportsViewState.inventoryValuation;
+    const itemsPerPage = paginationConfig.inventoryValuation || 10;
     const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
 
     const toggleProductExpansion = (productId: string) => {
@@ -206,6 +206,9 @@ export const InventoryValuationView: React.FC = () => {
                                 </tr>
                             )
                         })}
+                        {paginated.length === 0 && (
+                            <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-500">No valuation data available.</td></tr>
+                        )}
                     </tbody>
                      <tfoot className="bg-gray-50 dark:bg-gray-700 font-semibold text-gray-600 dark:text-gray-300">
                         <tr>

@@ -1,55 +1,19 @@
-import React, { useState, FormEvent, useEffect } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { AppProvider } from './components/context/AppContext';
 import { useAuth } from './components/context/AuthContext';
 import { useSettings } from './components/context/SettingsContext';
 import { MainLayout } from './components/layout/MainLayout';
-import useLocalStorage from './hooks/useLocalStorage';
+import usePersistedState from './hooks/usePersistedState';
 import { useUIState } from './components/context/UIStateContext';
+import { useGlobalAuth } from './hooks/useGlobalAuth';
+import { GlobalAuth } from './components/auth/GlobalAuth';
+import { WorkspaceSelector } from './components/auth/WorkspaceSelector';
+import { GlobalUser } from './types';
 
-// Component to select a business workspace
-const BusinessSelector: React.FC<{ onSelect: (name: string) => void }> = ({ onSelect }) => {
-  const [name, setName] = useState('');
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (name.trim()) {
-      onSelect(name.trim());
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col justify-center items-center p-4">
-      <div className="w-full max-w-md">
-        <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 shadow-xl rounded-lg p-8">
-          <h1 className="text-2xl font-bold text-center text-blue-600 dark:text-blue-400 mb-2">IMS / POS System</h1>
-          <h2 className="text-xl font-semibold text-center text-gray-800 dark:text-white mb-6">Enter Business Name</h2>
-          <div className="space-y-6">
-            <div>
-              <label htmlFor="businessName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Business Name</label>
-              <input
-                id="businessName"
-                type="text"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                required
-                className="mt-1 block w-full px-3 py-2 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
-                placeholder="e.g., My Awesome Store"
-              />
-            </div>
-            <button type="submit" className="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition-colors">
-              Continue
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-
-
-// AuthForm Component for Login/Signup within a business context
-const AuthForm: React.FC<{ onGoBack: () => void; }> = ({ onGoBack }) => {
-  const { businessName } = useSettings();
+// Local authentication form for a specific workspace
+const WorkspaceAuthForm: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitchWorkspace }) => {
+  const { workspaceName } = useSettings();
   const { users, login, signup } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -57,7 +21,7 @@ const AuthForm: React.FC<{ onGoBack: () => void; }> = ({ onGoBack }) => {
 
   const isNewBusiness = users.length === 0;
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     let success = false;
@@ -79,7 +43,7 @@ const AuthForm: React.FC<{ onGoBack: () => void; }> = ({ onGoBack }) => {
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col justify-center items-center p-4">
       <div className="w-full max-w-md">
         <div className="bg-white dark:bg-gray-800 shadow-xl rounded-lg p-8">
-          <h1 className="text-2xl font-bold text-center text-blue-600 dark:text-blue-400 mb-2 truncate">{businessName}</h1>
+          <h1 className="text-2xl font-bold text-center text-blue-600 dark:text-blue-400 mb-2 truncate">{workspaceName}</h1>
           <h2 className="text-xl font-semibold text-center text-gray-800 dark:text-white mb-6">
             {isNewBusiness ? 'Create Admin Account' : 'Login'}
           </h2>
@@ -98,8 +62,8 @@ const AuthForm: React.FC<{ onGoBack: () => void; }> = ({ onGoBack }) => {
             </button>
           </form>
           <div className="text-center mt-6">
-            <button onClick={onGoBack} className="text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
-              Not your business? Go back.
+            <button onClick={onSwitchWorkspace} className="text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
+              Switch Workspace
             </button>
           </div>
         </div>
@@ -108,7 +72,8 @@ const AuthForm: React.FC<{ onGoBack: () => void; }> = ({ onGoBack }) => {
   );
 };
 
-const BusinessWorkspace: React.FC<{ onGoBack: () => void }> = ({ onGoBack }) => {
+// Container for the main app UI within a workspace
+const WorkspaceUI: React.FC<{ onSwitchWorkspace: () => void }> = ({ onSwitchWorkspace }) => {
   const { currentUser } = useAuth();
   const { theme } = useSettings();
   const { zoomLevel } = useUIState();
@@ -132,25 +97,68 @@ const BusinessWorkspace: React.FC<{ onGoBack: () => void }> = ({ onGoBack }) => 
   }, [theme]);
 
   if (!currentUser) {
-    return <AuthForm onGoBack={onGoBack} />;
+    return <WorkspaceAuthForm onSwitchWorkspace={onSwitchWorkspace} />;
   }
 
-  return <MainLayout />;
+  return <MainLayout onSwitchWorkspace={onSwitchWorkspace} />;
 };
 
+const WorkspaceContainer: React.FC<{ workspaceId: string; workspaceName: string, onSwitchWorkspace: () => void, globalUser: GlobalUser | null }> = ({ workspaceId, workspaceName, onSwitchWorkspace, globalUser }) => {
+    // This component ensures contexts are re-mounted with the correct scope when workspaceId changes.
+    return (
+        <AppProvider workspaceId={workspaceId} workspaceName={workspaceName} globalUser={globalUser}>
+            <WorkspaceUI onSwitchWorkspace={onSwitchWorkspace} />
+        </AppProvider>
+    );
+};
 
 const App: React.FC = () => {
-    const [businessName, setBusinessName] = useLocalStorage<string | null>('ims-current-business', null);
+    const { currentGlobalUser, logout: globalLogout, workspaces } = useGlobalAuth();
+    const [selectedWorkspaceId, setSelectedWorkspaceId] = usePersistedState<string | null>('ims-selected-workspace-id', null);
 
-    if (!businessName) {
-        return <BusinessSelector onSelect={setBusinessName} />;
+    const handleGlobalLogout = () => {
+        globalLogout();
+        setSelectedWorkspaceId(null);
+    };
+
+    const handleSwitchWorkspace = () => {
+        setSelectedWorkspaceId(null);
+    };
+
+    // 1. If a workspace is explicitly selected (either via Employee Login, Guest Mode, or Owner Selection), load it.
+    // This prioritizes the "Shop Floor" view regardless of who is logged in globally.
+    if (selectedWorkspaceId) {
+        let workspaceName = 'Workspace';
+        if (selectedWorkspaceId === 'guest_workspace') {
+            workspaceName = 'Guest Workspace';
+        } else {
+            const ws = workspaces.find(w => w.id === selectedWorkspaceId);
+            if (ws) workspaceName = ws.name;
+        }
+        return (
+            <WorkspaceContainer 
+                key={selectedWorkspaceId} 
+                workspaceId={selectedWorkspaceId} 
+                workspaceName={workspaceName} 
+                onSwitchWorkspace={handleSwitchWorkspace} 
+                globalUser={currentGlobalUser}
+            />
+        );
     }
 
-    return (
-      <AppProvider businessName={businessName}>
-        <BusinessWorkspace onGoBack={() => setBusinessName(null)} />
-      </AppProvider>
-    );
+    // 2. If no workspace is selected and no global user is logged in, show the Landing/Global Auth page.
+    if (!currentGlobalUser) {
+        return (
+            <GlobalAuth 
+                onAuthSuccess={() => { /* Auto-redirect happens because currentGlobalUser becomes not null */ }}
+                onSelectGuest={() => setSelectedWorkspaceId('guest_workspace')}
+                onSelectWorkspace={(id) => setSelectedWorkspaceId(id)}
+            />
+        );
+    }
+
+    // 3. If Global User is logged in but hasn't picked a workspace, show the Selector.
+    return <WorkspaceSelector onSelectWorkspace={setSelectedWorkspaceId} onLogout={handleGlobalLogout} />;
 };
 
 export default App;

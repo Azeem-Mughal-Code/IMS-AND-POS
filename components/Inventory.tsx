@@ -1,17 +1,16 @@
+
 import React, { useState, useMemo } from 'react';
 import { useAuth } from './context/AuthContext';
 import { ProductsView } from './inventory/ProductsView';
-import { PurchaseOrdersView } from './inventory/PurchaseOrdersView';
 import { InventoryValuationView } from './inventory/InventoryValuationView';
-import { SuppliersView } from './inventory/SuppliersView';
 import { CategoriesView } from './inventory/CategoriesView';
 import { UserRole } from '../types';
 
 export const Inventory: React.FC = () => {
   const { currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'suppliers' | 'purchaseOrders' | 'valuation'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'valuation'>('products');
 
-  const TabButton: React.FC<{ tabId: 'products' | 'categories' | 'suppliers' | 'purchaseOrders' | 'valuation', label: string }> = ({ tabId, label }) => (
+  const TabButton: React.FC<{ tabId: 'products' | 'categories' | 'valuation', label: string }> = ({ tabId, label }) => (
     <button
         onClick={() => setActiveTab(tabId)}
         className={`px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
@@ -34,16 +33,12 @@ export const Inventory: React.FC = () => {
             <div className="flex items-center space-x-1">
                 <TabButton tabId="products" label="Products" />
                 <TabButton tabId="categories" label="Categories" />
-                <TabButton tabId="suppliers" label="Suppliers" />
-                <TabButton tabId="purchaseOrders" label="Purchase Orders" />
                 {currentUser.role === UserRole.Admin && <TabButton tabId="valuation" label="Valuation" />}
             </div>
         </div>
       
       {activeTab === 'products' && <ProductsView />}
       {activeTab === 'categories' && <CategoriesView />}
-      {activeTab === 'suppliers' && <SuppliersView />}
-      {activeTab === 'purchaseOrders' && <PurchaseOrdersView />}
       {activeTab === 'valuation' && currentUser.role === UserRole.Admin && <InventoryValuationView />}
     </div>
   );
