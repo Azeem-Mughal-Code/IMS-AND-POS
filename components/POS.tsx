@@ -1205,6 +1205,7 @@ export const POS: React.FC<POSProps> = () => {
                 </div>
             </div>
         </div>
+      </div>
 
       {variantSelectionProduct && (
           <VariantSelectionModal 
