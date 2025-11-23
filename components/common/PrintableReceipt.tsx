@@ -10,6 +10,9 @@ interface PrintableReceiptProps {
 export const PrintableReceipt = forwardRef<HTMLDivElement, PrintableReceiptProps>(({ sale }, ref) => {
     const { workspaceName, isChangeDueEnabled, formatCurrency, formatDateTime, storeAddress, storePhone, receiptFooter } = useSettings();
     
+    const totalPaid = sale.payments.reduce((sum, p) => sum + p.amount, 0);
+    const changeDue = totalPaid - sale.total;
+
     return (
         <div className="printable-area" ref={ref}>
             <div className="text-center mb-4">
@@ -59,18 +62,10 @@ export const PrintableReceipt = forwardRef<HTMLDivElement, PrintableReceiptProps
                         </div>
                     ))}
                      <div className="mt-2 pt-2 font-semibold">
-                       {isChangeDueEnabled && ((): {totalPaid: number, changeDue: number} => {
-                            const totalPaid = sale.payments.reduce((sum, p) => sum + p.amount, 0);
-                            const changeDue = totalPaid - Math.abs(sale.total);
-                            return {totalPaid, changeDue};
-                        })().changeDue > 0.005 && (
+                       {isChangeDueEnabled && changeDue > 0.005 && (
                             <div className="flex justify-between text-green-600 dark:text-green-400">
                                 <span>Change Due:</span>
-                                <span>
-                                    {formatCurrency(
-                                        sale.payments.reduce((sum, p) => sum + p.amount, 0) - Math.abs(sale.total)
-                                    )}
-                                </span>
+                                <span>{formatCurrency(changeDue)}</span>
                             </div>
                         )}
                     </div>
