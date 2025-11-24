@@ -1,8 +1,9 @@
 
 import React, { createContext, useContext, ReactNode, useCallback, useMemo } from 'react';
-import { Customer, User } from '../../types';
+import { Customer } from '../../types';
 import usePersistedState from '../../hooks/usePersistedState';
 import { INITIAL_CUSTOMERS } from '../../constants';
+import { generateUUIDv7, generateUniqueNanoID } from '../../utils/idGenerator';
 
 interface CustomerContextType {
     customers: Customer[];
@@ -29,9 +30,15 @@ export const CustomerProvider: React.FC<{ children: ReactNode; workspaceId: stri
         if (customers.some(c => c.name.toLowerCase() === customerData.name.toLowerCase() && c.phone === customerData.phone)) {
             return { success: false, message: 'A customer with this name and phone number already exists.' };
         }
+        
+        const internalId = generateUUIDv7();
+        // Public ID with CUS- prefix, 6 chars length
+        const publicId = generateUniqueNanoID(customers, (c, id) => c.publicId === id, 6, 'CUS-'); 
+
         const newCustomer: Customer = {
             ...customerData,
-            id: `cust_${Date.now()}`,
+            id: internalId,
+            publicId: publicId,
             dateAdded: new Date().toISOString(),
         };
         setCustomers(prev => [...prev, newCustomer]);

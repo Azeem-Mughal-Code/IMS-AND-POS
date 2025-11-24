@@ -1,13 +1,16 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Supplier, SortConfig, SupplierSortKeys } from '../../types';
 import usePersistedState from '../../hooks/usePersistedState';
 import { useSettings } from '../context/SettingsContext';
 import { useUIState } from '../context/UIStateContext';
 import { Modal } from '../common/Modal';
 import { Pagination } from '../common/Pagination';
-import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, ChevronUpIcon, ChevronDownIcon } from '../Icons';
+import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, ChevronUpIcon, ChevronDownIcon, PhotoIcon } from '../Icons';
 import { INITIAL_SUPPLIERS } from '../../constants';
+import { generateUUIDv7, generateUniqueNanoID } from '../../utils/idGenerator';
+
+declare var html2canvas: any;
 
 // Self-contained Supplier Form
 const SupplierForm: React.FC<{ 
@@ -55,6 +58,83 @@ const SupplierForm: React.FC<{
     );
 };
 
+const SupplierDetailsModal: React.FC<{ supplier: Supplier; onClose: () => void }> = ({ supplier, onClose }) => {
+    const printableRef = useRef<HTMLDivElement>(null);
+
+    const handleSaveAsImage = () => {
+        if (printableRef.current) {
+            html2canvas(printableRef.current, { 
+                backgroundColor: '#ffffff',
+                onclone: (clonedDoc: Document) => {
+                    clonedDoc.documentElement.classList.remove('dark');
+                }
+            }).then((canvas: HTMLCanvasElement) => {
+                const PADDING = 40;
+                const newCanvas = document.createElement('canvas');
+                newCanvas.width = canvas.width + PADDING * 2;
+                newCanvas.height = canvas.height + PADDING * 2;
+                const ctx = newCanvas.getContext('2d');
+                if (ctx) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, newCanvas.width, newCanvas.height);
+                    ctx.drawImage(canvas, PADDING, PADDING);
+                }
+
+                const link = document.createElement('a');
+                link.download = `supplier-${supplier.publicId || supplier.id}.png`;
+                link.href = newCanvas.toDataURL('image/png');
+                link.click();
+            });
+        }
+    };
+
+    return (
+        <div className="flex flex-col h-full">
+            <div className="printable-area p-4" ref={printableRef}>
+                <div className="text-center border-b pb-4 mb-4 border-gray-200 dark:border-gray-700">
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{supplier.name}</h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 font-mono mt-1">{supplier.publicId || supplier.id}</p>
+                </div>
+                <div className="space-y-4 text-gray-800 dark:text-gray-200">
+                    {supplier.contactPerson && (
+                        <div>
+                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Contact Person</p>
+                            <p className="text-lg">{supplier.contactPerson}</p>
+                        </div>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {supplier.email && (
+                            <div>
+                                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Email</p>
+                                <p>{supplier.email}</p>
+                            </div>
+                        )}
+                        {supplier.phone && (
+                            <div>
+                                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Phone</p>
+                                <p>{supplier.phone}</p>
+                            </div>
+                        )}
+                    </div>
+                    {supplier.address && (
+                        <div>
+                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Address</p>
+                            <p className="whitespace-pre-wrap">{supplier.address}</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2 border-t pt-4 dark:border-gray-700 no-print">
+                <button onClick={handleSaveAsImage} className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Save Image">
+                    <PhotoIcon className="h-5 w-5" />
+                </button>
+                <button onClick={() => window.print()} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Print</button>
+                <button onClick={onClose} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Close</button>
+            </div>
+        </div>
+    );
+};
+
 
 // Self-contained View for managing suppliers
 export const SuppliersView: React.FC = () => {
@@ -65,6 +145,7 @@ export const SuppliersView: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
     const [deletingSupplier, setDeletingSupplier] = useState<Supplier | null>(null);
+    const [viewingSupplier, setViewingSupplier] = useState<Supplier | null>(null);
     
     // Local view state management
     const [searchTerm, setSearchTerm] = useState('');
@@ -76,7 +157,15 @@ export const SuppliersView: React.FC = () => {
         if (suppliers.some(s => s.name.toLowerCase() === data.name.toLowerCase())) {
             return { success: false, message: 'A supplier with this name already exists.' };
         }
-        const newSupplier: Supplier = { ...data, id: `sup_${Date.now()}` };
+        
+        const internalId = generateUUIDv7();
+        const publicId = generateUniqueNanoID(suppliers, (s, id) => s.publicId === id, 6, 'SUP-');
+
+        const newSupplier: Supplier = { 
+            ...data, 
+            id: internalId,
+            publicId: publicId
+        };
         setSuppliers(prev => [...prev, newSupplier]);
         showToast('Supplier added successfully.', 'success');
         setIsModalOpen(false);
@@ -105,7 +194,7 @@ export const SuppliersView: React.FC = () => {
     
     const filteredAndSorted = useMemo(() => {
         return suppliers
-            .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()) || (s.contactPerson && s.contactPerson.toLowerCase().includes(searchTerm.toLowerCase())))
+            .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()) || (s.contactPerson && s.contactPerson.toLowerCase().includes(searchTerm.toLowerCase())) || (s.publicId && s.publicId.toLowerCase().includes(searchTerm.toLowerCase())))
             .sort((a,b) => {
                 const valA = a[sortConfig.key];
                 const valB = b[sortConfig.key];
@@ -142,7 +231,11 @@ export const SuppliersView: React.FC = () => {
                     <tbody>
                         {paginated.map(s => (
                             <tr key={s.id}>
-                                <td data-label="ID" className="px-6 py-4 font-mono text-xs">{s.id}</td>
+                                <td data-label="ID" className="px-6 py-4 font-mono text-xs">
+                                    <button onClick={() => setViewingSupplier(s)} className="text-blue-600 dark:text-blue-400 hover:underline font-medium">
+                                        {s.publicId || s.id}
+                                    </button>
+                                </td>
                                 <td data-label="Name" className="px-6 py-4 font-medium text-gray-900 dark:text-white">{s.name}</td>
                                 <td data-label="Contact" className="px-6 py-4">{s.contactPerson}</td>
                                 <td data-label="Email" className="px-6 py-4">{s.email}</td>
@@ -172,6 +265,12 @@ export const SuppliersView: React.FC = () => {
                     </div>
                 )}
             </Modal>
+
+            {viewingSupplier && (
+                <Modal isOpen={!!viewingSupplier} onClose={() => setViewingSupplier(null)} title="Supplier Details" size="md">
+                    <SupplierDetailsModal supplier={viewingSupplier} onClose={() => setViewingSupplier(null)} />
+                </Modal>
+            )}
         </div>
     );
 };

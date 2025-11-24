@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { PurchaseOrder, POItem, Product, Supplier, ProductVariant } from '../../types';
 import { useProducts } from '../context/ProductContext';
@@ -425,7 +426,9 @@ export const PurchaseOrdersView: React.FC = () => {
             .filter(po => 
                 (statusFilter === 'All' || po.status === statusFilter) &&
                 (supplierFilter === 'All' || po.supplierId === supplierFilter) &&
-                (po.id.toLowerCase().includes(searchTerm.toLowerCase()) || po.supplierName.toLowerCase().includes(searchTerm.toLowerCase()))
+                ((po.publicId && po.publicId.toLowerCase().includes(searchTerm.toLowerCase())) || 
+                 po.id.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                 po.supplierName.toLowerCase().includes(searchTerm.toLowerCase()))
             )
             .sort((a, b) => {
                 const key = sortConfig.key;
@@ -480,7 +483,7 @@ export const PurchaseOrdersView: React.FC = () => {
                 }
 
                 const link = document.createElement('a');
-                link.download = `PO-${viewingPO.id}.png`;
+                link.download = `PO-${viewingPO.publicId || viewingPO.id}.png`;
                 link.href = newCanvas.toDataURL('image/png');
                 link.click();
             });
@@ -490,6 +493,8 @@ export const PurchaseOrdersView: React.FC = () => {
     const supplierOptions = useMemo(() => [{value: 'All', label: 'All Suppliers'}, ...suppliers.map(s => ({value: s.id, label: s.name}))], [suppliers]);
     const statusOptions = [{value: 'All', label: 'All Statuses'}, {value: 'Pending', label: 'Pending'}, {value: 'Partial', label: 'Partial'}, {value: 'Received', label: 'Received'}];
 
+    // SortablePOKeys now includes publicId implicitly via 'id' mapping or can add explicit publicId support
+    // For simplicity, the column header is "PO #" which maps to 'id' in sort logic, but visually displays publicId
     type SortablePOKeys = 'id' | 'supplierName' | 'dateCreated' | 'status' | 'totalCost';
     const SortableHeader: React.FC<{ children: React.ReactNode, sortKey: SortablePOKeys }> = ({ children, sortKey }) => {
         const isSorted = sortConfig.key === sortKey;
@@ -542,7 +547,7 @@ export const PurchaseOrdersView: React.FC = () => {
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                         {paginatedPOs.map(po => (
                             <tr key={po.id} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
-                                <td data-label="PO #" className="px-6 py-4 font-mono text-xs">{po.id}</td>
+                                <td data-label="PO #" className="px-6 py-4 font-mono text-xs">{po.publicId || po.id}</td>
                                 <td data-label="Supplier" className="px-6 py-4 font-medium text-gray-900 dark:text-white">{po.supplierName}</td>
                                 <td data-label="Date" className="px-6 py-4">{formatDateTime(po.dateCreated)}</td>
                                 <td data-label="Total Cost" className="px-6 py-4">{formatCurrency(po.totalCost)}</td>
@@ -575,17 +580,17 @@ export const PurchaseOrdersView: React.FC = () => {
                 <POForm onSubmit={handleCreatePO} onCancel={() => setIsFormOpen(false)} />
             </Modal>
 
-            <Modal isOpen={!!receivingPO} onClose={() => setReceivingPO(null)} title={`Receive Items: PO #${receivingPO?.id}`} size="lg">
+            <Modal isOpen={!!receivingPO} onClose={() => setReceivingPO(null)} title={`Receive Items: PO #${receivingPO?.publicId || receivingPO?.id}`} size="lg">
                 {receivingPO && <ReceivePOModal po={receivingPO} onClose={() => setReceivingPO(null)} />}
             </Modal>
 
-            <Modal isOpen={!!viewingPO} onClose={() => setViewingPO(null)} title={`PO Details: #${viewingPO?.id}`} size="lg">
+            <Modal isOpen={!!viewingPO} onClose={() => setViewingPO(null)} title={`PO Details: #${viewingPO?.publicId || viewingPO?.id}`} size="lg">
                 {viewingPO && (
                     <div className="flex flex-col h-full">
                         <div className="printable-area flex-grow" ref={printablePORef}>
                             <div className="mb-4">
                                 <h2 className="text-lg font-bold text-gray-900 dark:text-white">{workspaceName} - Purchase Order</h2>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">PO #: {viewingPO.id}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">PO #: <span className="font-mono text-black dark:text-white">{viewingPO.publicId || viewingPO.id}</span></p>
                             </div>
                             <div className="grid grid-cols-2 gap-4 text-sm mb-4 text-gray-800 dark:text-gray-200">
                                 <div><span className="font-bold">Supplier:</span> {viewingPO.supplierName}</div>
@@ -641,7 +646,7 @@ export const PurchaseOrdersView: React.FC = () => {
             <Modal isOpen={!!poToDelete} onClose={() => setPoToDelete(null)} title="Confirm Delete PO">
                 {poToDelete && (
                     <div>
-                        <p className="text-gray-800 dark:text-gray-200">Are you sure you want to delete PO #{poToDelete.id}?</p>
+                        <p className="text-gray-800 dark:text-gray-200">Are you sure you want to delete PO #{poToDelete.publicId || poToDelete.id}?</p>
                         <div className="flex justify-end gap-2 pt-4">
                             <button onClick={() => setPoToDelete(null)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md text-gray-800 dark:text-white">Cancel</button>
                             <button onClick={handleDeletePO} className="px-4 py-2 bg-red-600 text-white rounded-md">Delete</button>

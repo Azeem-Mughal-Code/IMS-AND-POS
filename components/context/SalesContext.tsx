@@ -5,6 +5,7 @@ import usePersistedState from '../../hooks/usePersistedState';
 import { useProducts } from './ProductContext';
 import { useUIState } from './UIStateContext';
 import { useAuth } from './AuthContext';
+import { generateUUIDv7, generateUniqueNanoID } from '../../utils/idGenerator';
 
 interface SalesContextType {
     sales: Sale[];
@@ -48,25 +49,34 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
     const currentShift = useMemo(() => shifts.find(s => s.status === 'Open') || null, [shifts]);
 
     const processSale = (saleData: Omit<Sale, 'id' | 'date'>): Sale => {
-        // Determine type based on total if not explicitly set correctly for mixed carts
-        // Although POS usually passes it, for mixed carts with positive total, it's a sale (Exchange).
-        // If negative total, it's a Return.
         let finalType: 'Sale' | 'Return' = saleData.total >= 0 ? 'Sale' : 'Return';
+        const isReturn = finalType === 'Return';
         
-        // If explicitly 'Return' passed but total is positive (weird?), trust calculations
-        // But generally, POS should set this. If mixed, 'Sale' is appropriate for Exchange.
-        
-        const prefix = finalType === 'Return' ? 'return' : 'sale';
+        // Generate Dual IDs
+        // Internal: UUID v7 (Sortable)
+        const internalId = generateUUIDv7();
+        // Public: NanoID (8 chars for sales) with TRX- for Sales or RET- for Returns
+        const prefix = isReturn ? 'RET-' : 'TRX-';
+        const publicId = generateUniqueNanoID(sales, (s, id) => s.publicId === id, 8, prefix);
+
+        // If it's a return, try to find the public ID of the original sale for reference
+        let originalSalePublicId: string | undefined = undefined;
+        if (saleData.originalSaleId) {
+            const originalSale = sales.find(s => s.id === saleData.originalSaleId);
+            originalSalePublicId = originalSale?.publicId;
+        }
+
         const newSale: Sale = {
             ...saleData,
             type: finalType,
-            id: `${prefix}_${Date.now()}`,
+            id: internalId,
+            publicId: publicId,
+            originalSalePublicId: originalSalePublicId,
             date: new Date().toISOString(),
             status: 'Completed', // Default status
         };
 
         // Process each item for stock adjustment
-        // This handles both sales (qty > 0) and returns (qty < 0) in a single loop
         newSale.items.forEach(item => {
             const product = products.find(p => p.id === item.productId);
             if (product) {
@@ -75,9 +85,7 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
                     : product.stock;
                 
                 if (typeof currentStock !== 'undefined') {
-                    // item.quantity is positive for sale (stock goes down), negative for return (stock goes up)
-                    // newStock = currentStock - quantity
-                    adjustStock(item.productId, currentStock - item.quantity, `Transaction #${newSale.id}`, item.variantId);
+                    adjustStock(item.productId, currentStock - item.quantity, `Sale #${newSale.publicId}`, item.variantId);
                 }
             }
         });
@@ -99,22 +107,18 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
                 if (salesToUpdate.has(s.id)) {
                     const returnItems = salesToUpdate.get(s.id)!;
                     const updatedItems = s.items.map(origItem => {
-                        // Find corresponding return items for this original item
-                        // Logic: match productId and variantId
                         const matchingReturns = returnItems.filter(ri => 
                             ri.productId === origItem.productId && 
                             ri.variantId === origItem.variantId
                         );
                         
                         if (matchingReturns.length > 0) {
-                            // Sum the absolute quantity returned in this transaction
                             const quantityReturnedNow = matchingReturns.reduce((sum, ri) => sum + Math.abs(ri.quantity), 0);
                             return { ...origItem, returnedQuantity: (origItem.returnedQuantity || 0) + quantityReturnedNow };
                         }
                         return origItem;
                     });
 
-                    // Check if fully refunded
                     const allReturned = updatedItems.every(item => (item.returnedQuantity || 0) >= item.quantity);
                     return { ...s, items: updatedItems, status: allReturned ? 'Refunded' : 'Partially Refunded' };
                 }
@@ -122,13 +126,9 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
             }));
         }
 
-        // Update Shift Stats if applicable
         if (currentShift) {
-            // Calculate net cash movement
             const cashPayment = newSale.payments.find(p => p.type === PaymentType.Cash);
             if (cashPayment) {
-                // If cash payment is positive, it's money IN (Sale)
-                // If cash payment is negative, it's money OUT (Refund)
                 const cashAmount = cashPayment.amount;
                 setShifts(prev => prev.map(s => {
                     if (s.id === currentShift.id) {
@@ -156,32 +156,30 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
         
         setSales(prev => prev.filter(s => s.id !== saleId && !associatedReturnIds.includes(s.id)));
 
-        // Remove stock history for the sale and its returns
-        removeStockHistoryByReason(`Transaction #${saleId}`); // Updated naming convention
-        removeStockHistoryByReason(`Sale #${saleId}`); // Legacy compat
-        removeStockHistoryByReason(`Return for Sale #${saleId}`); // Legacy compat
-
-        return { success: true, message: `Sale ${saleId} and associated returns deleted.` };
+        // Remove stock history using Public ID if available, else Internal ID
+        const refId = saleToDelete.publicId || saleToDelete.id;
+        removeStockHistoryByReason(`Sale #${refId}`); 
+        
+        return { success: true, message: `Sale ${refId} and associated returns deleted.` };
     };
 
     const clearSales = (options?: { statuses?: (Sale['status'])[] }) => {
-        const allSales = sales; // Capture current state
+        const allSales = sales;
         let salesToClearIds: Set<string>;
 
-        if (!options?.statuses) { // undefined means clear all
+        if (!options?.statuses) {
             salesToClearIds = new Set(allSales.filter(s => s.type === 'Sale').map(s => s.id));
         } else {
-            if (options.statuses.length === 0) return; // Empty array means do nothing
+            if (options.statuses.length === 0) return;
             salesToClearIds = new Set(allSales.filter(s => s.type === 'Sale' && options.statuses!.includes(s.status!)).map(s => s.id));
         }
 
         if (salesToClearIds.size === 0) return;
 
-        // Process side effects for cleared sales
         salesToClearIds.forEach(id => {
-            removeStockHistoryByReason(`Transaction #${id}`);
-            removeStockHistoryByReason(`Sale #${id}`);
-            removeStockHistoryByReason(`Return for Sale #${id}`);
+            const sale = allSales.find(s => s.id === id);
+            const refId = sale?.publicId || id;
+            removeStockHistoryByReason(`Sale #${refId}`);
         });
 
         const salesToKeep = allSales.filter(s => 
@@ -193,16 +191,23 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
     };
     
     const addPurchaseOrder = (poData: Omit<PurchaseOrder, 'id'>): PurchaseOrder => {
+        const internalId = generateUUIDv7();
+        const publicId = generateUniqueNanoID(purchaseOrders, (p, id) => p.publicId === id, 6, 'PO-');
+
         const newPO: PurchaseOrder = {
             ...poData,
-            id: `po_${Date.now()}`,
+            id: internalId,
+            publicId: publicId,
         };
         setPurchaseOrders(prev => [newPO, ...prev]);
-        addNotification(`New PO #${newPO.id} created for ${newPO.supplierName}.`, 'PO', newPO.id);
+        addNotification(`New PO #${newPO.publicId} created for ${newPO.supplierName}.`, 'PO', newPO.id);
         return newPO;
     };
     
     const receivePOItems = (poId: string, items: { productId: string; variantId?: string; quantity: number }[]) => {
+        const po = purchaseOrders.find(p => p.id === poId);
+        const poRef = po?.publicId || poId;
+
         items.forEach(item => {
             const product = products.find(p => p.id === item.productId);
             if (product) {
@@ -211,29 +216,29 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
                     : product.stock;
                 
                 if (typeof currentStock !== 'undefined') {
-                    adjustStock(item.productId, currentStock + item.quantity, `Received from PO #${poId}`, item.variantId);
+                    adjustStock(item.productId, currentStock + item.quantity, `Received from PO #${poRef}`, item.variantId);
                 }
             }
         });
 
-        setPurchaseOrders(prev => prev.map(po => {
-            if (po.id === poId) {
-                const updatedItems = po.items.map(poItem => {
-                    const received = items.find(r => r.productId === poItem.productId && r.variantId === poItem.variantId);
+        setPurchaseOrders(prev => prev.map(poItem => {
+            if (poItem.id === poId) {
+                const updatedItems = poItem.items.map(item => {
+                    const received = items.find(r => r.productId === item.productId && r.variantId === item.variantId);
                     if (received) {
-                        return { ...poItem, quantityReceived: poItem.quantityReceived + received.quantity };
+                        return { ...item, quantityReceived: item.quantityReceived + received.quantity };
                     }
-                    return poItem;
+                    return item;
                 });
                 
                 const allReceived = updatedItems.every(item => item.quantityReceived >= item.quantityOrdered);
                 const newStatus = allReceived ? 'Received' : 'Partial';
-                if(newStatus !== po.status) {
-                    addNotification(`PO #${poId} is now ${newStatus}.`, 'PO', poId);
+                if(newStatus !== poItem.status) {
+                    addNotification(`PO #${poItem.publicId || poItem.id} is now ${newStatus}.`, 'PO', poId);
                 }
-                return { ...po, items: updatedItems, status: newStatus };
+                return { ...poItem, items: updatedItems, status: newStatus };
             }
-            return po;
+            return poItem;
         }));
     };
     
@@ -266,9 +271,9 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
             }
 
             salesToClearIds.forEach(id => {
-                removeStockHistoryByReason(`Transaction #${id}`);
-                removeStockHistoryByReason(`Sale #${id}`);
-                removeStockHistoryByReason(`Return for Sale #${id}`);
+                const s = salesToClear.find(sale => sale.id === id);
+                const ref = s?.publicId || id;
+                removeStockHistoryByReason(`Sale #${ref}`);
             });
             
             const returnsRemovedCount = sales.filter(s => s.type === 'Return' && s.originalSaleId && salesToClearIds.has(s.originalSaleId)).length;
@@ -303,7 +308,7 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
     const openShift = (float: number) => {
         if (currentShift) return;
         const newShift: Shift = {
-            id: `shift_${Date.now()}`,
+            id: generateUUIDv7(),
             openedByUserId: currentUser?.id || 'unknown',
             openedByUserName: currentUser?.username || 'Unknown',
             startTime: new Date().toISOString(),
@@ -345,7 +350,8 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
     const holdOrder = (order: Omit<HeldOrder, 'id' | 'date'>) => {
         const newHeldOrder: HeldOrder = {
             ...order,
-            id: `hold_${Date.now()}`,
+            id: generateUUIDv7(),
+            publicId: generateUniqueNanoID(heldOrders, (o, id) => o.publicId === id, 4, 'HLD-'),
             date: new Date().toISOString(),
         };
         setHeldOrders(prev => [newHeldOrder, ...prev]);

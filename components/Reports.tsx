@@ -14,7 +14,8 @@ import { useSettings } from './context/SettingsContext';
 
 declare var html2canvas: any;
 
-type SortableSaleKeys = 'id' | 'date' | 'type' | 'salespersonName' | 'total' | 'profit';
+// FIX: SortableSaleKeys now includes publicId
+type SortableSaleKeys = 'id' | 'publicId' | 'date' | 'type' | 'salespersonName' | 'total' | 'profit';
 type SortableProductKeys = 'sku' | 'name' | 'stock' | 'lowStockThreshold';
 
 type TimeRange = 'today' | 'weekly' | 'monthly' | 'yearly' | 'all';
@@ -87,7 +88,7 @@ export const Reports: React.FC = () => {
             }
 
             const link = document.createElement('a');
-            link.download = `receipt-${viewingSale.id}.png`;
+            link.download = `receipt-${viewingSale.publicId || viewingSale.id}.png`;
             link.href = newCanvas.toDataURL('image/png');
             link.click();
         });
@@ -130,12 +131,17 @@ export const Reports: React.FC = () => {
   const handleRefund = () => {
     if (!viewingSale || viewingSale.type !== 'Sale' || (viewingSale.status !== 'Completed' && viewingSale.status !== 'Partially Refunded')) return;
     
+    // Calculate items to refund and flip quantity to negative
     const itemsToRefund = viewingSale.items
-        .map(item => ({
-            ...item,
-            quantity: item.quantity - (item.returnedQuantity || 0),
-        }))
-        .filter(item => item.quantity > 0);
+        .map(item => {
+            const remainingQty = item.quantity - (item.returnedQuantity || 0);
+            return {
+                ...item,
+                quantity: -remainingQty, // Negative quantity for return
+                originalSaleId: viewingSale.id // IMPORTANT: Link to original sale so status updates
+            };
+        })
+        .filter(item => Math.abs(item.quantity) > 0);
     
     if (itemsToRefund.length === 0) {
         showToast('No items remaining to refund.', 'error');
@@ -143,7 +149,8 @@ export const Reports: React.FC = () => {
         return;
     }
 
-    const subtotal = itemsToRefund.reduce((sum, item) => sum + item.retailPrice * item.quantity, 0);
+    // For calculations, work with absolute values of the return items
+    const subtotal = itemsToRefund.reduce((sum, item) => sum + item.retailPrice * Math.abs(item.quantity), 0);
 
     let discount = 0;
     if (viewingSale.discount && viewingSale.subtotal > 0) {
@@ -163,10 +170,10 @@ export const Reports: React.FC = () => {
     }
     
     const total = taxableAmount + tax;
-    const cogs = itemsToRefund.reduce((sum, item) => sum + item.costPrice * item.quantity, 0);
+    const cogs = itemsToRefund.reduce((sum, item) => sum + item.costPrice * Math.abs(item.quantity), 0);
 
     const refundTransaction: Omit<Sale, 'id' | 'date'> = {
-        items: itemsToRefund,
+        items: itemsToRefund, // Items now have negative quantities and originalSaleId
         subtotal: -subtotal,
         discount: discount,
         tax: -tax,
@@ -184,7 +191,7 @@ export const Reports: React.FC = () => {
 
     try {
         processSale(refundTransaction);
-        showToast(`Successfully refunded remaining items for sale ${viewingSale.id}.`, 'success');
+        showToast(`Successfully refunded remaining items for sale ${viewingSale.publicId || viewingSale.id}.`, 'success');
     } catch (e) {
         if (e instanceof Error) {
             showToast(e.message, 'error');
@@ -255,7 +262,13 @@ export const Reports: React.FC = () => {
         if(typeFilter !== 'All' && s.type !== typeFilter) return false;
         if(statusFilter !== 'All' && s.type === 'Sale' && s.status !== statusFilter) return false;
         if(salespersonFilter !== 'All' && s.salespersonId !== salespersonFilter) return false;
-        if(saleSearch && !s.id.toLowerCase().includes(saleSearch.toLowerCase()) && !s.salespersonName.toLowerCase().includes(saleSearch.toLowerCase())) return false;
+        if(saleSearch) {
+            const searchLower = saleSearch.toLowerCase();
+            if (!s.id.toLowerCase().includes(searchLower) && 
+                !s.salespersonName.toLowerCase().includes(searchLower) &&
+                (!s.publicId || !s.publicId.toLowerCase().includes(searchLower)) // Search by publicId
+            ) return false;
+        }
         return true;
       });
       
@@ -432,7 +445,7 @@ export const Reports: React.FC = () => {
           <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
             <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
               <tr>
-                <SortableSaleHeader sortKey="id">ID</SortableSaleHeader>
+                <SortableSaleHeader sortKey="publicId">Receipt #</SortableSaleHeader>
                 <SortableSaleHeader sortKey="date">Date</SortableSaleHeader>
                 <SortableSaleHeader sortKey="type">Type / Status</SortableSaleHeader>
                 <SortableSaleHeader sortKey="salespersonName">Salesperson</SortableSaleHeader>
@@ -446,7 +459,7 @@ export const Reports: React.FC = () => {
                 <tr key={s.id}>
                   <td data-label="ID" className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">
                     <button onClick={() => setViewingSale(s)} className="text-blue-600 dark:text-blue-400 hover:underline font-mono">
-                      {s.id}
+                      {s.publicId || s.id}
                     </button>
                   </td>
                   <td data-label="Date" className="px-6 py-4">{formatDateTime(s.date)}</td>
@@ -544,7 +557,7 @@ export const Reports: React.FC = () => {
         />
       </div>
 
-      <Modal isOpen={!!viewingSale} onClose={() => setViewingSale(null)} title={`${viewingSale?.type} Details - ${viewingSale?.id}`} size="md">
+      <Modal isOpen={!!viewingSale} onClose={() => setViewingSale(null)} title={`${viewingSale?.type} Details - ${viewingSale?.publicId || viewingSale?.id}`} size="md">
         {viewingSale && (
             <div>
                 <PrintableReceipt ref={printableAreaRef} sale={viewingSale} />
@@ -589,7 +602,7 @@ export const Reports: React.FC = () => {
                             </h3>
                             <div className="mt-2">
                                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                                    Are you sure you want to permanently delete this sale (ID: <span className="font-mono">{viewingSale.id}</span>)?
+                                    Are you sure you want to permanently delete this sale (ID: <span className="font-mono">{viewingSale.publicId || viewingSale.id}</span>)?
                                 </p>
                                 <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                                     This will also delete any associated return transactions and all related stock history. <strong className="text-gray-800 dark:text-gray-200">Product stock levels will NOT be changed.</strong>

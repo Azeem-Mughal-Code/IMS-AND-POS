@@ -112,7 +112,8 @@ export interface Payment {
 }
 
 export interface Sale {
-  id:string;
+  id: string;
+  publicId?: string; // NanoID for public display (e.g. TRX-A1B2)
   date: string;
   items: CartItem[];
   subtotal: number;
@@ -124,6 +125,7 @@ export interface Sale {
   profit: number;
   type: 'Sale' | 'Return';
   originalSaleId?: string;
+  originalSalePublicId?: string; // For display in returns
   status?: 'Completed' | 'Partially Refunded' | 'Refunded';
   salespersonId: string; // NEW: Salesperson tracking
   salespersonName: string; // NEW: Salesperson tracking
@@ -133,6 +135,7 @@ export interface Sale {
 
 export interface HeldOrder {
   id: string;
+  publicId?: string; // NanoID
   date: string;
   items: CartItem[];
   customer: Customer | null;
@@ -144,6 +147,7 @@ export interface HeldOrder {
 // NEW: Customer Interface
 export interface Customer {
   id: string;
+  publicId?: string; // NanoID
   name: string;
   email?: string;
   phone?: string;
@@ -187,6 +191,7 @@ export interface POItem {
 
 export interface PurchaseOrder {
   id: string;
+  publicId?: string; // NanoID
   supplierId: string;
   supplierName: string;
   dateCreated: string;
@@ -200,6 +205,7 @@ export interface PurchaseOrder {
 // FIX: Added missing Supplier interface for procurement feature.
 export interface Supplier {
   id: string;
+  publicId?: string; // NanoID
   name: string;
   contactPerson?: string;
   email?: string;
@@ -241,7 +247,7 @@ export interface InventoryViewState {
     currentPage: number;
 }
 
-type SaleSortKeys = 'id' | 'date' | 'type' | 'salespersonName' | 'total' | 'profit';
+type SaleSortKeys = 'id' | 'publicId' | 'date' | 'type' | 'salespersonName' | 'total' | 'profit';
 // FIX: Added 'lowStockThreshold' to allow sorting by it in reports.
 type ProductReportSortKeys = 'sku' | 'name' | 'stock' | 'lowStockThreshold';
 type InventoryValuationSortKeys = 'sku' | 'name' | 'stock' | 'totalCostValue' | 'totalRetailValue' | 'potentialProfit';
@@ -276,7 +282,7 @@ export interface UsersViewState {
     currentPage: number;
 }
 
-type CustomerSortKeys = 'name' | 'email' | 'phone' | 'dateAdded';
+type CustomerSortKeys = 'id' | 'publicId' | 'name' | 'email' | 'phone' | 'dateAdded';
 export interface CustomerViewState {
     searchTerm: string;
     sortConfig: SortConfig<CustomerSortKeys>;
@@ -291,7 +297,7 @@ export interface AnalysisViewState {
     currentPage: number;
 }
 
-type POSortKeys = 'id' | 'supplierName' | 'dateCreated' | 'status' | 'totalCost';
+type POSortKeys = 'id' | 'publicId' | 'supplierName' | 'dateCreated' | 'status' | 'totalCost';
 export interface POViewState {
     searchTerm: string;
     statusFilter: string;

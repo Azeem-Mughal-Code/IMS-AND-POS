@@ -13,7 +13,7 @@ import { PrintableReceipt } from './common/PrintableReceipt';
 
 declare var html2canvas: any;
 
-type SortableCustomerKeys = 'id' | 'name' | 'email' | 'phone' | 'dateAdded' | 'orders' | 'totalSpent' | 'profit' | 'lastVisit';
+type SortableCustomerKeys = 'id' | 'publicId' | 'name' | 'email' | 'phone' | 'dateAdded' | 'orders' | 'totalSpent' | 'profit' | 'lastVisit';
 
 const CustomerForm: React.FC<{
     customer?: Customer | null;
@@ -54,6 +54,84 @@ const CustomerForm: React.FC<{
     );
 };
 
+const CustomerProfileModal: React.FC<{ customer: Customer; onClose: () => void }> = ({ customer, onClose }) => {
+    const printableRef = useRef<HTMLDivElement>(null);
+    const { formatDateTime } = useSettings();
+
+    const handleSaveAsImage = () => {
+        if (printableRef.current) {
+            html2canvas(printableRef.current, { 
+                backgroundColor: '#ffffff',
+                onclone: (clonedDoc: Document) => {
+                    clonedDoc.documentElement.classList.remove('dark');
+                }
+            }).then((canvas: HTMLCanvasElement) => {
+                const PADDING = 40;
+                const newCanvas = document.createElement('canvas');
+                newCanvas.width = canvas.width + PADDING * 2;
+                newCanvas.height = canvas.height + PADDING * 2;
+                const ctx = newCanvas.getContext('2d');
+                if (ctx) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, newCanvas.width, newCanvas.height);
+                    ctx.drawImage(canvas, PADDING, PADDING);
+                }
+
+                const link = document.createElement('a');
+                link.download = `customer-${customer.publicId || customer.id}.png`;
+                link.href = newCanvas.toDataURL('image/png');
+                link.click();
+            });
+        }
+    };
+
+    return (
+        <div className="flex flex-col h-full">
+            <div className="printable-area p-6" ref={printableRef}>
+                <div className="text-center border-b pb-6 mb-6 border-gray-200 dark:border-gray-700">
+                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">{customer.name}</h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 font-mono mt-2">{customer.publicId || customer.id}</p>
+                    <p className="text-xs text-gray-400 mt-1">Member since {formatDateTime(customer.dateAdded)}</p>
+                </div>
+                
+                <div className="grid grid-cols-1 gap-6 text-gray-800 dark:text-gray-200">
+                    <div className="space-y-4">
+                        <div>
+                            <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Email</p>
+                            <p className="text-lg">{customer.email || 'N/A'}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Phone</p>
+                            <p className="text-lg">{customer.phone || 'N/A'}</p>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Address</p>
+                        <p className="whitespace-pre-wrap bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                            {customer.address || 'No address provided.'}
+                        </p>
+                    </div>
+
+                    <div>
+                        <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Notes</p>
+                        <p className="whitespace-pre-wrap bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg border border-yellow-100 dark:border-yellow-900/30 text-gray-700 dark:text-gray-300">
+                            {customer.notes || 'No notes.'}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-2 border-t pt-4 dark:border-gray-700 no-print">
+                <button onClick={handleSaveAsImage} className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Save Image">
+                    <PhotoIcon className="h-5 w-5" />
+                </button>
+                <button onClick={() => window.print()} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Print</button>
+                <button onClick={onClose} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Close</button>
+            </div>
+        </div>
+    );
+};
+
 type TimeRange = 'today' | 'weekly' | 'monthly' | 'yearly' | 'all';
 
 const TimeRangeButton: React.FC<{
@@ -74,7 +152,7 @@ const TimeRangeButton: React.FC<{
     </button>
 );
 
-const CustomerDetails: React.FC<{ customer: Customer; onClose: () => void }> = ({ customer, onClose }) => {
+const CustomerValuationDetails: React.FC<{ customer: Customer; onClose: () => void }> = ({ customer, onClose }) => {
     const { sales } = useSales();
     const { formatCurrency, formatDateTime } = useSettings();
     const [timeRange, setTimeRange] = useState<TimeRange>('weekly');
@@ -101,7 +179,7 @@ const CustomerDetails: React.FC<{ customer: Customer; onClose: () => void }> = (
                 }
 
                 const link = document.createElement('a');
-                link.download = `receipt-${viewingReceipt.id}.png`;
+                link.download = `receipt-${viewingReceipt.publicId || viewingReceipt.id}.png`;
                 link.href = newCanvas.toDataURL('image/png');
                 link.click();
             });
@@ -160,7 +238,7 @@ const CustomerDetails: React.FC<{ customer: Customer; onClose: () => void }> = (
         <div className="flex flex-col">
             <div className="flex justify-between items-start mb-6">
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-800 dark:text-white">{customer.name}</h2>
+                    <h2 className="text-2xl font-bold text-gray-800 dark:text-white">{customer.name} <span className="text-gray-500 text-base font-normal">({customer.publicId})</span></h2>
                     <div className="text-sm text-gray-500 dark:text-gray-400 space-y-1 mt-1">
                         {customer.email && <p>Email: {customer.email}</p>}
                         {customer.phone && <p>Phone: {customer.phone}</p>}
@@ -218,7 +296,7 @@ const CustomerDetails: React.FC<{ customer: Customer; onClose: () => void }> = (
                                             onClick={() => setViewingReceipt(sale)}
                                             className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
                                         >
-                                            {sale.id}
+                                            {sale.publicId || sale.id}
                                         </button>
                                     </td>
                                     <td className="px-6 py-4">
@@ -242,7 +320,7 @@ const CustomerDetails: React.FC<{ customer: Customer; onClose: () => void }> = (
             </div>
 
             {viewingReceipt && (
-                <Modal isOpen={!!viewingReceipt} onClose={() => setViewingReceipt(null)} title={`Receipt - ${viewingReceipt.id}`} size="md">
+                <Modal isOpen={!!viewingReceipt} onClose={() => setViewingReceipt(null)} title={`Receipt - ${viewingReceipt.publicId || viewingReceipt.id}`} size="md">
                     <PrintableReceipt ref={printableAreaRef} sale={viewingReceipt} />
                     <div className="flex justify-end items-center gap-2 pt-4 no-print">
                         <button onClick={handleSaveAsImage} title="Save as Image" className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
@@ -268,7 +346,8 @@ export const Customers: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
     const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
-    const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
+    const [viewingValuation, setViewingValuation] = useState<Customer | null>(null);
+    const [viewingProfile, setViewingProfile] = useState<Customer | null>(null);
 
     const { searchTerm, sortConfig, currentPage } = customersViewState;
     const itemsPerPage = paginationConfig.customers || 10;
@@ -335,7 +414,7 @@ export const Customers: React.FC = () => {
                 c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                 c.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 c.phone?.includes(searchTerm) ||
-                c.id.toLowerCase().includes(searchTerm.toLowerCase())
+                c.publicId?.toLowerCase().includes(searchTerm.toLowerCase())
             )
             .sort((a, b) => {
                 const key = sortConfig.key;
@@ -352,6 +431,9 @@ export const Customers: React.FC = () => {
                         valA = metricA ? metricA[key] : 0;
                         valB = metricB ? metricB[key] : 0;
                     }
+                } else if (key === 'id') {
+                    valA = a.publicId || a.id;
+                    valB = b.publicId || b.id;
                 } else {
                     valA = a[key] || '';
                     valB = b[key] || '';
@@ -451,18 +533,14 @@ export const Customers: React.FC = () => {
                                 const metrics = customerMetrics[c.id];
                                 return (
                                     <tr key={c.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
-                                        {activeTab === 'personal' ? (
-                                            <td className="px-6 py-4 font-mono text-xs text-gray-900 dark:text-white select-text">{c.id}</td>
-                                        ) : (
-                                            <td className="px-6 py-4">
-                                                <button 
-                                                    onClick={() => setViewingCustomer(c)}
-                                                    className="text-blue-600 dark:text-blue-400 hover:underline font-mono text-xs font-semibold"
-                                                >
-                                                    {c.id}
-                                                </button>
-                                            </td>
-                                        )}
+                                        <td className="px-6 py-4">
+                                            <button 
+                                                onClick={() => setViewingProfile(c)}
+                                                className="text-blue-600 dark:text-blue-400 hover:underline font-mono text-xs font-semibold"
+                                            >
+                                                {c.publicId || c.id}
+                                            </button>
+                                        </td>
                                         
                                         <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{c.name}</td>
                                         
@@ -477,7 +555,11 @@ export const Customers: React.FC = () => {
 
                                         {activeTab === 'valuation' && (
                                             <>
-                                                <td className="px-6 py-4 text-gray-900 dark:text-gray-100">{metrics.orders}</td>
+                                                <td className="px-6 py-4 text-gray-900 dark:text-gray-100">
+                                                    <button onClick={() => setViewingValuation(c)} className="hover:underline hover:text-blue-600 dark:hover:text-blue-400">
+                                                        {metrics.orders}
+                                                    </button>
+                                                </td>
                                                 <td className="px-6 py-4 font-semibold text-blue-600 dark:text-blue-400">{formatCurrency(metrics.totalSpent)}</td>
                                                 {canViewProfit && <td className="px-6 py-4 text-green-600 dark:text-green-400">{formatCurrency(metrics.profit)}</td>}
                                                 <td className="px-6 py-4 text-xs text-gray-500">{metrics.lastVisit ? formatDateTime(metrics.lastVisit) : 'Never'}</td>
@@ -518,9 +600,15 @@ export const Customers: React.FC = () => {
                 )}
             </Modal>
 
-            {viewingCustomer && (
-                <Modal isOpen={!!viewingCustomer} onClose={() => setViewingCustomer(null)} title="Customer Valuation Details" size="xl">
-                    <CustomerDetails customer={viewingCustomer} onClose={() => setViewingCustomer(null)} />
+            {viewingValuation && (
+                <Modal isOpen={!!viewingValuation} onClose={() => setViewingValuation(null)} title="Customer Valuation Details" size="xl">
+                    <CustomerValuationDetails customer={viewingValuation} onClose={() => setViewingValuation(null)} />
+                </Modal>
+            )}
+
+            {viewingProfile && (
+                <Modal isOpen={!!viewingProfile} onClose={() => setViewingProfile(null)} title="Customer Profile" size="md">
+                    <CustomerProfileModal customer={viewingProfile} onClose={() => setViewingProfile(null)} />
                 </Modal>
             )}
         </div>

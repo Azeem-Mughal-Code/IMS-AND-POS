@@ -98,7 +98,8 @@ const CustomerSelectionModal: React.FC<{
 
     const filteredCustomers = customers.filter(c => 
         c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        c.phone?.includes(searchTerm)
+        c.phone?.includes(searchTerm) ||
+        c.publicId?.toLowerCase().includes(searchTerm.toLowerCase())
     ).slice(0, 10);
 
     return (
@@ -109,7 +110,7 @@ const CustomerSelectionModal: React.FC<{
                 </div>
                 <input
                     type="text"
-                    placeholder="Search customer by name or phone..."
+                    placeholder="Search by name, phone, or ID..."
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
                     autoFocus
@@ -125,7 +126,7 @@ const CustomerSelectionModal: React.FC<{
                             className="p-3 border-b dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 flex justify-between items-center"
                         >
                             <div>
-                                <p className="font-semibold text-gray-800 dark:text-white">{customer.name}</p>
+                                <p className="font-semibold text-gray-800 dark:text-white">{customer.name} <span className="text-xs font-mono text-gray-500">({customer.publicId})</span></p>
                                 <p className="text-sm text-gray-500 dark:text-gray-400">{customer.phone || customer.email}</p>
                             </div>
                             <div className="text-blue-600 dark:text-blue-400 text-sm">Select</div>
@@ -282,7 +283,10 @@ const RetrieveOrderModal: React.FC<{ onClose: () => void; onLoad: (order: HeldOr
                         {heldOrders.map(order => (
                             <div key={order.id} className="p-4 border rounded-lg dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex justify-between items-center">
                                 <div>
-                                    <p className="font-bold text-gray-900 dark:text-white">{order.note || 'Unnamed Order'}</p>
+                                    <p className="font-bold text-gray-900 dark:text-white">
+                                        {order.publicId ? <span className="font-mono text-blue-600 mr-2">[{order.publicId}]</span> : null}
+                                        {order.note || 'Unnamed Order'}
+                                    </p>
                                     <p className="text-sm text-gray-500">{formatDateTime(order.date)}</p>
                                     <p className="text-sm text-gray-500">{order.items.length} items • Total: {formatCurrency(order.items.reduce((sum, i) => sum + i.retailPrice * i.quantity, 0))}</p>
                                 </div>
@@ -498,7 +502,7 @@ export const POS: React.FC<POSProps> = () => {
             }
 
             const link = document.createElement('a');
-            link.download = `receipt-${lastSale?.id}.png`;
+            link.download = `receipt-${lastSale?.publicId || lastSale?.id}.png`;
             link.href = newCanvas.toDataURL('image/png');
             link.click();
         });
@@ -770,7 +774,7 @@ export const POS: React.FC<POSProps> = () => {
       .filter(s => 
         s.type === 'Sale' && 
         s.status !== 'Refunded' &&
-        (!returnSearchTerm || s.id.toLowerCase().includes(returnSearchTerm.toLowerCase()))
+        (!returnSearchTerm || (s.publicId && s.publicId.toLowerCase().includes(returnSearchTerm.toLowerCase())) || s.id.toLowerCase().includes(returnSearchTerm.toLowerCase()))
       )
       .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [sales, returnSearchTerm]);
@@ -855,7 +859,7 @@ export const POS: React.FC<POSProps> = () => {
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><SearchIcon /></div>
             <input
               type="text"
-              placeholder="Search Receipt ID..."
+              placeholder="Search Receipt # (e.g. TRX-123)..."
               value={returnSearchTerm}
               onChange={e => setReturnSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
@@ -867,7 +871,9 @@ export const POS: React.FC<POSProps> = () => {
                  {paginatedReturnSales.length > 0 ? paginatedReturnSales.map(sale => (
                    <div key={sale.id} onClick={() => setSelectedSaleForReturn(sale)} className="p-4 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors">
                      <div className="flex justify-between items-center">
-                        <span className="font-semibold text-gray-900 dark:text-white truncate">ID: <span className="font-mono text-blue-600 dark:text-blue-400">{sale.id}</span></span>
+                        <span className="font-semibold text-gray-900 dark:text-white truncate">
+                            ID: <span className="font-mono text-blue-600 dark:text-blue-400">{sale.publicId || sale.id}</span>
+                        </span>
                         <span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(sale.total)}</span>
                      </div>
                      <div className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex justify-between">
@@ -894,7 +900,7 @@ export const POS: React.FC<POSProps> = () => {
         <div className="mb-4">
             <div className="p-3 bg-blue-50 dark:bg-gray-700 rounded-lg border border-blue-100 dark:border-gray-600">
                 <div className="flex justify-between items-center">
-                    <h3 className="font-semibold text-gray-800 dark:text-white truncate">Sale <span className="font-mono">{selectedSaleForReturn.id}</span></h3>
+                    <h3 className="font-semibold text-gray-800 dark:text-white truncate">Sale <span className="font-mono">{selectedSaleForReturn.publicId || selectedSaleForReturn.id}</span></h3>
                     <button onClick={() => setSelectedSaleForReturn(null)} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">Back to Search</button>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{formatDateTime(selectedSaleForReturn.date)}</p>
@@ -1122,7 +1128,7 @@ export const POS: React.FC<POSProps> = () => {
                         <div className="flex items-center gap-2">
                             <UserCircleIcon className={`h-5 w-5 ${selectedCustomer ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`} />
                             <span className={`text-sm font-medium ${selectedCustomer ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>
-                                {selectedCustomer ? selectedCustomer.name : 'Add Customer'}
+                                {selectedCustomer ? `${selectedCustomer.name} (${selectedCustomer.publicId || 'N/A'})` : 'Add Customer'}
                             </span>
                         </div>
                         <ChevronDownIcon className="h-4 w-4 text-gray-400" />
