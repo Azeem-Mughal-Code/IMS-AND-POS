@@ -6,7 +6,16 @@ export enum UserRole {
   Cashier = 'Cashier',
 }
 
-export interface User {
+// Sync status for local-first architecture
+export type SyncStatus = 'pending' | 'synced' | 'error';
+
+export interface BaseEntity {
+  updated_at?: string;
+  deleted?: boolean;
+  sync_status?: SyncStatus;
+}
+
+export interface User extends BaseEntity {
   id: string;
   username: string;
   password: string; // NOTE: In a real app, this should be hashed.
@@ -24,6 +33,7 @@ export interface GlobalUser {
 export interface Workspace {
   id: string;
   name: string;
+  alias: string; // Human-readable short code
   ownerId: string; // The GlobalUser ID of the creator
   memberIds: string[]; // IDs of GlobalUsers who are members
 }
@@ -44,7 +54,7 @@ export interface PriceHistoryEntry {
   userName: string;
 }
 
-export interface Category {
+export interface Category extends BaseEntity {
   id: string;
   name: string;
   parentId?: string | null;
@@ -69,10 +79,11 @@ export interface ProductVariant {
   retailPrice: number;
   costPrice: number;
   stock: number;
+  priceHistory: PriceHistoryEntry[];
 }
 
 
-export interface Product {
+export interface Product extends BaseEntity {
   id: string;
   sku: string;
   name:string;
@@ -111,7 +122,7 @@ export interface Payment {
   amount: number;
 }
 
-export interface Sale {
+export interface Sale extends BaseEntity {
   id: string;
   publicId?: string; // NanoID for public display (e.g. TRX-A1B2)
   date: string;
@@ -145,7 +156,7 @@ export interface HeldOrder {
 }
 
 // NEW: Customer Interface
-export interface Customer {
+export interface Customer extends BaseEntity {
   id: string;
   publicId?: string; // NanoID
   name: string;
@@ -168,9 +179,10 @@ export interface CashierPermissions {
   canManageCustomers: boolean; // NEW
 }
 
-export type View = 'dashboard' | 'pos' | 'inventory' | 'customers' | 'reports' | 'analysis' | 'settings' | 'procurement';
+export type View = 'dashboard' | 'pos' | 'inventory' | 'customers' | 'reports' | 'analysis' | 'settings' | 'procurement' | 'users';
 
-export interface InventoryAdjustment {
+export interface InventoryAdjustment extends BaseEntity {
+  id: string;
   productId: string;
   variantId?: string;
   date: string;
@@ -189,7 +201,7 @@ export interface POItem {
 }
 
 
-export interface PurchaseOrder {
+export interface PurchaseOrder extends BaseEntity {
   id: string;
   publicId?: string; // NanoID
   supplierId: string;
@@ -203,7 +215,7 @@ export interface PurchaseOrder {
 }
 
 // FIX: Added missing Supplier interface for procurement feature.
-export interface Supplier {
+export interface Supplier extends BaseEntity {
   id: string;
   publicId?: string; // NanoID
   name: string;
@@ -213,8 +225,9 @@ export interface Supplier {
   address?: string;
 }
 
-export interface Shift {
+export interface Shift extends BaseEntity {
   id: string;
+  publicId?: string; // NanoID
   openedByUserId: string;
   openedByUserName: string;
   closedByUserId?: string;
@@ -231,7 +244,7 @@ export interface Shift {
   cashRefunds: number; // Total cash refunds during shift
 }
 
-export type PaginationTarget = 'inventory' | 'inventoryCategories' | 'posCatalog' | 'posSales' | 'salesReports' | 'productReports' | 'inventoryValuation' | 'users' | 'analysis' | 'purchaseOrders' | 'suppliers' | 'customers';
+export type PaginationTarget = 'inventory' | 'inventoryCategories' | 'posCatalog' | 'posSales' | 'salesReports' | 'productReports' | 'inventoryValuation' | 'users' | 'analysis' | 'purchaseOrders' | 'suppliers' | 'customers' | 'inventoryStockHistory' | 'inventoryPriceHistory' | 'shifts';
 export type PaginationConfig = Record<PaginationTarget, number>;
 
 // Generic type for sort configuration
@@ -307,6 +320,11 @@ export interface POViewState {
 }
 
 export type SupplierSortKeys = keyof Omit<Supplier, 'id' | 'address'>;
+export interface SuppliersViewState {
+    searchTerm: string;
+    sortConfig: SortConfig<SupplierSortKeys>;
+    currentPage: number;
+}
 
 export type CategorySortKeys = 'name';
 export interface CategoriesViewState {

@@ -1,7 +1,9 @@
 
 import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
-import { View, Toast, Notification, NotificationType, InventoryViewState, ReportsViewState, UsersViewState, AnalysisViewState, POViewState, PruneTarget, CategoriesViewState, CustomerViewState } from '../../types';
+import { useLiveQuery } from "dexie-react-hooks";
+import { View, Toast, Notification, NotificationType, InventoryViewState, ReportsViewState, UsersViewState, AnalysisViewState, POViewState, PruneTarget, CategoriesViewState, CustomerViewState, SuppliersViewState } from '../../types';
 import usePersistedState from '../../hooks/usePersistedState';
+import { db } from '../../utils/db';
 
 // Define initial states for each view's state
 const initialInventoryViewState: InventoryViewState = {
@@ -29,6 +31,9 @@ const initialCategoriesViewState: CategoriesViewState = {
     searchTerm: '', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1,
 };
 const initialCustomerViewState: CustomerViewState = {
+    searchTerm: '', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1,
+};
+const initialSuppliersViewState: SuppliersViewState = {
     searchTerm: '', sortConfig: { key: 'name', direction: 'ascending' }, currentPage: 1,
 };
 
@@ -60,6 +65,8 @@ interface UIStateContextType {
     onCategoriesViewUpdate: (update: Partial<CategoriesViewState>) => void;
     customersViewState: CustomerViewState;
     onCustomersViewUpdate: (update: Partial<CustomerViewState>) => void;
+    suppliersViewState: SuppliersViewState;
+    onSuppliersViewUpdate: (update: Partial<SuppliersViewState>) => void;
     zoomLevel: number;
     setZoomLevel: (level: number) => void;
     factoryReset: () => void;
@@ -77,7 +84,10 @@ export const UIStateProvider: React.FC<{ children: ReactNode; workspaceId: strin
     const ls_prefix = `ims-${workspaceId}`;
     const [activeView, setActiveView] = usePersistedState<View>(`${ls_prefix}-activeView`, 'dashboard');
     const [toasts, setToasts] = useState<Toast[]>([]);
-    const [notifications, setNotifications] = usePersistedState<Notification[]>(`${ls_prefix}-notifications`, []);
+    
+    // Replaced usePersistedState with Dexie useLiveQuery for notifications
+    const notifications = useLiveQuery(() => db.notifications.orderBy('timestamp').reverse().toArray()) || [];
+
     const [inventoryViewState, setInventoryViewState] = usePersistedState<InventoryViewState>(`${ls_prefix}-inventoryViewState`, initialInventoryViewState);
     const [reportsViewState, setReportsViewState] = usePersistedState<ReportsViewState>(`${ls_prefix}-reportsViewState`, {
         sales: initialReportsSalesViewState,
@@ -89,6 +99,7 @@ export const UIStateProvider: React.FC<{ children: ReactNode; workspaceId: strin
     const [poViewState, setPOViewState] = usePersistedState<POViewState>(`${ls_prefix}-poViewState`, initialPOViewState);
     const [categoriesViewState, setCategoriesViewState] = usePersistedState<CategoriesViewState>(`${ls_prefix}-categoriesViewState`, initialCategoriesViewState);
     const [customersViewState, setCustomersViewState] = usePersistedState<CustomerViewState>(`${ls_prefix}-customersViewState`, initialCustomerViewState);
+    const [suppliersViewState, setSuppliersViewState] = usePersistedState<SuppliersViewState>(`${ls_prefix}-suppliersViewState`, initialSuppliersViewState);
     const [zoomLevel, setZoomLevel] = usePersistedState<number>(`${ls_prefix}-zoomLevel`, 0.85);
 
     const showToast = (message: string, type: 'success' | 'error') => {
@@ -98,12 +109,28 @@ export const UIStateProvider: React.FC<{ children: ReactNode; workspaceId: strin
     const dismissToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id));
 
     const addNotification = (message: string, type: NotificationType, relatedId?: string) => {
-        const newNotification: Notification = { id: `notif_${Date.now()}`, timestamp: new Date().toISOString(), type, message, isRead: false, relatedId };
-        setNotifications(prev => [newNotification, ...prev]);
+        const newNotification: Notification = { 
+            id: `notif_${Date.now()}_${Math.random().toString(36).substr(2,5)}`, 
+            timestamp: new Date().toISOString(), 
+            type, 
+            message, 
+            isRead: false, 
+            relatedId 
+        };
+        db.notifications.add(newNotification);
     };
-    const markNotificationAsRead = (id: string) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
-    const markAllNotificationsAsRead = () => setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-    const clearNotifications = () => setNotifications([]);
+    
+    const markNotificationAsRead = (id: string) => {
+        db.notifications.update(id, { isRead: true });
+    };
+    
+    const markAllNotificationsAsRead = () => {
+        db.notifications.toCollection().modify({ isRead: true });
+    };
+    
+    const clearNotifications = () => {
+        db.notifications.clear();
+    };
 
     const onInventoryViewUpdate = (update: Partial<InventoryViewState>) => setInventoryViewState(prev => ({ ...prev, ...update }));
     const onReportsSalesViewUpdate = (update: Partial<ReportsViewState['sales']>) => setReportsViewState(prev => ({ ...prev, sales: { ...prev.sales, ...update } }));
@@ -114,16 +141,16 @@ export const UIStateProvider: React.FC<{ children: ReactNode; workspaceId: strin
     const onPOViewUpdate = (update: Partial<POViewState>) => setPOViewState(prev => ({ ...prev, ...update }));
     const onCategoriesViewUpdate = (update: Partial<CategoriesViewState>) => setCategoriesViewState(prev => ({ ...prev, ...update }));
     const onCustomersViewUpdate = (update: Partial<CustomerViewState>) => setCustomersViewState(prev => ({ ...prev, ...update }));
+    const onSuppliersViewUpdate = (update: Partial<SuppliersViewState>) => setSuppliersViewState(prev => ({ ...prev, ...update }));
     
     const pruneData = (target: 'notifications' | 'stockHistory', options: { days: number }): { success: boolean; message: string } => {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - options.days);
+        const cutoffIso = cutoffDate.toISOString();
         
         if(target === 'notifications') {
-            const originalCount = notifications.length;
-            setNotifications(prev => prev.filter(n => new Date(n.timestamp) >= cutoffDate));
-            const newCount = notifications.length;
-            return { success: true, message: `Pruned ${originalCount - newCount} notifications.`}
+            db.notifications.where('timestamp').below(cutoffIso).delete();
+            return { success: true, message: `Pruning notifications older than ${options.days} days.`}
         }
         // Stock history pruning would be handled in ProductContext if it were persisted there.
         // Since it's passed from SalesContext, we'll assume this is for notifications only for now.
@@ -132,7 +159,7 @@ export const UIStateProvider: React.FC<{ children: ReactNode; workspaceId: strin
 
     const factoryReset = () => {
         setActiveView('dashboard');
-        setNotifications([]);
+        db.notifications.clear();
         setInventoryViewState(initialInventoryViewState);
         setReportsViewState({ sales: initialReportsSalesViewState, products: initialReportsProductsViewState, inventoryValuation: initialReportsInventoryValuationViewState });
         setUsersViewState(initialUsersViewState);
@@ -140,6 +167,7 @@ export const UIStateProvider: React.FC<{ children: ReactNode; workspaceId: strin
         setPOViewState(initialPOViewState);
         setCategoriesViewState(initialCategoriesViewState);
         setCustomersViewState(initialCustomerViewState);
+        setSuppliersViewState(initialSuppliersViewState);
     };
 
     const value = {
@@ -154,6 +182,7 @@ export const UIStateProvider: React.FC<{ children: ReactNode; workspaceId: strin
         poViewState, onPOViewUpdate,
         categoriesViewState, onCategoriesViewUpdate,
         customersViewState, onCustomersViewUpdate,
+        suppliersViewState, onSuppliersViewUpdate,
         zoomLevel, setZoomLevel,
         factoryReset
     };

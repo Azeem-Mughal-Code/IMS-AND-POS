@@ -6,7 +6,7 @@ import { useUIState } from '../context/UIStateContext';
 import { useSettings } from '../context/SettingsContext';
 import { Modal } from '../common/Modal';
 import { Pagination } from '../common/Pagination';
-import { SearchIcon, PlusIcon, PencilIcon, TrashIcon, AdjustIcon, HistoryIcon, ChevronUpIcon, ChevronDownIcon, ReceiveIcon, ChevronRightIcon, TagIcon } from '../Icons';
+import { SearchIcon, PlusIcon, PencilIcon, TrashIcon, AdjustIcon, HistoryIcon, ChevronUpIcon, ChevronDownIcon, ReceiveIcon, TagIcon, DangerIcon } from '../Icons';
 import { FilterMenu, FilterSelectItem } from '../common/FilterMenu';
 
 const VariationManager: React.FC<{
@@ -80,14 +80,19 @@ const VariationManager: React.FC<{
                 retailPrice: existingVariant?.retailPrice ?? baseProduct.retailPrice,
                 costPrice: existingVariant?.costPrice ?? baseProduct.costPrice,
                 stock: existingVariant?.stock ?? 0,
+                priceHistory: existingVariant?.priceHistory || [], // Preserve history
             };
         });
 
         onVariantsChange(newVariants);
-    }, [variationTypes]);
+    }, [variationTypes]); // Intentionally omit 'variants' to prevent regeneration loop, relying on closure scope or re-render from parent
 
     const updateVariant = (variantId: string, field: keyof ProductVariant, value: string | number) => {
         onVariantsChange(variants.map(v => v.id === variantId ? { ...v, [field]: value } : v));
+    };
+
+    const removeVariant = (variantId: string) => {
+        onVariantsChange(variants.filter(v => v.id !== variantId));
     };
     
     return (
@@ -114,6 +119,7 @@ const VariationManager: React.FC<{
                                 <th className="p-2 text-right text-gray-900 dark:text-white">Retail Price</th>
                                 <th className="p-2 text-right text-gray-900 dark:text-white">Cost Price</th>
                                 <th className="p-2 text-right text-gray-900 dark:text-white">Stock</th>
+                                <th className="p-2 text-center text-gray-900 dark:text-white">Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -124,6 +130,7 @@ const VariationManager: React.FC<{
                                     <td className="p-1"><input type="number" value={v.retailPrice} onChange={e => updateVariant(v.id, 'retailPrice', parseFloat(e.target.value))} className="w-24 text-right rounded-md border-gray-300 dark:border-gray-600 text-sm p-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white" /></td>
                                     <td className="p-1"><input type="number" value={v.costPrice} onChange={e => updateVariant(v.id, 'costPrice', parseFloat(e.target.value))} className="w-24 text-right rounded-md border-gray-300 dark:border-gray-600 text-sm p-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white" /></td>
                                     <td className="p-1"><input type="number" value={v.stock} onChange={e => updateVariant(v.id, 'stock', parseInt(e.target.value, 10))} className="w-20 text-right rounded-md border-gray-300 dark:border-gray-600 text-sm p-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white" /></td>
+                                    <td className="p-1 text-center"><button type="button" onClick={() => removeVariant(v.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button></td>
                                 </tr>
                             ))}
                         </tbody>
@@ -343,9 +350,11 @@ const AdjustStockModal: React.FC<{ product: Product, variant?: ProductVariant, o
     const [newStock, setNewStock] = useState(currentStock);
     const [reason, setReason] = useState('');
 
+    const isValid = reason.trim().length > 0;
+
     const handleSubmit = () => {
-        if (newStock !== currentStock) {
-            adjustStock(product.id, newStock, reason || 'Manual Adjustment', variant?.id);
+        if (newStock !== currentStock && isValid) {
+            adjustStock(product.id, newStock, reason, variant?.id);
         }
         onClose();
     };
@@ -357,109 +366,214 @@ const AdjustStockModal: React.FC<{ product: Product, variant?: ProductVariant, o
                 <input type="number" value={newStock} onChange={e => setNewStock(parseInt(e.target.value))} min="0" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
             </div>
             <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Reason for Adjustment</label>
-                <input type="text" value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g., Cycle Count" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Reason for Adjustment <span className="text-red-500">*</span></label>
+                <input 
+                    type="text" 
+                    value={reason} 
+                    onChange={e => setReason(e.target.value)} 
+                    placeholder="e.g., Cycle Count, Damage, Theft" 
+                    className={`mt-1 block w-full rounded-md border shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${!isValid && reason !== '' ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'}`}
+                    required
+                />
+                <p className="text-xs text-gray-500 mt-1">Reason is required.</p>
             </div>
             <div className="flex justify-end gap-2 pt-4">
                 <button onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md">Cancel</button>
-                <button onClick={handleSubmit} className="px-4 py-2 bg-blue-600 text-white rounded-md">Adjust Stock</button>
+                <button 
+                    onClick={handleSubmit} 
+                    disabled={!isValid}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700"
+                >
+                    Adjust Stock
+                </button>
             </div>
         </div>
     );
 };
 
-const StockHistoryModal: React.FC<{ product: Product, onClose: () => void }> = ({ product, onClose }) => {
+const ProductHistoryModal: React.FC<{ product: Product, variantId?: string, onClose: () => void }> = ({ product, variantId, onClose }) => {
     const { inventoryAdjustments } = useProducts();
-    const { formatDateTime } = useSettings();
-    const productHistory = inventoryAdjustments.filter(adj => adj.productId === product.id).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
-    const getVariantName = (variantId?: string): string => {
-        if (!variantId) return '';
-        const variant = product.variants.find(v => v.id === variantId);
+    const { formatCurrency, formatDateTime, paginationConfig } = useSettings();
+    const [activeTab, setActiveTab] = useState<'stock' | 'price'>('stock');
+    const [stockPage, setStockPage] = useState(1);
+    const [pricePage, setPricePage] = useState(1);
+
+    const stockItemsPerPage = paginationConfig.inventoryStockHistory || 10;
+    const priceItemsPerPage = paginationConfig.inventoryPriceHistory || 10;
+
+    const getVariantName = (id?: string): string => {
+        if (!id) return '';
+        const variant = product.variants.find(v => v.id === id);
         return variant ? `(${Object.values(variant.options).join(' / ')})` : '';
     };
 
-    return (
-        <div>
-            <div className="max-h-96 overflow-y-auto">
-                <table className="w-full text-sm text-left">
-                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 text-xs uppercase text-gray-700 dark:text-gray-400">
-                        <tr><th className="p-2">Date</th><th className="p-2">Variant</th><th className="p-2">Change</th><th className="p-2">Reason</th></tr>
-                    </thead>
-                    <tbody>
-                        {productHistory.map((adj, i) => (
-                             <tr key={i} className="border-b dark:border-gray-700 bg-white dark:bg-gray-800">
-                                <td className="p-2 whitespace-nowrap text-gray-800 dark:text-gray-200">{formatDateTime(adj.date)}</td>
-                                <td className="p-2 text-xs text-gray-500">{getVariantName(adj.variantId)}</td>
-                                <td className={`p-2 font-semibold ${adj.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>{adj.quantity > 0 ? `+${adj.quantity}` : adj.quantity}</td>
-                                <td className="p-2 text-gray-800 dark:text-gray-200">{adj.reason}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-                 {productHistory.length === 0 && <p className="p-4 text-center text-gray-500">No adjustment history found.</p>}
-            </div>
-            <div className="flex justify-end pt-4 mt-4 border-t dark:border-gray-700">
-                 <button onClick={onClose} className="px-4 py-2 bg-blue-600 text-white rounded-md">Close</button>
-            </div>
-        </div>
-    );
-};
+    const displayTitle = variantId ? `${product.name} ${getVariantName(variantId)}` : product.name;
 
-const PriceHistoryModal: React.FC<{ product: Product, onClose: () => void }> = ({ product, onClose }) => {
-    const { formatCurrency, formatDateTime } = useSettings();
-    const priceHistory = product.priceHistory || [];
+    const filteredStockHistory = useMemo(() => {
+        return inventoryAdjustments
+            .filter(adj => adj.productId === product.id && (!variantId || adj.variantId === variantId))
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [inventoryAdjustments, product.id, variantId]);
+
+    const paginatedStockHistory = useMemo(() => {
+        const start = (stockPage - 1) * stockItemsPerPage;
+        return filteredStockHistory.slice(start, start + stockItemsPerPage);
+    }, [filteredStockHistory, stockPage, stockItemsPerPage]);
+
+    // Aggregating logic for price history including variants
+    type DisplayPriceEntry = PriceHistoryEntry & { variantName?: string };
+
+    const filteredPriceHistory = useMemo(() => {
+        let history: DisplayPriceEntry[] = [];
+        if (variantId) {
+            const variant = product.variants.find(v => v.id === variantId);
+            history = (variant?.priceHistory || []).map(h => ({...h}));
+        } else {
+            // Include Base Product history
+            history = (product.priceHistory || []).map(h => ({...h, variantName: 'Base Product'}));
+            
+            // Include all Variants history
+            if (product.variants) {
+                product.variants.forEach(v => {
+                    const vName = Object.values(v.options).join(' / ');
+                    const vHistory = (v.priceHistory || []).map(h => ({...h, variantName: vName}));
+                    history = [...history, ...vHistory];
+                });
+            }
+        }
+        return history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [product.priceHistory, product.variants, variantId]);
+
+    const paginatedPriceHistory = useMemo(() => {
+        const start = (pricePage - 1) * priceItemsPerPage;
+        return filteredPriceHistory.slice(start, start + priceItemsPerPage);
+    }, [filteredPriceHistory, pricePage, priceItemsPerPage]);
 
     return (
-        <div>
-            <div className="max-h-96 overflow-y-auto">
-                <table className="w-full text-sm text-left">
-                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 text-xs uppercase text-gray-700 dark:text-gray-400">
-                        <tr>
-                            <th className="p-2">Date</th>
-                            <th className="p-2">Type</th>
-                            <th className="p-2 text-right">Old Value</th>
-                            <th className="p-2 text-right">New Value</th>
-                            <th className="p-2">Changed By</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {priceHistory.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((entry, i) => (
-                             <tr key={i} className="border-b dark:border-gray-700 bg-white dark:bg-gray-800">
-                                <td className="p-2 whitespace-nowrap text-gray-800 dark:text-gray-200">{formatDateTime(entry.date)}</td>
-                                <td className={`p-2 font-semibold capitalize ${entry.priceType === 'retail' ? 'text-blue-600' : 'text-green-600'}`}>{entry.priceType}</td>
-                                <td className="p-2 text-right text-red-600">{formatCurrency(entry.oldValue)}</td>
-                                <td className="p-2 text-right text-green-600">{formatCurrency(entry.newValue)}</td>
-                                <td className="p-2 text-gray-800 dark:text-gray-200">{entry.userName}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-                 {priceHistory.length === 0 && <p className="p-4 text-center text-gray-500">No price history found.</p>}
+        <div className="flex flex-col h-[70vh] md:h-auto md:max-h-[80vh]">
+            <div className="mb-4">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{displayTitle}</h3>
+                <div className="flex gap-2 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg inline-flex">
+                    <button
+                        onClick={() => setActiveTab('stock')}
+                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${activeTab === 'stock' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                    >
+                        Stock History
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('price')}
+                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${activeTab === 'price' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                    >
+                        Price History
+                    </button>
+                </div>
             </div>
-            <div className="flex justify-end pt-4 mt-4 border-t dark:border-gray-700">
-                 <button onClick={onClose} className="px-4 py-2 bg-blue-600 text-white rounded-md">Close</button>
+
+            <div className="flex-grow overflow-y-auto border rounded-lg dark:border-gray-700">
+                {activeTab === 'stock' ? (
+                    <>
+                    <table className="w-full text-sm text-left">
+                        <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 text-xs uppercase text-gray-700 dark:text-gray-400">
+                            <tr>
+                                <th className="p-3">Date</th>
+                                {!variantId && <th className="p-3">Variant</th>}
+                                <th className="p-3 text-right">Change</th>
+                                <th className="p-3">Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {paginatedStockHistory.map((adj, i) => (
+                                <tr key={i} className="border-b dark:border-gray-700 bg-white dark:bg-gray-800">
+                                    <td className="p-3 whitespace-nowrap text-gray-800 dark:text-gray-200">{formatDateTime(adj.date)}</td>
+                                    {!variantId && <td className="p-3 text-xs text-gray-500">{getVariantName(adj.variantId) || '-'}</td>}
+                                    <td className={`p-3 text-right font-semibold ${adj.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                        {adj.quantity > 0 ? `+${adj.quantity}` : adj.quantity}
+                                    </td>
+                                    <td className="p-3 text-gray-800 dark:text-gray-200">{adj.reason}</td>
+                                </tr>
+                            ))}
+                            {paginatedStockHistory.length === 0 && (
+                                <tr><td colSpan={variantId ? 3 : 4} className="p-4 text-center text-gray-500">No stock adjustments found.</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                    </>
+                ) : (
+                    <>
+                        <table className="w-full text-sm text-left">
+                            <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 text-xs uppercase text-gray-700 dark:text-gray-400">
+                                <tr>
+                                    <th className="p-3">Date</th>
+                                    {!variantId && <th className="p-3">Variant</th>}
+                                    <th className="p-3">Type</th>
+                                    <th className="p-3 text-right">Old</th>
+                                    <th className="p-3 text-right">New</th>
+                                    <th className="p-3">User</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {paginatedPriceHistory.map((entry, i) => (
+                                    <tr key={i} className="border-b dark:border-gray-700 bg-white dark:bg-gray-800">
+                                        <td className="p-3 whitespace-nowrap text-gray-800 dark:text-gray-200">{formatDateTime(entry.date)}</td>
+                                        {!variantId && <td className="p-3 text-xs text-gray-500">{(entry as any).variantName || '-'}</td>}
+                                        <td className={`p-3 font-semibold capitalize ${entry.priceType === 'retail' ? 'text-blue-600' : 'text-green-600'}`}>{entry.priceType}</td>
+                                        <td className="p-3 text-right text-gray-500">{formatCurrency(entry.oldValue)}</td>
+                                        <td className="p-3 text-right font-medium text-gray-900 dark:text-white">{formatCurrency(entry.newValue)}</td>
+                                        <td className="p-3 text-gray-800 dark:text-gray-200">{entry.userName}</td>
+                                    </tr>
+                                ))}
+                                {paginatedPriceHistory.length === 0 && (
+                                    <tr><td colSpan={variantId ? 5 : 6} className="p-4 text-center text-gray-500">No price history found.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </>
+                )}
+            </div>
+            
+            {activeTab === 'stock' && filteredStockHistory.length > stockItemsPerPage && (
+                <Pagination
+                    currentPage={stockPage}
+                    totalPages={Math.ceil(filteredStockHistory.length / stockItemsPerPage)}
+                    onPageChange={setStockPage}
+                    itemsPerPage={stockItemsPerPage}
+                    totalItems={filteredStockHistory.length}
+                />
+            )}
+            {activeTab === 'price' && filteredPriceHistory.length > priceItemsPerPage && (
+                <Pagination
+                    currentPage={pricePage}
+                    totalPages={Math.ceil(filteredPriceHistory.length / priceItemsPerPage)}
+                    onPageChange={setPricePage}
+                    itemsPerPage={priceItemsPerPage}
+                    totalItems={filteredPriceHistory.length}
+                />
+            )}
+
+            <div className="flex justify-end pt-4 mt-2 border-t dark:border-gray-700">
+                 <button onClick={onClose} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Close</button>
             </div>
         </div>
     );
 };
 
 export const ProductsView: React.FC = () => {
-    const { products, addProduct, updateProduct, deleteProduct, categories, bulkDeleteProducts, bulkUpdateProductCategories } = useProducts();
+    const { products, addProduct, updateProduct, deleteProduct, categories, bulkDeleteProducts, bulkUpdateProductCategories, deleteVariant } = useProducts();
     const { inventoryViewState, onInventoryViewUpdate, showToast } = useUIState();
     const { formatCurrency, paginationConfig } = useSettings();
 
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+    const [variantToDelete, setVariantToDelete] = useState<{product: Product, variant: ProductVariant} | null>(null);
     const [receivingProduct, setReceivingProduct] = useState<{product: Product, variant?: ProductVariant} | null>(null);
     const [adjustingProduct, setAdjustingProduct] = useState<{product: Product, variant?: ProductVariant} | null>(null);
-    const [stockHistoryProduct, setStockHistoryProduct] = useState<Product | null>(null);
-    const [priceHistoryProduct, setPriceHistoryProduct] = useState<Product | null>(null);
+    const [historyModalData, setHistoryModalData] = useState<{product: Product, variantId?: string} | null>(null);
 
     const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
     const [isBulkCategoryModalOpen, setIsBulkCategoryModalOpen] = useState(false);
     const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+    const [forceDelete, setForceDelete] = useState(false);
 
     const { searchTerm, stockFilter, categoryFilter, sortConfig, currentPage } = inventoryViewState;
     const itemsPerPage = paginationConfig.inventory || 10;
@@ -532,11 +646,21 @@ export const ProductsView: React.FC = () => {
         setIsProductModalOpen(false);
     };
 
-    const confirmDelete = () => {
+    const confirmDelete = async () => {
         if (productToDelete) {
-            const result = deleteProduct(productToDelete.id);
+            const result = await deleteProduct(productToDelete.id, forceDelete);
             showToast(result.message || 'An error occurred.', result.success ? 'success' : 'error');
             setProductToDelete(null);
+            setForceDelete(false);
+        }
+    };
+
+    const confirmVariantDelete = async () => {
+        if (variantToDelete) {
+            const result = await deleteVariant(variantToDelete.product.id, variantToDelete.variant.id, forceDelete);
+            showToast(result.message, result.success ? 'success' : 'error');
+            setVariantToDelete(null);
+            setForceDelete(false);
         }
     };
 
@@ -695,10 +819,15 @@ export const ProductsView: React.FC = () => {
                                     {p.variants.length === 0 && <MarginBadge margin={calculateMargin(p.retailPrice, p.costPrice)} />}
                                 </td>
                                 <td data-label="Actions" className="px-6 py-4 flex items-center gap-1 justify-end flex-nowrap">
-                                    <button onClick={() => setStockHistoryProduct(p)} title="View Stock History" className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><HistoryIcon /></button>
-                                    <button onClick={() => setPriceHistoryProduct(p)} title="View Price History" className="p-2 text-purple-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><HistoryIcon /></button>
+                                    <button onClick={() => setHistoryModalData({product: p})} title="History" className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><HistoryIcon /></button>
+                                    {p.variants.length === 0 && (
+                                        <>
+                                            <button onClick={() => setReceivingProduct({product: p})} title="Receive Stock" className="p-2 text-green-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><ReceiveIcon /></button>
+                                            <button onClick={() => setAdjustingProduct({product: p})} title="Adjust Stock" className="p-2 text-yellow-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><AdjustIcon /></button>
+                                        </>
+                                    )}
                                     <button onClick={() => { setEditingProduct(p); setIsProductModalOpen(true); }} title="Edit Product" className="p-2 text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><PencilIcon /></button>
-                                    <button onClick={() => setProductToDelete(p)} title="Delete Product" className="p-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><TrashIcon /></button>
+                                    <button onClick={() => { setProductToDelete(p); setForceDelete(false); }} title="Delete Product" className="p-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><TrashIcon /></button>
                                 </td>
                             </tr>
                             {p.variants.length > 0 && p.variants.map(v => (
@@ -716,8 +845,10 @@ export const ProductsView: React.FC = () => {
                                         <MarginBadge margin={calculateMargin(v.retailPrice, v.costPrice)} />
                                     </td>
                                     <td className="px-6 py-2 flex items-center gap-1 justify-end flex-nowrap">
+                                        <button onClick={() => setHistoryModalData({product: p, variantId: v.id})} title="History" className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full scale-90"><HistoryIcon /></button>
                                         <button onClick={() => setReceivingProduct({product: p, variant: v})} title="Receive Stock" className="p-2 text-green-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><ReceiveIcon /></button>
                                         <button onClick={() => setAdjustingProduct({product: p, variant: v})} title="Adjust Stock" className="p-2 text-yellow-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><AdjustIcon /></button>
+                                        <button onClick={() => { setVariantToDelete({product: p, variant: v}); setForceDelete(false); }} title="Delete Variant" className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-full scale-90"><TrashIcon /></button>
                                     </td>
                                 </tr>
                             ))}
@@ -728,13 +859,114 @@ export const ProductsView: React.FC = () => {
             </div>
             <Pagination currentPage={currentPage} totalPages={Math.ceil(filteredAndSortedProducts.length / itemsPerPage)} onPageChange={page => onInventoryViewUpdate({ currentPage: page })} itemsPerPage={itemsPerPage} totalItems={filteredAndSortedProducts.length} />
             <Modal isOpen={isProductModalOpen} onClose={() => setIsProductModalOpen(false)} title={editingProduct ? 'Edit Product' : 'Add Product'} size="xl"><ProductForm product={editingProduct} onSubmit={handleFormSubmit} onCancel={() => setIsProductModalOpen(false)} /></Modal>
-            <Modal isOpen={!!productToDelete} onClose={() => setProductToDelete(null)} title="Confirm Deletion">
-                {productToDelete && <div><p className="text-gray-900 dark:text-white">Are you sure you want to delete {productToDelete.name}? This cannot be undone.</p><div className="flex justify-end gap-2 pt-4"><button onClick={() => setProductToDelete(null)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md">Cancel</button><button onClick={confirmDelete} className="px-4 py-2 bg-red-600 text-white rounded-md">Delete</button></div></div>}
+            
+            <Modal isOpen={!!productToDelete} onClose={() => { setProductToDelete(null); setForceDelete(false); }} title="Confirm Deletion">
+                {productToDelete && (
+                    <div>
+                        <p className="text-gray-900 dark:text-white mb-2">
+                            Are you sure you want to delete <strong>{productToDelete.name}</strong>? This cannot be undone.
+                        </p>
+                        {(productToDelete.stock > 0 || (productToDelete.variants && productToDelete.variants.some(v => v.stock > 0))) && (
+                            <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-md mb-4 flex items-start gap-3">
+                                <DangerIcon className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5" />
+                                <div className="text-sm text-red-800 dark:text-red-200">
+                                    <p className="font-bold">Warning: Active Stock</p>
+                                    <p>This product has a total stock of <strong>{productToDelete.stock}</strong>.</p>
+                                    <p className="mt-1">Standard deletion is disabled for items with active stock to prevent inventory mismatch.</p>
+                                </div>
+                            </div>
+                        )}
+                        {productToDelete.variants && productToDelete.variants.length > 0 && (
+                            <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-md mb-4 flex items-start gap-3">
+                                <DangerIcon className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+                                <div className="text-sm text-yellow-800 dark:text-yellow-200">
+                                    <p className="font-bold">Warning: Variants Exist</p>
+                                    <p>This product has <strong>{productToDelete.variants.length} variants</strong>. Deleting the parent product will delete all variants and their history.</p>
+                                </div>
+                            </div>
+                        )}
+                        
+                        <div className="mb-4">
+                            <label className="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    checked={forceDelete} 
+                                    onChange={(e) => setForceDelete(e.target.checked)}
+                                    className="rounded border-gray-300 dark:border-gray-600 text-red-600 focus:ring-red-500 bg-white dark:bg-gray-700"
+                                />
+                                <span className="font-medium text-red-600 dark:text-red-400">Force Delete (Bypass checks and delete all associated data)</span>
+                            </label>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-4 border-t dark:border-gray-700">
+                            <button onClick={() => { setProductToDelete(null); setForceDelete(false); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md">Cancel</button>
+                            <button 
+                                onClick={confirmDelete} 
+                                disabled={!forceDelete && (productToDelete.stock > 0 || (productToDelete.variants && productToDelete.variants.length > 0))}
+                                className="px-4 py-2 bg-red-600 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-700"
+                            >
+                                Delete Product
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
+
+            <Modal isOpen={!!variantToDelete} onClose={() => { setVariantToDelete(null); setForceDelete(false); }} title="Confirm Variant Deletion">
+                {variantToDelete && (
+                    <div>
+                        <p className="text-gray-900 dark:text-white mb-2">
+                            Are you sure you want to delete variant <strong>{Object.values(variantToDelete.variant.options).join(' / ')}</strong> of {variantToDelete.product.name}?
+                        </p>
+                        
+                        {variantToDelete.variant.stock > 0 && (
+                             <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-md mb-4 flex items-start gap-3">
+                                <DangerIcon className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5" />
+                                <div className="text-sm text-red-800 dark:text-red-200">
+                                    <p className="font-bold">Warning: Active Stock</p>
+                                    <p>This variant has a stock of <strong>{variantToDelete.variant.stock}</strong>.</p>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="mb-4">
+                            <label className="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    checked={forceDelete} 
+                                    onChange={(e) => setForceDelete(e.target.checked)}
+                                    className="rounded border-gray-300 dark:border-gray-600 text-red-600 focus:ring-red-500 bg-white dark:bg-gray-700"
+                                />
+                                <span className="font-medium text-red-600 dark:text-red-400">Force Delete (Bypass stock check)</span>
+                            </label>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-4 border-t dark:border-gray-700">
+                            <button onClick={() => { setVariantToDelete(null); setForceDelete(false); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md">Cancel</button>
+                            <button 
+                                onClick={confirmVariantDelete} 
+                                disabled={!forceDelete && variantToDelete.variant.stock > 0}
+                                className="px-4 py-2 bg-red-600 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-700"
+                            >
+                                Delete Variant
+                            </button>
+                        </div>
+                    </div>
+                )}
             </Modal>
              {receivingProduct && <Modal isOpen={!!receivingProduct} onClose={() => setReceivingProduct(null)} title={`Receive Stock`}><ReceiveStockModal product={receivingProduct.product} variant={receivingProduct.variant} onClose={() => setReceivingProduct(null)} /></Modal>}
              {adjustingProduct && <Modal isOpen={!!adjustingProduct} onClose={() => setAdjustingProduct(null)} title={`Adjust Stock`}><AdjustStockModal product={adjustingProduct.product} variant={adjustingProduct.variant} onClose={() => setAdjustingProduct(null)} /></Modal>}
-             {stockHistoryProduct && <Modal isOpen={!!stockHistoryProduct} onClose={() => setStockHistoryProduct(null)} title={`Stock History: ${stockHistoryProduct.name}`}><StockHistoryModal product={stockHistoryProduct} onClose={() => setStockHistoryProduct(null)} /></Modal>}
-             {priceHistoryProduct && <Modal isOpen={!!priceHistoryProduct} onClose={() => setPriceHistoryProduct(null)} title={`Price History: ${priceHistoryProduct.name}`}><PriceHistoryModal product={priceHistoryProduct} onClose={() => setPriceHistoryProduct(null)} /></Modal>}
+             {historyModalData && <Modal isOpen={!!historyModalData} onClose={() => setHistoryModalData(null)} title="History" size="lg">
+                 {/* 
+                    Pass the current product from the list to ensure fresh data in the modal 
+                    (avoid stale closures from old render cycle click handlers)
+                 */}
+                 <ProductHistoryModal 
+                    product={products.find(p => p.id === historyModalData.product.id) || historyModalData.product} 
+                    variantId={historyModalData.variantId} 
+                    onClose={() => setHistoryModalData(null)} 
+                 />
+             </Modal>}
              
              <Modal isOpen={isBulkCategoryModalOpen} onClose={() => setIsBulkCategoryModalOpen(false)} title="Bulk Edit Categories">
                 <BulkCategoryEditor 

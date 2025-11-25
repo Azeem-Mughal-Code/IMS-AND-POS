@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { UserRole, View } from '../../types';
 import { Dashboard } from '../Dashboard';
@@ -8,7 +9,8 @@ import { Reports } from '../Reports';
 import { Settings } from '../Settings';
 import { Analysis } from '../Analysis';
 import { Customers } from '../Customers';
-import { DashboardIcon, POSIcon, InventoryIcon, ProcurementIcon, ReportsIcon, SettingsIcon, AnalysisIcon, UserIcon, ChevronDownIcon, LogoutIcon, UserGroupIcon, DangerIcon } from '../Icons';
+import { Users } from '../Users';
+import { DashboardIcon, POSIcon, InventoryIcon, ProcurementIcon, ReportsIcon, SettingsIcon, AnalysisIcon, UserIcon, ChevronDownIcon, LogoutIcon, UserGroupIcon, DangerIcon, UsersIcon } from '../Icons';
 import { ToastContainer } from '../common/ToastContainer';
 import { Modal } from '../common/Modal';
 import { useAuth } from '../context/AuthContext';
@@ -26,6 +28,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     const [isAuthWarningModalOpen, setIsAuthWarningModalOpen] = useState(false);
     const [isShiftWarningOpen, setIsShiftWarningOpen] = useState(false);
     const profileDropdownRef = useRef<HTMLDivElement>(null);
+    const mainContentRef = useRef<HTMLElement>(null);
     const isGuest = workspaceId === 'guest_workspace';
     
     useEffect(() => {
@@ -41,6 +44,13 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             document.removeEventListener("mousedown", handleClickOutside);
         };
     }, [isProfileDropdownOpen]);
+
+    // Reset scroll position when view changes
+    useEffect(() => {
+        if (mainContentRef.current) {
+            mainContentRef.current.scrollTop = 0;
+        }
+    }, [activeView]);
 
     const handleSwitchWorkspaceWithDelay = async () => {
         if (currentShift) {
@@ -63,7 +73,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
 
     const availableViews = useMemo(() => {
         if (currentUser?.role === UserRole.Admin) {
-            return ['dashboard', 'pos', 'inventory', 'procurement', 'customers', 'reports', 'analysis', 'settings'] as View[];
+            return ['dashboard', 'pos', 'inventory', 'procurement', 'customers', 'users', 'reports', 'analysis', 'settings'] as View[];
         }
         // For Cashier
         const views: View[] = [];
@@ -93,6 +103,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             case 'inventory': return <Inventory />;
             case 'procurement': return <Procurement />;
             case 'customers': return <Customers />;
+            case 'users': return <Users />;
             case 'reports': return <Reports />;
             case 'analysis': return <Analysis />;
             case 'settings': return <Settings onSwitchWorkspace={handleSwitchWorkspaceWithDelay} />;
@@ -130,6 +141,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewInventory) && <NavItem view="inventory" icon={<InventoryIcon />} label="Inventory" />}
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewInventory) && <NavItem view="procurement" icon={<ProcurementIcon />} label="Procurement" />}
             {(currentUser.role === UserRole.Admin || cashierPermissions.canManageCustomers) && <NavItem view="customers" icon={<UserGroupIcon />} label="Customers" />}
+            {currentUser.role === UserRole.Admin && <NavItem view="users" icon={<UsersIcon />} label="Users" />}
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewReports) && <NavItem view="reports" icon={<ReportsIcon />} label="Reports" />}
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewAnalysis) && <NavItem view="analysis" icon={<AnalysisIcon />} label="Analysis" />}
             </nav>
@@ -172,7 +184,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
                 )}
             </div>
         </aside>
-        <main className="flex-1 overflow-y-auto pb-16 md:pb-0">{renderView()}</main>
+        <main ref={mainContentRef} className="flex-1 overflow-y-auto pb-16 md:pb-0">{renderView()}</main>
 
         <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-start overflow-x-auto shadow-lg z-40 no-scrollbar">
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewDashboard) && <BottomNavItem view="dashboard" icon={<DashboardIcon />} label="Dash" />}
@@ -180,6 +192,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewInventory) && <BottomNavItem view="inventory" icon={<InventoryIcon />} label="Inv" />}
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewInventory) && <BottomNavItem view="procurement" icon={<ProcurementIcon />} label="Proc" />}
             {(currentUser.role === UserRole.Admin || cashierPermissions.canManageCustomers) && <BottomNavItem view="customers" icon={<UserGroupIcon />} label="Cust" />}
+            {currentUser.role === UserRole.Admin && <BottomNavItem view="users" icon={<UsersIcon />} label="Users" />}
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewReports) && <BottomNavItem view="reports" icon={<ReportsIcon />} label="Rpts" />}
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewAnalysis) && <BottomNavItem view="analysis" icon={<AnalysisIcon />} label="Analysis" />}
             <BottomNavItem view="settings" icon={<SettingsIcon />} label="Set" />

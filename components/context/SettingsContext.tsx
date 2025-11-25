@@ -71,6 +71,9 @@ const DEFAULT_PAGINATION_CONFIG: PaginationConfig = {
     purchaseOrders: 10,
     suppliers: 10,
     customers: 10,
+    inventoryStockHistory: 10,
+    inventoryPriceHistory: 10,
+    shifts: 10,
 };
 
 export const SettingsProvider: React.FC<{ children: ReactNode; workspaceId: string, workspaceName: string }> = ({ children, workspaceId, workspaceName }) => {

@@ -203,9 +203,9 @@ export const Reports: React.FC = () => {
     }
   };
   
-  const handleDeleteSale = () => {
+  const handleDeleteSale = async () => {
     if (!viewingSale) return;
-    const result = deleteSale(viewingSale.id);
+    const result = await deleteSale(viewingSale.id);
     showToast(result.message || 'An error occurred.', result.success ? 'success' : 'error');
     setIsDeleteConfirmOpen(false);
     setViewingSale(null);

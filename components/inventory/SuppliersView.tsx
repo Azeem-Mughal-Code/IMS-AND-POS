@@ -138,8 +138,8 @@ const SupplierDetailsModal: React.FC<{ supplier: Supplier; onClose: () => void }
 
 // Self-contained View for managing suppliers
 export const SuppliersView: React.FC = () => {
-    const { workspaceId } = useSettings();
-    const { showToast } = useUIState();
+    const { workspaceId, paginationConfig } = useSettings();
+    const { showToast, suppliersViewState, onSuppliersViewUpdate } = useUIState();
     const [suppliers, setSuppliers] = usePersistedState<Supplier[]>(`ims-${workspaceId}-suppliers`, INITIAL_SUPPLIERS);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -147,11 +147,16 @@ export const SuppliersView: React.FC = () => {
     const [deletingSupplier, setDeletingSupplier] = useState<Supplier | null>(null);
     const [viewingSupplier, setViewingSupplier] = useState<Supplier | null>(null);
     
-    // Local view state management
-    const [searchTerm, setSearchTerm] = useState('');
-    const [sortConfig, setSortConfig] = useState<SortConfig<SupplierSortKeys>>({ key: 'name', direction: 'ascending' });
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 10;
+    const { searchTerm, sortConfig, currentPage } = suppliersViewState;
+    const itemsPerPage = paginationConfig.suppliers || 10;
+
+    const requestSort = (key: SupplierSortKeys) => {
+        let direction: 'ascending' | 'descending' = 'ascending';
+        if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+            direction = 'descending';
+        }
+        onSuppliersViewUpdate({ sortConfig: { key, direction } });
+    };
 
     const handleAddSupplier = (data: Omit<Supplier, 'id'>) => {
         if (suppliers.some(s => s.name.toLowerCase() === data.name.toLowerCase())) {
@@ -204,6 +209,21 @@ export const SuppliersView: React.FC = () => {
     }, [suppliers, searchTerm, sortConfig]);
 
     const paginated = filteredAndSorted.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+    const totalPages = Math.ceil(filteredAndSorted.length / itemsPerPage);
+
+    const SortableHeader: React.FC<{ children: React.ReactNode, sortKey: SupplierSortKeys }> = ({ children, sortKey }) => {
+        const isSorted = sortConfig.key === sortKey;
+        return (
+            <th scope="col" className="px-6 py-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700" onClick={() => requestSort(sortKey)}>
+                <div className="flex items-center gap-1.5">
+                    <span>{children}</span>
+                    {isSorted ? (
+                        sortConfig.direction === 'ascending' ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />
+                    ) : <ChevronDownIcon className="h-4 w-4 invisible" />}
+                </div>
+            </th>
+        );
+    };
 
     return (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
@@ -211,7 +231,7 @@ export const SuppliersView: React.FC = () => {
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
                     <div className="relative flex-grow w-full sm:w-auto">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><SearchIcon /></div>
-                        <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search suppliers..." className="w-full pl-10 pr-4 py-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500" />
+                        <input type="text" value={searchTerm} onChange={e => onSuppliersViewUpdate({ searchTerm: e.target.value, currentPage: 1 })} placeholder="Search suppliers..." className="w-full pl-10 pr-4 py-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500" />
                     </div>
                     <button onClick={() => setIsModalOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2 w-full sm:w-auto justify-center"><PlusIcon /> Add Supplier</button>
                 </div>
@@ -220,11 +240,11 @@ export const SuppliersView: React.FC = () => {
                 <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
                      <thead className="text-xs text-gray-700 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700 sticky top-0 z-10">
                         <tr>
-                            <th className="px-6 py-3">Supplier ID</th>
-                            <th className="px-6 py-3">Name</th>
-                            <th className="px-6 py-3">Contact Person</th>
-                            <th className="px-6 py-3">Email</th>
-                            <th className="px-6 py-3">Phone</th>
+                            <SortableHeader sortKey="publicId">Supplier ID</SortableHeader>
+                            <SortableHeader sortKey="name">Name</SortableHeader>
+                            <SortableHeader sortKey="contactPerson">Contact Person</SortableHeader>
+                            <SortableHeader sortKey="email">Email</SortableHeader>
+                            <SortableHeader sortKey="phone">Phone</SortableHeader>
                             <th className="px-6 py-3 text-right">Actions</th>
                         </tr>
                     </thead>
@@ -249,7 +269,7 @@ export const SuppliersView: React.FC = () => {
                     </tbody>
                 </table>
             </div>
-            <Pagination currentPage={currentPage} totalPages={Math.ceil(filteredAndSorted.length / itemsPerPage)} onPageChange={setCurrentPage} itemsPerPage={itemsPerPage} totalItems={filteredAndSorted.length} />
+            <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={(page) => onSuppliersViewUpdate({ currentPage: page })} itemsPerPage={itemsPerPage} totalItems={filteredAndSorted.length} />
             
             <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingSupplier(null); }} title={editingSupplier ? 'Edit Supplier' : 'Add Supplier'}>
                 <SupplierForm supplier={editingSupplier} onSubmit={editingSupplier ? handleUpdateSupplier : handleAddSupplier} onCancel={() => { setIsModalOpen(false); setEditingSupplier(null); }} />

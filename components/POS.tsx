@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Product, CartItem, PaymentType, Sale, Payment, ProductVariant, Customer, HeldOrder } from '../types';
 import { SearchIcon, PlusIcon, MinusIcon, TrashIcon, PhotoIcon, ChevronDownIcon, TagIcon, UserCircleIcon, CheckCircleIcon, ClipboardIcon } from './Icons';
@@ -22,7 +21,7 @@ const DiscountModalContent: React.FC<{
     onClose: () => void;
 }> = ({ currentDiscount, onApply, onClose }) => {
     const [type, setType] = useState<'percent' | 'fixed'>(currentDiscount?.type || 'percent');
-    const [value, setValue] = useState<string>(currentDiscount?.value.toString() || '');
+    const [value, setValue] = useState<string>(currentDiscount ? currentDiscount.value.toString() : '');
 
     const handleApply = () => {
         const numVal = parseFloat(value);
@@ -399,7 +398,7 @@ const PaymentModalContent: React.FC<{
                         placeholder="Amount"
                         className="flex-grow block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
                      />
-                     <button onClick={() => setCurrentAmount(remaining.toFixed(isIntegerCurrency ? 0 : 2))} disabled={remaining <= 0} className="px-3 py-2 bg-gray-200 dark:bg-gray-600 rounded-md text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-500 disabled:opacity-50 text-gray-800 dark:text-white">
+                     <button onClick={() => setCurrentAmount(remaining.toFixed(isIntegerCurrency ? 0 : 2))} disabled={remaining <= 0} className="px-3 py-2 bg-gray-200 dark:bg-gray-600 rounded-md text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-50 disabled:opacity-50 text-gray-800 dark:text-white">
                          Full
                      </button>
                 </div>
@@ -502,14 +501,15 @@ export const POS: React.FC<POSProps> = () => {
             }
 
             const link = document.createElement('a');
-            link.download = `receipt-${lastSale?.publicId || lastSale?.id}.png`;
+            const saleId = lastSale ? (lastSale.publicId || lastSale.id) : 'unknown';
+            link.download = `receipt-${saleId}.png`;
             link.href = newCanvas.toDataURL('image/png');
             link.click();
         });
     }
   };
 
-  const allFilteredProducts = useMemo(() => {
+  const allFilteredProducts = useMemo<Product[]>(() => {
     let result = products;
     if (searchTerm) {
         const lowerTerm = searchTerm.toLowerCase();
@@ -526,7 +526,7 @@ export const POS: React.FC<POSProps> = () => {
       setCatalogPage(1);
   }, [searchTerm, catalogItemsPerPage]);
 
-  const paginatedProducts = useMemo(() => {
+  const paginatedProducts = useMemo<Product[]>(() => {
       const start = (catalogPage - 1) * catalogItemsPerPage;
       return allFilteredProducts.slice(start, start + catalogItemsPerPage);
   }, [allFilteredProducts, catalogPage, catalogItemsPerPage]);
@@ -727,6 +727,9 @@ export const POS: React.FC<POSProps> = () => {
   const handleCompleteSale = (payments: Payment[]) => {
     const cogs = cart.reduce((sum, item) => sum + item.costPrice * item.quantity, 0);
     
+    const distinctOriginalIds = [...new Set(cart.map(i => i.originalSaleId).filter(Boolean))];
+    const originalSaleId = distinctOriginalIds.length === 1 ? distinctOriginalIds[0] : undefined;
+
     const sale: Omit<Sale, 'id' | 'date'> = {
       items: cart,
       subtotal: totals.subtotal,
@@ -741,6 +744,7 @@ export const POS: React.FC<POSProps> = () => {
       salespersonName: currentUser.username,
       customerId: selectedCustomer?.id,
       customerName: selectedCustomer?.name,
+      originalSaleId: originalSaleId,
     };
     
     try {
@@ -817,7 +821,7 @@ export const POS: React.FC<POSProps> = () => {
     <div className="flex flex-col h-full">
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4 p-1 flex-grow content-start">
         {paginatedProducts.length > 0 ? (
-            paginatedProducts.map(p => (
+            paginatedProducts.map((p: Product) => (
                 <div 
                     key={p.id} 
                     onClick={() => addToCart(p)} 
@@ -861,14 +865,14 @@ export const POS: React.FC<POSProps> = () => {
               type="text"
               placeholder="Search Receipt # (e.g. TRX-123)..."
               value={returnSearchTerm}
-              onChange={e => setReturnSearchTerm(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReturnSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md flex-grow flex flex-col">
              <h3 className="text-lg font-semibold p-4 border-b dark:border-gray-700 text-gray-800 dark:text-white">Select a Sale</h3>
              <div className="flex-grow overflow-y-auto">
-                 {paginatedReturnSales.length > 0 ? paginatedReturnSales.map(sale => (
+                 {paginatedReturnSales.length > 0 ? paginatedReturnSales.map((sale: Sale) => (
                    <div key={sale.id} onClick={() => setSelectedSaleForReturn(sale)} className="p-4 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors">
                      <div className="flex justify-between items-center">
                         <span className="font-semibold text-gray-900 dark:text-white truncate">
@@ -936,12 +940,18 @@ export const POS: React.FC<POSProps> = () => {
                         <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{item.name}</td>
                         <td className="px-4 py-3 text-center text-gray-900 dark:text-white">{item.quantity}</td>
                         <td className="px-4 py-3 text-center text-orange-600 dark:text-orange-400">{item.returnedQuantity || 0}</td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-4 py-3 text-center space-x-2">
                             <button 
                                 onClick={() => addReturnItemToCart(selectedSaleForReturn, item, 1)}
                                 className="px-3 py-1 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/50 text-xs font-semibold"
                             >
                                 Return 1
+                            </button>
+                            <button 
+                                onClick={() => addReturnItemToCart(selectedSaleForReturn, item, maxReturnable)}
+                                className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs font-semibold"
+                            >
+                                Return All ({maxReturnable})
                             </button>
                         </td>
                     </tr>
@@ -1096,11 +1106,11 @@ export const POS: React.FC<POSProps> = () => {
                                 </td>
                                 <td className="px-2 py-3 text-center whitespace-nowrap">
                                     <div className="flex items-center justify-center gap-1">
-                                        <button onClick={() => updateQuantity(item, item.quantity > 0 ? -1 : 1)} className="p-1 rounded-full bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 disabled:opacity-50 text-gray-600 dark:text-gray-200" disabled={item.quantity === 1 || item.quantity === -1}>
+                                        <button onClick={() => updateQuantity(item, item.quantity > 0 ? -1 : 1)} className="p-1 rounded-full bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-50 disabled:opacity-50 text-gray-600 dark:text-gray-200" disabled={item.quantity === 1 || item.quantity === -1}>
                                             <MinusIcon />
                                         </button>
                                         <span className={`w-6 text-center font-semibold text-gray-900 dark:text-white ${item.quantity < 0 ? 'text-red-600 dark:text-red-400' : ''}`}>{Math.abs(item.quantity)}</span>
-                                        <button onClick={() => updateQuantity(item, item.quantity > 0 ? 1 : -1)} className="p-1 rounded-full bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-600 dark:text-gray-200">
+                                        <button onClick={() => updateQuantity(item, item.quantity > 0 ? 1 : -1)} className="p-1 rounded-full bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-50 text-gray-600 dark:text-gray-200">
                                             <PlusIcon />
                                         </button>
                                     </div>

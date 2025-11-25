@@ -27,6 +27,7 @@ const POForm: React.FC<{
     onCancel: () => void;
 }> = ({ onSubmit, onCancel }) => {
     const { workspaceId, formatCurrency } = useSettings();
+    const { showToast } = useUIState();
     const suppliers = useSuppliers(workspaceId);
     const { products } = useProducts();
     
@@ -34,7 +35,9 @@ const POForm: React.FC<{
     const [customSupplierName, setCustomSupplierName] = useState('');
     const [dateExpected, setDateExpected] = useState('');
     const [notes, setNotes] = useState('');
-    const [items, setItems] = useState<{productId: string, variantId?: string, quantityOrdered: number, costPrice: number}[]>([]);
+    
+    // Items state using strings for qty/cost to allow empty fields during typing
+    const [items, setItems] = useState<{productId: string, variantId?: string, quantityOrdered: string, costPrice: string}[]>([]);
     
     // Item selection state
     const [productSearchTerm, setProductSearchTerm] = useState('');
@@ -63,13 +66,12 @@ const POForm: React.FC<{
         const cost = variant ? variant.costPrice : product.costPrice;
         
         setItems(prev => {
-            // Check if item already exists to update quantity? 
-            // For POs, sometimes distinct lines are preferred, but usually aggregation is better.
             const existingIndex = prev.findIndex(i => i.productId === product.id && i.variantId === variant?.id);
             
             if (existingIndex >= 0) {
                 const newItems = [...prev];
-                newItems[existingIndex].quantityOrdered += 1;
+                const currentQty = parseFloat(newItems[existingIndex].quantityOrdered) || 0;
+                newItems[existingIndex].quantityOrdered = (currentQty + 1).toString();
                 return newItems;
             }
 
@@ -78,8 +80,8 @@ const POForm: React.FC<{
                 { 
                     productId: product.id, 
                     variantId: variant?.id, 
-                    quantityOrdered: 1, 
-                    costPrice: cost 
+                    quantityOrdered: "1", 
+                    costPrice: cost.toString()
                 }
             ];
         });
@@ -97,7 +99,7 @@ const POForm: React.FC<{
     };
 
     const handleAutoFillLowStock = () => {
-        const newItems: {productId: string, variantId?: string, quantityOrdered: number, costPrice: number}[] = [];
+        const newItems: {productId: string, variantId?: string, quantityOrdered: string, costPrice: string}[] = [];
         products.forEach(p => {
             if (p.variants.length > 0) {
                 p.variants.forEach(v => {
@@ -105,8 +107,8 @@ const POForm: React.FC<{
                         newItems.push({
                             productId: p.id,
                             variantId: v.id,
-                            quantityOrdered: Math.max(1, p.lowStockThreshold - v.stock + 5), // Refill to threshold + 5 buffer
-                            costPrice: v.costPrice
+                            quantityOrdered: Math.max(1, p.lowStockThreshold - v.stock + 5).toString(),
+                            costPrice: v.costPrice.toString()
                         });
                     }
                 });
@@ -114,8 +116,8 @@ const POForm: React.FC<{
                 if (p.stock <= p.lowStockThreshold) {
                     newItems.push({
                         productId: p.id,
-                        quantityOrdered: Math.max(1, p.lowStockThreshold - p.stock + 5), // Refill to threshold + 5 buffer
-                        costPrice: p.costPrice
+                        quantityOrdered: Math.max(1, p.lowStockThreshold - p.stock + 5).toString(),
+                        costPrice: p.costPrice.toString()
                     });
                 }
             }
@@ -131,25 +133,41 @@ const POForm: React.FC<{
         setItems(prev => prev.filter((_, i) => i !== index));
     };
 
-    const handleItemChange = (index: number, field: 'quantityOrdered' | 'costPrice', value: number) => {
+    const handleItemChange = (index: number, field: 'quantityOrdered' | 'costPrice', value: string) => {
         setItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item));
     };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if ((!supplierId && !customSupplierName) || items.length === 0) return;
+        
+        // Validation: Supplier and Expected Date are mandatory
+        if (!supplierId) {
+            showToast("Please select a supplier.", 'error');
+            return;
+        }
+        if (!dateExpected) {
+            showToast("Please select an expected delivery date.", 'error');
+            return;
+        }
+        
+        if (items.length === 0) return;
         
         let finalSupplierName = 'Unknown';
         if (supplierId === 'sup_0') {
             finalSupplierName = customSupplierName || 'Custom Supplier';
-        } else {
+        } else if (supplierId) {
             const supplier = suppliers.find(s => s.id === supplierId);
             if (supplier) finalSupplierName = supplier.name;
+        } else {
+            finalSupplierName = 'Unspecified Supplier';
         }
 
         const poItems: POItem[] = items.map(item => {
             const product = products.find(p => p.id === item.productId);
             const variant = product?.variants.find(v => v.id === item.variantId);
+            const qty = parseFloat(item.quantityOrdered) || 0;
+            const cost = parseFloat(item.costPrice) || 0;
+            
             return {
                 productId: item.productId,
                 variantId: item.variantId,
@@ -157,16 +175,16 @@ const POForm: React.FC<{
                     ? `${product?.name} (${Object.values(variant.options).join('/')})` 
                     : product?.name || 'Unknown Product',
                 sku: variant ? `${product?.sku}-${variant.skuSuffix}` : product?.sku || 'UNKNOWN',
-                quantityOrdered: item.quantityOrdered,
+                quantityOrdered: qty,
                 quantityReceived: 0,
-                costPrice: item.costPrice
+                costPrice: cost
             };
         });
 
         const totalCost = poItems.reduce((sum, item) => sum + (item.costPrice * item.quantityOrdered), 0);
 
         onSubmit({
-            supplierId,
+            supplierId: supplierId || '',
             supplierName: finalSupplierName,
             dateCreated: new Date().toISOString(),
             dateExpected: dateExpected ? new Date(dateExpected).toISOString() : '',
@@ -187,7 +205,9 @@ const POForm: React.FC<{
         <form onSubmit={handleSubmit} className="space-y-4 text-gray-900 dark:text-gray-100">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Supplier</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Supplier <span className="text-red-500">*</span>
+                    </label>
                     <Dropdown
                         options={supplierOptions}
                         value={supplierId}
@@ -205,8 +225,16 @@ const POForm: React.FC<{
                     )}
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Expected Date</label>
-                    <input type="date" value={dateExpected} onChange={e => setDateExpected(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm py-2 px-3" />
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Expected Date <span className="text-red-500">*</span>
+                    </label>
+                    <input 
+                        type="date" 
+                        value={dateExpected} 
+                        onChange={e => setDateExpected(e.target.value)} 
+                        className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm py-2 px-3" 
+                        required
+                    />
                 </div>
             </div>
             <div>
@@ -271,29 +299,30 @@ const POForm: React.FC<{
                                 const p = products.find(prod => prod.id === item.productId);
                                 const v = p?.variants.find(vary => vary.id === item.variantId);
                                 const name = v ? `${p?.name} (${Object.values(v.options).join('/')})` : p?.name;
+                                const qtyVal = parseFloat(item.quantityOrdered) || 0;
+                                const costVal = parseFloat(item.costPrice) || 0;
+                                
                                 return (
                                     <tr key={idx} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
                                         <td className="p-2">{name}</td>
                                         <td className="p-2 text-center">
                                             <input 
                                                 type="number" 
-                                                min="1" 
                                                 value={item.quantityOrdered} 
-                                                onChange={e => handleItemChange(idx, 'quantityOrdered', parseInt(e.target.value) || 0)} 
+                                                onChange={e => handleItemChange(idx, 'quantityOrdered', e.target.value)} 
                                                 className="w-full px-1 py-1 text-center border rounded bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                             />
                                         </td>
                                         <td className="p-2 text-center">
                                             <input 
                                                 type="number" 
-                                                min="0" 
                                                 step="0.01" 
                                                 value={item.costPrice} 
-                                                onChange={e => handleItemChange(idx, 'costPrice', parseFloat(e.target.value) || 0)} 
+                                                onChange={e => handleItemChange(idx, 'costPrice', e.target.value)} 
                                                 className="w-full px-1 py-1 text-center border rounded bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                             />
                                         </td>
-                                        <td className="p-2 text-right">{formatCurrency(item.quantityOrdered * item.costPrice)}</td>
+                                        <td className="p-2 text-right">{formatCurrency(qtyVal * costVal)}</td>
                                         <td className="p-2 text-center">
                                             <button type="button" onClick={() => handleRemoveItem(idx)} className="text-red-500 hover:text-red-700"><TrashIcon className="h-4 w-4" /></button>
                                         </td>
@@ -334,7 +363,7 @@ const POForm: React.FC<{
 
 const ReceivePOModal: React.FC<{ po: PurchaseOrder; onClose: () => void }> = ({ po, onClose }) => {
     const { receivePOItems } = useSales();
-    const [receivedQuantities, setReceivedQuantities] = useState<{[key: string]: number}>({});
+    const [receivedQuantities, setReceivedQuantities] = useState<{[key: string]: string | number}>({});
 
     useEffect(() => {
         const initial: {[key: string]: number} = {};
@@ -349,7 +378,8 @@ const ReceivePOModal: React.FC<{ po: PurchaseOrder; onClose: () => void }> = ({ 
         const itemsToReceive: { productId: string; variantId?: string; quantity: number }[] = [];
         
         po.items.forEach((item, idx) => {
-            const qty = receivedQuantities[idx];
+            const qtyVal = receivedQuantities[idx];
+            const qty = typeof qtyVal === 'string' ? parseFloat(qtyVal) : qtyVal;
             if (qty > 0) {
                 itemsToReceive.push({
                     productId: item.productId,
@@ -363,6 +393,10 @@ const ReceivePOModal: React.FC<{ po: PurchaseOrder; onClose: () => void }> = ({ 
             receivePOItems(po.id, itemsToReceive);
         }
         onClose();
+    };
+
+    const handleQuantityChange = (idx: number, value: string) => {
+        setReceivedQuantities(prev => ({ ...prev, [idx]: value }));
     };
 
     return (
@@ -386,10 +420,8 @@ const ReceivePOModal: React.FC<{ po: PurchaseOrder; onClose: () => void }> = ({ 
                                 <td className="p-2">
                                     <input 
                                         type="number" 
-                                        min="0" 
-                                        max={item.quantityOrdered - item.quantityReceived}
-                                        value={receivedQuantities[idx] || 0}
-                                        onChange={(e) => setReceivedQuantities(prev => ({ ...prev, [idx]: parseInt(e.target.value) || 0 }))}
+                                        value={receivedQuantities[idx] === undefined ? '' : receivedQuantities[idx]}
+                                        onChange={(e) => handleQuantityChange(idx, e.target.value)}
                                         className="w-20 text-center rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white"
                                     />
                                 </td>
@@ -455,9 +487,9 @@ export const PurchaseOrdersView: React.FC = () => {
         showToast('Purchase Order created.', 'success');
     };
 
-    const handleDeletePO = () => {
+    const handleDeletePO = async () => {
         if (poToDelete) {
-            const result = deletePurchaseOrder(poToDelete.id);
+            const result = await deletePurchaseOrder(poToDelete.id);
             showToast(result.message || 'Deleted', result.success ? 'success' : 'error');
             setPoToDelete(null);
         }
@@ -565,9 +597,7 @@ export const PurchaseOrdersView: React.FC = () => {
                                     {po.status !== 'Received' && (
                                         <button onClick={() => setReceivingPO(po)} className="p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Receive Items"><ReceiveIcon /></button>
                                     )}
-                                    {po.status === 'Pending' && (
-                                        <button onClick={() => setPoToDelete(po)} className="p-1 text-red-500 hover:text-red-700" title="Delete PO"><TrashIcon /></button>
-                                    )}
+                                    <button onClick={() => setPoToDelete(po)} className="p-1 text-red-500 hover:text-red-700" title="Delete PO"><TrashIcon /></button>
                                 </td>
                             </tr>
                         ))}
@@ -647,6 +677,7 @@ export const PurchaseOrdersView: React.FC = () => {
                 {poToDelete && (
                     <div>
                         <p className="text-gray-800 dark:text-gray-200">Are you sure you want to delete PO #{poToDelete.publicId || poToDelete.id}?</p>
+                        <p className="text-sm text-red-600 mt-2">Deleting this PO will also delete any related notifications.</p>
                         <div className="flex justify-end gap-2 pt-4">
                             <button onClick={() => setPoToDelete(null)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md text-gray-800 dark:text-white">Cancel</button>
                             <button onClick={handleDeletePO} className="px-4 py-2 bg-red-600 text-white rounded-md">Delete</button>

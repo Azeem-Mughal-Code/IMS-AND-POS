@@ -103,12 +103,12 @@ export const INITIAL_PRODUCTS: Product[] = [
       },
     ],
     variants: [
-      { id: 'var_1', options: { Color: 'White', Size: 'S' }, skuSuffix: 'WH-S', retailPrice: 24.99, costPrice: 10.00, stock: 20 },
-      { id: 'var_2', options: { Color: 'White', Size: 'M' }, skuSuffix: 'WH-M', retailPrice: 24.99, costPrice: 10.00, stock: 30 },
-      { id: 'var_3', options: { Color: 'White', Size: 'L' }, skuSuffix: 'WH-L', retailPrice: 24.99, costPrice: 10.00, stock: 15 },
-      { id: 'var_4', options: { Color: 'Black', Size: 'S' }, skuSuffix: 'BK-S', retailPrice: 24.99, costPrice: 10.00, stock: 22 },
-      { id: 'var_5', options: { Color: 'Black', Size: 'M' }, skuSuffix: 'BK-M', retailPrice: 24.99, costPrice: 10.00, stock: 28 },
-      { id: 'var_6', options: { Color: 'Black', Size: 'L' }, skuSuffix: 'BK-L', retailPrice: 24.99, costPrice: 10.00, stock: 12 },
+      { id: 'var_1', options: { Color: 'White', Size: 'S' }, skuSuffix: 'WH-S', retailPrice: 24.99, costPrice: 10.00, stock: 20, priceHistory: [] },
+      { id: 'var_2', options: { Color: 'White', Size: 'M' }, skuSuffix: 'WH-M', retailPrice: 24.99, costPrice: 10.00, stock: 30, priceHistory: [] },
+      { id: 'var_3', options: { Color: 'White', Size: 'L' }, skuSuffix: 'WH-L', retailPrice: 24.99, costPrice: 10.00, stock: 15, priceHistory: [] },
+      { id: 'var_4', options: { Color: 'Black', Size: 'S' }, skuSuffix: 'BK-S', retailPrice: 24.99, costPrice: 10.00, stock: 22, priceHistory: [] },
+      { id: 'var_5', options: { Color: 'Black', Size: 'M' }, skuSuffix: 'BK-M', retailPrice: 24.99, costPrice: 10.00, stock: 28, priceHistory: [] },
+      { id: 'var_6', options: { Color: 'Black', Size: 'L' }, skuSuffix: 'BK-L', retailPrice: 24.99, costPrice: 10.00, stock: 12, priceHistory: [] },
     ],
   },
 ];

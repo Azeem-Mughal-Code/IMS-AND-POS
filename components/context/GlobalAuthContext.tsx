@@ -3,6 +3,7 @@ import React, { createContext, useContext, ReactNode, useCallback } from 'react'
 import { GlobalUser, Workspace, User, UserRole } from '../../types';
 import usePersistedState from '../../hooks/usePersistedState';
 import { setInDB } from '../../utils/db';
+import { generateUniqueNanoID, generateUUIDv7 } from '../../utils/idGenerator';
 
 interface GlobalAuthContextType {
     globalUsers: GlobalUser[];
@@ -12,9 +13,10 @@ interface GlobalAuthContextType {
     login: (email: string, password: string) => { success: boolean; message?: string; user?: GlobalUser };
     logout: () => void;
     createWorkspace: (name: string) => Promise<Workspace | null>;
-    updateWorkspace: (id: string, name: string) => { success: boolean; message?: string };
+    updateWorkspace: (id: string, data: { name?: string, alias?: string }) => { success: boolean; message?: string };
     getUserWorkspaces: () => Workspace[];
     getWorkspaceById: (id: string) => Workspace | undefined;
+    getWorkspaceByIdOrAlias: (identifier: string) => Workspace | undefined;
 }
 
 const GlobalAuthContext = createContext<GlobalAuthContextType | null>(null);
@@ -60,10 +62,15 @@ export const GlobalAuthProvider: React.FC<{ children: ReactNode }> = ({ children
 
     const createWorkspace = useCallback(async (name: string): Promise<Workspace | null> => {
         if (!currentGlobalUser) return null;
-        const newWorkspaceId = `ws_${Date.now()}`;
+        const newWorkspaceId = generateUUIDv7();
+        
+        // Generate unique alias (Short Code) with WS- prefix
+        const alias = generateUniqueNanoID(workspaces, (w, id) => w.alias === id, 6, 'WS-');
+
         const newWorkspace: Workspace = {
             id: newWorkspaceId,
             name,
+            alias,
             ownerId: currentGlobalUser.id,
             memberIds: [currentGlobalUser.id],
         };
@@ -76,8 +83,6 @@ export const GlobalAuthProvider: React.FC<{ children: ReactNode }> = ({ children
             role: UserRole.Admin
         };
         
-        // We need to use the specific keys expected by AuthContext
-        // The key format in AuthContext is `ims-${workspaceId}-users`
         try {
             await setInDB(`ims-${newWorkspaceId}-users`, [localAdmin]);
         } catch (error) {
@@ -86,12 +91,20 @@ export const GlobalAuthProvider: React.FC<{ children: ReactNode }> = ({ children
 
         setWorkspaces(prev => [...prev, newWorkspace]);
         return newWorkspace;
-    }, [currentGlobalUser, setWorkspaces]);
+    }, [currentGlobalUser, workspaces, setWorkspaces]);
 
-    const updateWorkspace = useCallback((id: string, name: string): { success: boolean; message?: string } => {
-        setWorkspaces(prev => prev.map(ws => ws.id === id ? { ...ws, name } : ws));
+    const updateWorkspace = useCallback((id: string, data: { name?: string, alias?: string }): { success: boolean; message?: string } => {
+        // Check alias uniqueness if changing
+        if (data.alias) {
+            const conflict = workspaces.find(w => w.alias === data.alias && w.id !== id);
+            if (conflict) {
+                return { success: false, message: 'Store Code already taken.' };
+            }
+        }
+
+        setWorkspaces(prev => prev.map(ws => ws.id === id ? { ...ws, ...data } : ws));
         return { success: true };
-    }, [setWorkspaces]);
+    }, [workspaces, setWorkspaces]);
     
     const getUserWorkspaces = useCallback((): Workspace[] => {
         if (!currentGlobalUser) return [];
@@ -100,6 +113,10 @@ export const GlobalAuthProvider: React.FC<{ children: ReactNode }> = ({ children
 
     const getWorkspaceById = useCallback((id: string): Workspace | undefined => {
         return workspaces.find(ws => ws.id === id);
+    }, [workspaces]);
+
+    const getWorkspaceByIdOrAlias = useCallback((identifier: string): Workspace | undefined => {
+        return workspaces.find(ws => ws.id === identifier || ws.alias === identifier);
     }, [workspaces]);
 
     const value = {
@@ -112,7 +129,8 @@ export const GlobalAuthProvider: React.FC<{ children: ReactNode }> = ({ children
         createWorkspace,
         updateWorkspace,
         getUserWorkspaces,
-        getWorkspaceById
+        getWorkspaceById,
+        getWorkspaceByIdOrAlias
     };
 
     return <GlobalAuthContext.Provider value={value}>{children}</GlobalAuthContext.Provider>;

@@ -1,23 +1,25 @@
 
-import React, { createContext, useContext, ReactNode, useCallback, useMemo } from 'react';
-import { Sale, PurchaseOrder, POItem, Product, CartItem, Shift, PaymentType, HeldOrder } from '../../types';
-import usePersistedState from '../../hooks/usePersistedState';
+import React, { createContext, useContext, ReactNode, useMemo, useEffect } from 'react';
+import { useLiveQuery } from "dexie-react-hooks";
+import { Sale, PurchaseOrder, POItem, Product, CartItem, Shift, PaymentType, HeldOrder, NotificationType } from '../../types';
 import { useProducts } from './ProductContext';
 import { useUIState } from './UIStateContext';
 import { useAuth } from './AuthContext';
 import { generateUUIDv7, generateUniqueNanoID } from '../../utils/idGenerator';
+import { db } from '../../utils/db';
 
 interface SalesContextType {
     sales: Sale[];
     purchaseOrders: PurchaseOrder[];
     heldOrders: HeldOrder[];
+    shifts: Shift[];
     processSale: (saleData: Omit<Sale, 'id' | 'date'>) => Sale;
-    deleteSale: (saleId: string) => { success: boolean, message?: string };
+    deleteSale: (saleId: string) => Promise<{ success: boolean; message?: string }>;
     clearSales: (options?: { statuses?: (Sale['status'])[] }) => void;
     pruneData: (target: 'sales' | 'purchaseOrders', options: { days: number; statuses?: Sale['status'][] }) => { success: boolean; message: string };
     addPurchaseOrder: (poData: Omit<PurchaseOrder, 'id'>) => PurchaseOrder;
     receivePOItems: (poId: string, items: { productId: string; variantId?: string; quantity: number }[]) => void;
-    deletePurchaseOrder: (poId: string) => { success: boolean; message?: string };
+    deletePurchaseOrder: (poId: string) => Promise<{ success: boolean; message?: string }>;
     factoryReset: () => void;
     currentShift: Shift | null;
     openShift: (float: number) => void;
@@ -35,31 +37,55 @@ export const useSales = () => {
 };
 
 export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string }> = ({ children, workspaceId }) => {
-    const ls_prefix = `ims-${workspaceId}`;
     const { currentUser } = useAuth();
-    const [sales, setSales] = usePersistedState<Sale[]>(`${ls_prefix}-sales`, []);
-    const [purchaseOrders, setPurchaseOrders] = usePersistedState<PurchaseOrder[]>(`${ls_prefix}-purchaseOrders`, []);
-    const [heldOrders, setHeldOrders] = usePersistedState<HeldOrder[]>(`${ls_prefix}-heldOrders`, []);
-    const [shifts, setShifts] = usePersistedState<Shift[]>(`${ls_prefix}-shifts`, []);
+    
+    // Reactive Data from Dexie
+    const sales = useLiveQuery(() => db.sales.orderBy('date').reverse().toArray()) || [];
+    const purchaseOrders = useLiveQuery(() => db.purchaseOrders.orderBy('dateCreated').reverse().toArray()) || [];
+    const heldOrders = useLiveQuery(() => db.heldOrders.toArray()) || [];
+    const shifts = useLiveQuery(() => db.shifts.orderBy('startTime').reverse().toArray()) || [];
     
     const { products, adjustStock, removeStockHistoryByReason } = useProducts();
-    const { addNotification } = useUIState();
+    const { addNotification, notifications } = useUIState();
 
-    // Derived current shift
+    // Check for overdue Purchase Orders
+    useEffect(() => {
+        const checkOverduePOs = () => {
+            const now = new Date();
+            purchaseOrders.forEach(po => {
+                if (po.status !== 'Received' && po.dateExpected) {
+                    const expectedDate = new Date(po.dateExpected);
+                    if (now > expectedDate) {
+                        const alreadyNotified = notifications.some(n => 
+                            n.relatedId === po.id && 
+                            n.type === NotificationType.PO && 
+                            n.message.includes('overdue')
+                        );
+
+                        if (!alreadyNotified) {
+                            addNotification(
+                                `PO #${po.publicId || po.id} from ${po.supplierName} is overdue (Exp: ${expectedDate.toLocaleDateString()})`, 
+                                NotificationType.PO, 
+                                po.id
+                            );
+                        }
+                    }
+                }
+            });
+        };
+        checkOverduePOs();
+    }, [purchaseOrders, addNotification, notifications]);
+
     const currentShift = useMemo(() => shifts.find(s => s.status === 'Open') || null, [shifts]);
 
     const processSale = (saleData: Omit<Sale, 'id' | 'date'>): Sale => {
         let finalType: 'Sale' | 'Return' = saleData.total >= 0 ? 'Sale' : 'Return';
         const isReturn = finalType === 'Return';
         
-        // Generate Dual IDs
-        // Internal: UUID v7 (Sortable)
         const internalId = generateUUIDv7();
-        // Public: NanoID (8 chars for sales) with TRX- for Sales or RET- for Returns
         const prefix = isReturn ? 'RET-' : 'TRX-';
-        const publicId = generateUniqueNanoID(sales, (s, id) => s.publicId === id, 8, prefix);
+        const publicId = generateUniqueNanoID<Sale>(sales, (s, id) => s.publicId === id, 8, prefix);
 
-        // If it's a return, try to find the public ID of the original sale for reference
         let originalSalePublicId: string | undefined = undefined;
         if (saleData.originalSaleId) {
             const originalSale = sales.find(s => s.id === saleData.originalSaleId);
@@ -73,7 +99,8 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
             publicId: publicId,
             originalSalePublicId: originalSalePublicId,
             date: new Date().toISOString(),
-            status: 'Completed', // Default status
+            status: 'Completed',
+            sync_status: 'pending'
         };
 
         // Process each item for stock adjustment
@@ -91,11 +118,10 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
         });
 
         // Process updates to ORIGINAL sales if any items are returns linked to history
-        const salesToUpdate = new Map<string, CartItem[]>(); // Map<SaleID, ItemsToUpdate[]>
+        const salesToUpdate = new Map<string, CartItem[]>();
 
         newSale.items.forEach(item => {
             if (item.quantity < 0 && item.originalSaleId) {
-                // This is a return item linked to a past sale
                 const existing = salesToUpdate.get(item.originalSaleId) || [];
                 existing.push(item);
                 salesToUpdate.set(item.originalSaleId, existing);
@@ -103,110 +129,130 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
         });
 
         if (salesToUpdate.size > 0) {
-            setSales(prev => prev.map(s => {
-                if (salesToUpdate.has(s.id)) {
-                    const returnItems = salesToUpdate.get(s.id)!;
-                    const updatedItems = s.items.map(origItem => {
+            salesToUpdate.forEach(async (returnItems, saleId) => {
+                const sale = await db.sales.get(saleId);
+                if (sale) {
+                    const updatedItems = sale.items.map(origItem => {
                         const matchingReturns = returnItems.filter(ri => 
                             ri.productId === origItem.productId && 
                             ri.variantId === origItem.variantId
                         );
-                        
                         if (matchingReturns.length > 0) {
                             const quantityReturnedNow = matchingReturns.reduce((sum, ri) => sum + Math.abs(ri.quantity), 0);
                             return { ...origItem, returnedQuantity: (origItem.returnedQuantity || 0) + quantityReturnedNow };
                         }
                         return origItem;
                     });
-
                     const allReturned = updatedItems.every(item => (item.returnedQuantity || 0) >= item.quantity);
-                    return { ...s, items: updatedItems, status: allReturned ? 'Refunded' : 'Partially Refunded' };
+                    await db.sales.update(saleId, { 
+                        items: updatedItems, 
+                        status: allReturned ? 'Refunded' : 'Partially Refunded',
+                        sync_status: 'pending',
+                        updated_at: new Date().toISOString()
+                    });
                 }
-                return s;
-            }));
+            });
         }
 
         if (currentShift) {
             const cashPayment = newSale.payments.find(p => p.type === PaymentType.Cash);
             if (cashPayment) {
                 const cashAmount = cashPayment.amount;
-                setShifts(prev => prev.map(s => {
-                    if (s.id === currentShift.id) {
-                        return {
-                            ...s,
-                            cashSales: cashAmount > 0 ? s.cashSales + cashAmount : s.cashSales,
-                            cashRefunds: cashAmount < 0 ? s.cashRefunds + Math.abs(cashAmount) : s.cashRefunds,
-                        };
-                    }
-                    return s;
-                }));
+                const s = currentShift;
+                db.shifts.update(s.id, {
+                    cashSales: cashAmount > 0 ? s.cashSales + cashAmount : s.cashSales,
+                    cashRefunds: cashAmount < 0 ? s.cashRefunds + Math.abs(cashAmount) : s.cashRefunds,
+                    sync_status: 'pending',
+                    updated_at: new Date().toISOString()
+                });
             }
         }
 
-        setSales(prev => [newSale, ...prev]);
+        db.sales.add(newSale);
         return newSale;
     };
 
-    const deleteSale = (saleId: string) => {
-        const saleToDelete = sales.find(s => s.id === saleId);
+    const deleteSale = async (saleId: string) => {
+        const saleToDelete = await db.sales.get(saleId);
         if(!saleToDelete) return { success: false, message: "Sale not found." };
-        if(saleToDelete.type === 'Return') return { success: false, message: "Delete the original sale transaction, not the return."};
         
-        const associatedReturnIds = sales.filter(s => s.originalSaleId === saleId).map(s => s.id);
+        // Rule 1: When a sale record is deleted, delete its related return records and stock history.
+        // Also delete stock history of the related return records.
         
-        setSales(prev => prev.filter(s => s.id !== saleId && !associatedReturnIds.includes(s.id)));
+        // 1. Identify associated returns
+        const associatedReturns = await db.sales.where('originalSaleId').equals(saleId).toArray();
+        const associatedReturnIds = associatedReturns.map(r => r.id);
+        
+        // 2. Delete the main sale and associated returns
+        await db.sales.delete(saleId);
+        if (associatedReturnIds.length > 0) {
+            await db.sales.bulkDelete(associatedReturnIds);
+        }
 
-        // Remove stock history using Public ID if available, else Internal ID
+        // 3. Delete Stock History for MAIN sale
         const refId = saleToDelete.publicId || saleToDelete.id;
         removeStockHistoryByReason(`Sale #${refId}`); 
+
+        // 4. Delete Stock History for RELATED returns
+        associatedReturns.forEach(ret => {
+            const retRefId = ret.publicId || ret.id;
+            removeStockHistoryByReason(`Sale #${retRefId}`);
+        });
         
-        return { success: true, message: `Sale ${refId} and associated returns deleted.` };
+        return { success: true, message: `Sale ${refId} and associated records deleted.` };
     };
 
     const clearSales = (options?: { statuses?: (Sale['status'])[] }) => {
-        const allSales = sales;
-        let salesToClearIds: Set<string>;
-
+        let salesToClear = sales;
+        
         if (!options?.statuses) {
-            salesToClearIds = new Set(allSales.filter(s => s.type === 'Sale').map(s => s.id));
+            salesToClear = sales.filter(s => s.type === 'Sale');
         } else {
             if (options.statuses.length === 0) return;
-            salesToClearIds = new Set(allSales.filter(s => s.type === 'Sale' && options.statuses!.includes(s.status!)).map(s => s.id));
+            salesToClear = sales.filter(s => s.type === 'Sale' && options.statuses!.includes(s.status!));
         }
 
-        if (salesToClearIds.size === 0) return;
+        if (salesToClear.length === 0) return;
 
-        salesToClearIds.forEach(id => {
-            const sale = allSales.find(s => s.id === id);
-            const refId = sale?.publicId || id;
+        const salesToClearIds = salesToClear.map(s => s.id);
+
+        salesToClear.forEach(s => {
+            const refId = s.publicId || s.id;
             removeStockHistoryByReason(`Sale #${refId}`);
         });
 
-        const salesToKeep = allSales.filter(s => 
-            !salesToClearIds.has(s.id) && 
-            !(s.type === 'Return' && s.originalSaleId && salesToClearIds.has(s.originalSaleId))
-        );
+        // Also delete returns associated with these sales
+        const returnsToClear = sales.filter(s => s.type === 'Return' && s.originalSaleId && salesToClearIds.includes(s.originalSaleId));
+        const returnsToClearIds = returnsToClear.map(s => s.id);
 
-        setSales(salesToKeep);
+        // Delete stock history for returns too
+        returnsToClear.forEach(s => {
+            const refId = s.publicId || s.id;
+            removeStockHistoryByReason(`Sale #${refId}`);
+        });
+
+        db.sales.bulkDelete([...salesToClearIds, ...returnsToClearIds]);
     };
     
     const addPurchaseOrder = (poData: Omit<PurchaseOrder, 'id'>): PurchaseOrder => {
         const internalId = generateUUIDv7();
-        const publicId = generateUniqueNanoID(purchaseOrders, (p, id) => p.publicId === id, 6, 'PO-');
+        const publicId = generateUniqueNanoID<PurchaseOrder>(purchaseOrders, (p, id) => p.publicId === id, 6, 'PO-');
 
         const newPO: PurchaseOrder = {
             ...poData,
             id: internalId,
             publicId: publicId,
+            sync_status: 'pending'
         };
-        setPurchaseOrders(prev => [newPO, ...prev]);
-        addNotification(`New PO #${newPO.publicId} created for ${newPO.supplierName}.`, 'PO', newPO.id);
+        db.purchaseOrders.add(newPO);
+        addNotification(`New PO #${newPO.publicId} created for ${newPO.supplierName}.`, NotificationType.PO, newPO.id);
         return newPO;
     };
     
     const receivePOItems = (poId: string, items: { productId: string; variantId?: string; quantity: number }[]) => {
         const po = purchaseOrders.find(p => p.id === poId);
-        const poRef = po?.publicId || poId;
+        if (!po) return;
+        const poRef = po.publicId || poId;
 
         items.forEach(item => {
             const product = products.find(p => p.id === item.productId);
@@ -221,32 +267,36 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
             }
         });
 
-        setPurchaseOrders(prev => prev.map(poItem => {
-            if (poItem.id === poId) {
-                const updatedItems = poItem.items.map(item => {
-                    const received = items.find(r => r.productId === item.productId && r.variantId === item.variantId);
-                    if (received) {
-                        return { ...item, quantityReceived: item.quantityReceived + received.quantity };
-                    }
-                    return item;
-                });
-                
-                const allReceived = updatedItems.every(item => item.quantityReceived >= item.quantityOrdered);
-                const newStatus = allReceived ? 'Received' : 'Partial';
-                if(newStatus !== poItem.status) {
-                    addNotification(`PO #${poItem.publicId || poItem.id} is now ${newStatus}.`, 'PO', poId);
-                }
-                return { ...poItem, items: updatedItems, status: newStatus };
+        const updatedItems = po.items.map(item => {
+            const received = items.find(r => r.productId === item.productId && r.variantId === item.variantId);
+            if (received) {
+                return { ...item, quantityReceived: item.quantityReceived + received.quantity };
             }
-            return poItem;
-        }));
+            return item;
+        });
+        
+        const allReceived = updatedItems.every(item => item.quantityReceived >= item.quantityOrdered);
+        const newStatus = allReceived ? 'Received' : 'Partial';
+        if(newStatus !== po.status) {
+            addNotification(`PO #${po.publicId || po.id} is now ${newStatus}.`, NotificationType.PO, poId);
+        }
+        
+        db.purchaseOrders.update(poId, { 
+            items: updatedItems, 
+            status: newStatus, 
+            sync_status: 'pending', 
+            updated_at: new Date().toISOString() 
+        });
     };
     
-    const deletePurchaseOrder = (poId: string) => {
-        const po = purchaseOrders.find(p => p.id === poId);
+    const deletePurchaseOrder = async (poId: string) => {
+        const po = await db.purchaseOrders.get(poId);
         if(!po) return { success: false, message: 'Purchase Order not found.'};
-        if(po.status !== 'Pending') return { success: false, message: 'Only POs with Pending status can be deleted.'};
-        setPurchaseOrders(prev => prev.filter(p => p.id !== poId));
+        
+        // Rule 3: When a PO is deleted, its related notifications will also be deleted.
+        await db.notifications.where('relatedId').equals(poId).delete();
+        await db.purchaseOrders.delete(poId);
+        
         return { success: true, message: 'Purchase Order deleted.'};
     };
     
@@ -264,51 +314,62 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
                 return true;
             });
 
-            const salesToClearIds = new Set(salesToClear.map(s => s.id));
+            const salesToClearIds = salesToClear.map(s => s.id);
 
-            if (salesToClearIds.size === 0) {
+            if (salesToClearIds.length === 0) {
                 return { success: true, message: 'No sales records matched the criteria for pruning.' };
             }
 
-            salesToClearIds.forEach(id => {
-                const s = salesToClear.find(sale => sale.id === id);
-                const ref = s?.publicId || id;
+            salesToClear.forEach(s => {
+                const ref = s.publicId || s.id;
                 removeStockHistoryByReason(`Sale #${ref}`);
             });
             
-            const returnsRemovedCount = sales.filter(s => s.type === 'Return' && s.originalSaleId && salesToClearIds.has(s.originalSaleId)).length;
-            const totalRemoved = salesToClearIds.size + returnsRemovedCount;
+            // Also delete returns
+            const returnsToRemove = sales.filter(s => s.type === 'Return' && s.originalSaleId && salesToClearIds.includes(s.originalSaleId));
+            const returnsToRemoveIds = returnsToRemove.map(s => s.id);
             
-            setSales(prev => prev.filter(s => 
-                !salesToClearIds.has(s.id) && 
-                !(s.type === 'Return' && s.originalSaleId && salesToClearIds.has(s.originalSaleId))
-            ));
+            returnsToRemove.forEach(s => {
+                const ref = s.publicId || s.id;
+                removeStockHistoryByReason(`Sale #${ref}`);
+            });
+
+            const allIds = [...salesToClearIds, ...returnsToRemoveIds];
             
-            return { success: true, message: `Pruned ${totalRemoved} records.`};
+            db.sales.bulkDelete(allIds);
+            return { success: true, message: `Pruned ${allIds.length} records.`};
         }
 
         if (target === 'purchaseOrders') {
-            const originalCount = purchaseOrders.length;
-            setPurchaseOrders(prev => prev.filter(po => new Date(po.dateCreated) >= cutoffDate));
-            const newCount = purchaseOrders.length;
-            return { success: true, message: `Pruned ${originalCount - newCount} purchase orders.`};
+            const toDeleteIds = purchaseOrders.filter(po => new Date(po.dateCreated) < cutoffDate).map(po => po.id);
+            // Also delete notifications for these POs
+            toDeleteIds.forEach(id => {
+                db.notifications.where('relatedId').equals(id).delete();
+            });
+            db.purchaseOrders.bulkDelete(toDeleteIds);
+            return { success: true, message: `Pruned ${toDeleteIds.length} purchase orders.`};
         }
         
         return { success: false, message: 'Invalid data target for pruning.' };
     };
 
     const factoryReset = () => {
-        setSales([]);
-        setPurchaseOrders([]);
-        setShifts([]);
-        setHeldOrders([]);
+        (db as any).transaction('rw', db.sales, db.purchaseOrders, db.shifts, db.heldOrders, db.notifications, async () => {
+            await db.sales.clear();
+            await db.purchaseOrders.clear();
+            await db.shifts.clear();
+            await db.heldOrders.clear();
+            await db.notifications.clear();
+        });
     };
 
-    // Shift Management Functions
     const openShift = (float: number) => {
         if (currentShift) return;
+        const internalId = generateUUIDv7();
+        const publicId = generateUniqueNanoID<Shift>(shifts, (s, id) => s.publicId === id, 6, 'SHF-');
         const newShift: Shift = {
-            id: generateUUIDv7(),
+            id: internalId,
+            publicId: publicId,
             openedByUserId: currentUser?.id || 'unknown',
             openedByUserName: currentUser?.username || 'Unknown',
             startTime: new Date().toISOString(),
@@ -316,9 +377,10 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
             status: 'Open',
             cashSales: 0,
             cashRefunds: 0,
+            sync_status: 'pending'
         };
-        setShifts(prev => [newShift, ...prev]);
-        addNotification(`Shift started by ${newShift.openedByUserName} with float ${float}`, 'USER');
+        db.shifts.add(newShift);
+        addNotification(`Shift started by ${newShift.openedByUserName} with float ${float}`, NotificationType.USER);
     };
 
     const closeShift = (actualCash: number, notes: string) => {
@@ -327,23 +389,19 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
         const expectedCash = currentShift.startFloat + currentShift.cashSales - currentShift.cashRefunds;
         const difference = actualCash - expectedCash;
 
-        setShifts(prev => prev.map(s => {
-            if (s.id === currentShift.id) {
-                return {
-                    ...s,
-                    closedByUserId: currentUser?.id,
-                    closedByUserName: currentUser?.username,
-                    endTime: new Date().toISOString(),
-                    endFloat: expectedCash,
-                    actualCash,
-                    difference,
-                    notes,
-                    status: 'Closed',
-                };
-            }
-            return s;
-        }));
-        addNotification(`Shift closed by ${currentUser?.username}. Difference: ${difference}`, 'USER');
+        db.shifts.update(currentShift.id, {
+            closedByUserId: currentUser?.id,
+            closedByUserName: currentUser?.username,
+            endTime: new Date().toISOString(),
+            endFloat: expectedCash,
+            actualCash,
+            difference,
+            notes,
+            status: 'Closed',
+            sync_status: 'pending',
+            updated_at: new Date().toISOString()
+        });
+        addNotification(`Shift closed by ${currentUser?.username}. Difference: ${difference}`, NotificationType.USER);
         return { success: true };
     };
 
@@ -351,20 +409,21 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
         const newHeldOrder: HeldOrder = {
             ...order,
             id: generateUUIDv7(),
-            publicId: generateUniqueNanoID(heldOrders, (o, id) => o.publicId === id, 4, 'HLD-'),
+            publicId: generateUniqueNanoID<HeldOrder>(heldOrders, (o, id) => o.publicId === id, 4, 'HLD-'),
             date: new Date().toISOString(),
         };
-        setHeldOrders(prev => [newHeldOrder, ...prev]);
+        db.heldOrders.add(newHeldOrder);
     };
 
     const deleteHeldOrder = (orderId: string) => {
-        setHeldOrders(prev => prev.filter(o => o.id !== orderId));
+        db.heldOrders.delete(orderId);
     };
 
     const value = {
         sales,
         purchaseOrders,
         heldOrders,
+        shifts,
         processSale,
         deleteSale,
         clearSales,

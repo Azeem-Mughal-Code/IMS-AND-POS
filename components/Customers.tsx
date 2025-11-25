@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Customer, Sale, UserRole } from '../types';
 import { useCustomers } from './context/CustomerContext';
 import { useSales } from './context/SalesContext';
@@ -158,6 +158,14 @@ const CustomerValuationDetails: React.FC<{ customer: Customer; onClose: () => vo
     const [timeRange, setTimeRange] = useState<TimeRange>('weekly');
     const [viewingReceipt, setViewingReceipt] = useState<Sale | null>(null);
     const printableAreaRef = useRef<HTMLDivElement>(null);
+    
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
+
+    // Reset page when time range changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [timeRange]);
 
     const handleSaveAsImage = () => {
         if (printableAreaRef.current && viewingReceipt) {
@@ -210,6 +218,13 @@ const CustomerValuationDetails: React.FC<{ customer: Customer; onClose: () => vo
             }
         }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [sales, customer.id, timeRange]);
+
+    const paginatedSales = useMemo(() => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return filteredSales.slice(start, start + itemsPerPage);
+    }, [filteredSales, currentPage]);
+
+    const totalPages = Math.ceil(filteredSales.length / itemsPerPage);
 
     const stats = useMemo(() => {
         const totalSpent = filteredSales.reduce((acc, s) => acc + s.total, 0);
@@ -274,47 +289,58 @@ const CustomerValuationDetails: React.FC<{ customer: Customer; onClose: () => vo
             </div>
 
             <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-3">Purchase History</h3>
-            <div className="border rounded-lg dark:border-gray-700 overflow-hidden max-h-96 overflow-y-auto">
-                <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                    <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0">
-                        <tr>
-                            <th className="px-6 py-3">Date</th>
-                            <th className="px-6 py-3">Receipt ID</th>
-                            <th className="px-6 py-3">Status</th>
-                            <th className="px-6 py-3">Items</th>
-                            <th className="px-6 py-3 text-right">Total</th>
-                            <th className="px-6 py-3 text-right">Profit</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                        {filteredSales.length > 0 ? (
-                            filteredSales.map(sale => (
-                                <tr key={sale.id} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
-                                    <td className="px-6 py-4 whitespace-nowrap">{formatDateTime(sale.date)}</td>
-                                    <td className="px-6 py-4 font-mono text-xs">
-                                        <button 
-                                            onClick={() => setViewingReceipt(sale)}
-                                            className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
-                                        >
-                                            {sale.publicId || sale.id}
-                                        </button>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        {getStatusBadge(sale)}
-                                    </td>
-                                    <td className="px-6 py-4">{sale.items.reduce((acc, item) => acc + item.quantity, 0)} items</td>
-                                    <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white">{formatCurrency(sale.total)}</td>
-                                    <td className="px-6 py-4 text-right text-green-600 dark:text-green-400">{formatCurrency(sale.profit)}</td>
-                                </tr>
-                            ))
-                        ) : (
+            <div className="border rounded-lg dark:border-gray-700 overflow-hidden flex flex-col">
+                <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                    <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
                             <tr>
-                                <td colSpan={6} className="px-6 py-8 text-center text-gray-500">No sales found in this time range.</td>
+                                <th className="px-6 py-3">Date</th>
+                                <th className="px-6 py-3">Receipt ID</th>
+                                <th className="px-6 py-3">Status</th>
+                                <th className="px-6 py-3">Items</th>
+                                <th className="px-6 py-3 text-right">Total</th>
+                                <th className="px-6 py-3 text-right">Profit</th>
                             </tr>
-                        )}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                            {paginatedSales.length > 0 ? (
+                                paginatedSales.map(sale => (
+                                    <tr key={sale.id} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
+                                        <td className="px-6 py-4 whitespace-nowrap">{formatDateTime(sale.date)}</td>
+                                        <td className="px-6 py-4 font-mono text-xs">
+                                            <button 
+                                                onClick={() => setViewingReceipt(sale)}
+                                                className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                                            >
+                                                {sale.publicId || sale.id}
+                                            </button>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {getStatusBadge(sale)}
+                                        </td>
+                                        <td className="px-6 py-4">{sale.items.reduce((acc, item) => acc + item.quantity, 0)} items</td>
+                                        <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white">{formatCurrency(sale.total)}</td>
+                                        <td className="px-6 py-4 text-right text-green-600 dark:text-green-400">{formatCurrency(sale.profit)}</td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">No sales found in this time range.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
+            
+            <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+                itemsPerPage={itemsPerPage}
+                totalItems={filteredSales.length}
+            />
+
             <div className="mt-4 flex justify-end">
                 <button onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Close</button>
             </div>
@@ -535,7 +561,7 @@ export const Customers: React.FC = () => {
                                     <tr key={c.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                                         <td className="px-6 py-4">
                                             <button 
-                                                onClick={() => setViewingProfile(c)}
+                                                onClick={() => activeTab === 'valuation' ? setViewingValuation(c) : setViewingProfile(c)}
                                                 className="text-blue-600 dark:text-blue-400 hover:underline font-mono text-xs font-semibold"
                                             >
                                                 {c.publicId || c.id}

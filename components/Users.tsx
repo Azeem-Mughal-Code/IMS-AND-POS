@@ -1,0 +1,582 @@
+
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { User, UserRole, CashierPermissions, Shift } from '../types';
+import { Modal } from './common/Modal';
+import { Pagination } from './common/Pagination';
+import { TrashIcon, PlusIcon, SearchIcon, ChevronUpIcon, ChevronDownIcon, PencilIcon, ShieldCheckIcon, PhotoIcon } from './Icons';
+import { ToggleSwitch } from './common/ToggleSwitch';
+import { useAuth } from './context/AuthContext';
+import { useUIState } from './context/UIStateContext';
+import { useSettings } from './context/SettingsContext';
+import { useSales } from './context/SalesContext';
+
+declare var html2canvas: any;
+
+const UserForm: React.FC<{
+    user?: User | null;
+    onSubmit: (userId: string | null, data: { username: string, pass: string }) => void,
+    onCancel: () => void,
+    errorMessage?: string,
+}> = ({ user, onSubmit, onCancel, errorMessage }) => {
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const isEditMode = !!user;
+
+    useEffect(() => {
+        if(isEditMode) {
+            setUsername(user.username);
+            setPassword('');
+        }
+    }, [user, isEditMode]);
+
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSubmit(isEditMode ? user.id : null, { username, pass: password });
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
+                <input type="text" value={username} onChange={e => setUsername(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} required={!isEditMode} minLength={isEditMode && !password ? 0 : 4} placeholder={isEditMode ? "Leave blank to keep current" : ""} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
+            </div>
+             <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Role</label>
+                <input type="text" value={user?.role || UserRole.Cashier} disabled className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-400" />
+            </div>
+             {errorMessage && <p className="text-red-500 text-sm text-center">{errorMessage}</p>}
+            <div className="flex justify-end gap-2 pt-4">
+                <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">{isEditMode ? 'Save Changes' : 'Add User'}</button>
+            </div>
+        </form>
+    );
+};
+
+const PermissionsModal: React.FC<{
+    onClose: () => void;
+}> = ({ onClose }) => {
+    const { cashierPermissions, setCashierPermissions } = useSettings();
+    const [localPermissions, setLocalPermissions] = useState<CashierPermissions>(cashierPermissions);
+
+    const handleToggle = (key: keyof CashierPermissions, value: boolean) => {
+        setLocalPermissions(prev => ({ ...prev, [key]: value }));
+    };
+
+    const handleSave = () => {
+        setCashierPermissions(localPermissions);
+        onClose();
+    };
+
+    return (
+        <div className="space-y-6">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+                Configure what actions users with the 'Cashier' role are permitted to perform throughout the application.
+            </p>
+            <div className="space-y-4">
+                <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 border-b pb-2 mb-2 dark:border-gray-600">Page Access</h4>
+                <ToggleSwitch
+                    enabled={!!localPermissions.canViewDashboard}
+                    onChange={(val) => handleToggle('canViewDashboard', val)}
+                    label="Can View Dashboard Page"
+                />
+                 <ToggleSwitch
+                    enabled={!!localPermissions.canViewInventory}
+                    onChange={(val) => handleToggle('canViewInventory', val)}
+                    label="Can View Inventory Page"
+                />
+                <ToggleSwitch
+                    enabled={!!localPermissions.canManageCustomers}
+                    onChange={(val) => handleToggle('canManageCustomers', val)}
+                    label="Can View Customers Page"
+                />
+                <ToggleSwitch
+                    enabled={!!localPermissions.canViewReports}
+                    onChange={(val) => handleToggle('canViewReports', val)}
+                    label="Can View Reports Page"
+                />
+                <ToggleSwitch
+                    enabled={!!localPermissions.canViewAnalysis}
+                    onChange={(val) => handleToggle('canViewAnalysis', val)}
+                    label="Can View Analysis Page"
+                />
+
+                <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 border-b pb-2 mb-2 pt-4 dark:border-gray-600">Action & Settings Permissions</h4>
+                <ToggleSwitch
+                    enabled={!!localPermissions.canProcessReturns}
+                    onChange={(val) => handleToggle('canProcessReturns', val)}
+                    label="Can Process Returns in POS"
+                />
+                 <ToggleSwitch
+                    enabled={!!localPermissions.canEditOwnProfile}
+                    onChange={(val) => handleToggle('canEditOwnProfile', val)}
+                    label="Can Edit Own Profile"
+                />
+                 <ToggleSwitch
+                    enabled={!!localPermissions.canEditBehaviorSettings}
+                    onChange={(val) => handleToggle('canEditBehaviorSettings', val)}
+                    label="Can Edit Behavior Settings"
+                />
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+                <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
+                <button type="button" onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Save Permissions</button>
+            </div>
+        </div>
+    );
+};
+
+const ShiftDetailsModal: React.FC<{ shift: Shift; onClose: () => void }> = ({ shift, onClose }) => {
+    const { formatDateTime, formatCurrency } = useSettings();
+    const printableRef = useRef<HTMLDivElement>(null);
+
+    const handleSaveAsImage = () => {
+        if (printableRef.current) {
+            html2canvas(printableRef.current, { 
+                backgroundColor: '#ffffff',
+                onclone: (clonedDoc: Document) => {
+                    clonedDoc.documentElement.classList.remove('dark');
+                }
+            }).then((canvas: HTMLCanvasElement) => {
+                const PADDING = 40;
+                const newCanvas = document.createElement('canvas');
+                newCanvas.width = canvas.width + PADDING * 2;
+                newCanvas.height = canvas.height + PADDING * 2;
+                const ctx = newCanvas.getContext('2d');
+                if (ctx) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, newCanvas.width, newCanvas.height);
+                    ctx.drawImage(canvas, PADDING, PADDING);
+                }
+
+                const link = document.createElement('a');
+                link.download = `shift-report-${shift.publicId || shift.id}.png`;
+                link.href = newCanvas.toDataURL('image/png');
+                link.click();
+            });
+        }
+    };
+
+    return (
+        <div className="flex flex-col h-full">
+            <div className="printable-area p-6" ref={printableRef}>
+                <div className="text-center border-b pb-6 mb-6 border-gray-200 dark:border-gray-700">
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Shift Report</h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 font-mono mt-2">{shift.publicId || shift.id}</p>
+                    <div className="mt-2 inline-block">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${shift.status === 'Open' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}`}>
+                            {shift.status}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-x-4 gap-y-6 text-sm text-gray-800 dark:text-gray-200 mb-6">
+                    <div>
+                        <p className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase mb-1">Opened</p>
+                        <p className="text-gray-900 dark:text-white">{formatDateTime(shift.startTime)}</p>
+                        <p className="text-gray-500 text-xs">by {shift.openedByUserName}</p>
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase mb-1">Closed</p>
+                        <p className="text-gray-900 dark:text-white">{shift.endTime ? formatDateTime(shift.endTime) : '-'}</p>
+                        <p className="text-gray-500 text-xs">{shift.closedByUserName ? `by ${shift.closedByUserName}` : ''}</p>
+                    </div>
+                </div>
+
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 space-y-3 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">
+                    <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-300">Starting Float</span>
+                        <span className="font-mono font-medium text-gray-900 dark:text-white">{formatCurrency(shift.startFloat)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-green-600 dark:text-green-400">+ Cash Sales</span>
+                        <span className="font-mono font-medium text-green-600 dark:text-green-400">{formatCurrency(shift.cashSales)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-red-600 dark:text-red-400">- Cash Refunds</span>
+                        <span className="font-mono font-medium text-red-600 dark:text-red-400">{formatCurrency(shift.cashRefunds)}</span>
+                    </div>
+                    <div className="border-t border-gray-300 dark:border-gray-600 pt-2 flex justify-between font-bold text-base text-gray-900 dark:text-white">
+                        <span>Expected Cash</span>
+                        <span className="font-mono">{formatCurrency((shift.endFloat || (shift.startFloat + shift.cashSales - shift.cashRefunds)))}</span>
+                    </div>
+                </div>
+
+                {shift.status === 'Closed' && shift.actualCash !== undefined && (
+                    <div className="mt-6 space-y-3 text-gray-900 dark:text-white">
+                        <div className="flex justify-between text-lg font-semibold">
+                            <span>Actual Counted</span>
+                            <span className="font-mono">{formatCurrency(shift.actualCash)}</span>
+                        </div>
+                        <div className={`flex justify-between font-bold p-3 rounded-lg ${
+                            (shift.difference || 0) === 0 ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 
+                            'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                        }`}>
+                            <span>Difference</span>
+                            <span className="font-mono">{(shift.difference || 0) > 0 ? '+' : ''}{formatCurrency(shift.difference || 0)}</span>
+                        </div>
+                    </div>
+                )}
+
+                {shift.notes && (
+                    <div className="mt-6">
+                        <p className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase mb-1">Notes</p>
+                        <p className="text-sm whitespace-pre-wrap bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg border border-yellow-100 dark:border-yellow-900/30 text-gray-800 dark:text-gray-200">
+                            {shift.notes}
+                        </p>
+                    </div>
+                )}
+            </div>
+            
+            <div className="mt-4 flex justify-end gap-2 border-t pt-4 dark:border-gray-700 no-print">
+                <button onClick={handleSaveAsImage} className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Save Image">
+                    <PhotoIcon className="h-5 w-5" />
+                </button>
+                <button onClick={() => window.print()} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Print</button>
+                <button onClick={onClose} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Close</button>
+            </div>
+        </div>
+    );
+};
+
+type SortableUserKeys = 'username' | 'role';
+
+const UsersList: React.FC = () => {
+    const { users, currentUser, addUser, updateUser, deleteUser } = useAuth();
+    const { usersViewState, onUsersViewUpdate, showToast } = useUIState();
+    const { paginationConfig } = useSettings();
+    const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+    const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
+    const [editingUser, setEditingUser] = useState<User | null>(null);
+    const [userToDelete, setUserToDelete] = useState<User | null>(null);
+    const [formError, setFormError] = useState('');
+    
+    const { searchTerm, sortConfig, currentPage } = usersViewState;
+    const itemsPerPage = paginationConfig.users || 10;
+
+    const requestSort = (key: SortableUserKeys) => {
+        let direction: 'ascending' | 'descending' = 'ascending';
+        if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+            direction = 'descending';
+        }
+        onUsersViewUpdate({ sortConfig: { key, direction } });
+    };
+    
+    const filteredAndSortedUsers = useMemo(() => {
+        const filtered = users.filter(u => u.username.toLowerCase().includes(searchTerm.toLowerCase()));
+        
+        return filtered.sort((a, b) => {
+            const valA = a[sortConfig.key];
+            const valB = b[sortConfig.key];
+            const comparison = valA.localeCompare(valB);
+            return sortConfig.direction === 'ascending' ? comparison : -comparison;
+        });
+
+    }, [users, searchTerm, sortConfig]);
+
+    const totalItems = filteredAndSortedUsers.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    const paginatedUsers = useMemo(() => {
+        return filteredAndSortedUsers.slice(
+            (currentPage - 1) * itemsPerPage,
+            currentPage * itemsPerPage
+        );
+    }, [filteredAndSortedUsers, currentPage, itemsPerPage]);
+
+    const handleUserFormSubmit = (userId: string | null, data: { username: string, pass: string }) => {
+        setFormError('');
+        const isEditMode = !!userId;
+        const result = isEditMode
+            ? updateUser(userId!, data.username, data.pass)
+            : addUser(data.username, data.pass, UserRole.Cashier);
+        
+        if (result.success) {
+            showToast(`User ${isEditMode ? 'updated' : 'added'} successfully!`, 'success');
+            closeUserModal();
+        } else {
+            setFormError(result.message || `Failed to ${isEditMode ? 'update' : 'add'} user.`);
+        }
+    };
+
+    const handleDeleteClick = (user: User) => {
+        if (user.id === currentUser?.id) return;
+        setUserToDelete(user);
+    };
+
+    const confirmDelete = () => {
+        if (userToDelete) {
+        const result = deleteUser(userToDelete.id);
+        if (!result.success) {
+            showToast(result.message || 'Failed to delete user.', 'error');
+        } else {
+            showToast('User deleted successfully!', 'success');
+        }
+        setUserToDelete(null);
+        }
+    };
+    
+    const openAddModal = () => {
+        setEditingUser(null);
+        setFormError('');
+        setIsUserModalOpen(true);
+    }
+
+    const openEditModal = (user: User) => {
+        if (user.role === UserRole.Admin) {
+            showToast('Admin accounts cannot be edited.', 'error');
+            return;
+        }
+        setEditingUser(user);
+        setFormError('');
+        setIsUserModalOpen(true);
+    }
+
+    const closeUserModal = () => {
+        setIsUserModalOpen(false);
+        setEditingUser(null);
+        setFormError('');
+    }
+
+
+    const SortableHeader: React.FC<{ children: React.ReactNode, sortKey: SortableUserKeys }> = ({ children, sortKey }) => {
+        const isSorted = sortConfig.key === sortKey;
+        return (
+            <th scope="col" className="px-6 py-3">
+                <button onClick={() => requestSort(sortKey)} className="flex items-center gap-1.5 group">
+                    <span className="group-hover:text-gray-900 dark:group-hover:text-white transition-colors">{children}</span>
+                    {isSorted ? (
+                        sortConfig.direction === 'ascending' ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />
+                    ) : <ChevronDownIcon className="h-4 w-4 invisible" />}
+                </button>
+            </th>
+        );
+    };
+
+    return (
+        <>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                <div className="relative flex-grow w-full sm:w-auto">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                        <SearchIcon />
+                    </div>
+                    <input
+                        type="text"
+                        placeholder="Search by username..."
+                        value={searchTerm}
+                        onChange={e => onUsersViewUpdate({ searchTerm: e.target.value, currentPage: 1 })}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                </div>
+                <div className="flex gap-2 w-full sm:w-auto">
+                    <button onClick={() => setIsPermissionsModalOpen(true)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center gap-2 justify-center flex-1 sm:flex-none">
+                        <ShieldCheckIcon className="w-5 h-5" />
+                        <span>Permissions</span>
+                    </button>
+                    <button onClick={openAddModal} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2 justify-center flex-1 sm:flex-none">
+                        <PlusIcon />
+                        <span>Add User</span>
+                    </button>
+                </div>
+            </div>
+
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
+                    <tr>
+                    <SortableHeader sortKey="username">Username</SortableHeader>
+                    <SortableHeader sortKey="role">Role</SortableHeader>
+                    <th scope="col" className="px-6 py-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {paginatedUsers.map(user => (
+                    <tr key={user.id}>
+                        <td data-label="Username" className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{user.username} {user.id === currentUser?.id && <span className="text-xs font-normal text-gray-500 dark:text-gray-400">(You)</span>}</td>
+                        <td data-label="Role" className="px-6 py-4">{user.role}</td>
+                        <td data-label="Actions" className="px-6 py-4 text-right space-x-2">
+                            <button
+                            onClick={() => openEditModal(user)}
+                            disabled={user.role === UserRole.Admin}
+                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 p-1 disabled:text-gray-400 disabled:cursor-not-allowed"
+                            aria-label={`Edit user ${user.username}`}
+                            >
+                            <PencilIcon />
+                            </button>
+                            <button
+                            onClick={() => handleDeleteClick(user)}
+                            disabled={user.id === currentUser?.id || user.role === UserRole.Admin}
+                            className="text-red-500 hover:text-red-700 p-1 disabled:text-gray-400 disabled:cursor-not-allowed"
+                            aria-label={`Delete user ${user.username}`}
+                            >
+                            <TrashIcon />
+                            </button>
+                        </td>
+                    </tr>
+                    ))}
+                </tbody>
+                </table>
+            </div>
+            <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={(page) => onUsersViewUpdate({ currentPage: page })}
+                itemsPerPage={itemsPerPage}
+                totalItems={totalItems}
+            />
+
+            <Modal isOpen={isUserModalOpen} onClose={closeUserModal} title={editingUser ? "Edit User" : "Add New User"} size="sm">
+                <UserForm user={editingUser} onSubmit={handleUserFormSubmit} onCancel={closeUserModal} errorMessage={formError} />
+            </Modal>
+
+            <Modal isOpen={isPermissionsModalOpen} onClose={() => setIsPermissionsModalOpen(false)} title="Cashier Role Permissions" size="md">
+                <PermissionsModal onClose={() => setIsPermissionsModalOpen(false)} />
+            </Modal>
+
+            <Modal isOpen={!!userToDelete} onClose={() => setUserToDelete(null)} title="Confirm Deletion" size="sm">
+                {userToDelete && (
+                <div className="space-y-4">
+                    <p className="text-gray-700 dark:text-gray-300">
+                    Are you sure you want to delete the user <span className="font-bold">{userToDelete.username}</span>? This action cannot be undone.
+                    </p>
+                    <div className="flex justify-end gap-2 pt-4">
+                    <button type="button" onClick={() => setUserToDelete(null)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">
+                        Cancel
+                    </button>
+                    <button type="button" onClick={confirmDelete} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                        Delete User
+                    </button>
+                    </div>
+                </div>
+                )}
+            </Modal>
+        </>
+    );
+}
+
+const ShiftsList: React.FC = () => {
+    const { shifts } = useSales();
+    const { formatDateTime, formatCurrency, paginationConfig } = useSettings();
+    const [currentPage, setCurrentPage] = useState(1);
+    const [viewingShift, setViewingShift] = useState<Shift | null>(null);
+    const itemsPerPage = paginationConfig.shifts || 10;
+
+    // Simple sorting by start time desc for now
+    const sortedShifts = useMemo(() => {
+        return [...shifts].sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+    }, [shifts]);
+
+    const paginatedShifts = useMemo(() => {
+        return sortedShifts.slice(
+            (currentPage - 1) * itemsPerPage,
+            currentPage * itemsPerPage
+        );
+    }, [sortedShifts, currentPage, itemsPerPage]);
+
+    const totalPages = Math.ceil(sortedShifts.length / itemsPerPage);
+
+    return (
+        <>
+            <div className="overflow-x-auto mt-4">
+                <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 responsive-table">
+                    <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
+                        <tr>
+                            <th className="px-6 py-3">ID</th>
+                            <th className="px-6 py-3">Status</th>
+                            <th className="px-6 py-3">Start Time</th>
+                            <th className="px-6 py-3">End Time</th>
+                            <th className="px-6 py-3">Opened By</th>
+                            <th className="px-6 py-3 text-right">Opening Cash</th>
+                            <th className="px-6 py-3 text-right">Cash Sales</th>
+                            <th className="px-6 py-3 text-right">Closing Cash</th>
+                            <th className="px-6 py-3 text-right">Difference</th>
+                            <th className="px-6 py-3">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                        {paginatedShifts.map(shift => (
+                            <tr key={shift.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
+                                <td className="px-6 py-4">
+                                    <button 
+                                        onClick={() => setViewingShift(shift)}
+                                        className="text-blue-600 dark:text-blue-400 hover:underline font-mono text-xs font-semibold"
+                                    >
+                                        {shift.publicId || shift.id.slice(-8)}
+                                    </button>
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${shift.status === 'Open' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}`}>
+                                        {shift.status}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">{formatDateTime(shift.startTime)}</td>
+                                <td className="px-6 py-4 whitespace-nowrap">{shift.endTime ? formatDateTime(shift.endTime) : '-'}</td>
+                                <td className="px-6 py-4">{shift.openedByUserName}</td>
+                                <td className="px-6 py-4 text-right whitespace-nowrap">{formatCurrency(shift.startFloat)}</td>
+                                <td className="px-6 py-4 font-medium text-right text-gray-900 dark:text-white whitespace-nowrap">{formatCurrency(shift.cashSales)}</td>
+                                <td className="px-6 py-4 text-right whitespace-nowrap">{shift.status === 'Closed' && shift.actualCash !== undefined ? formatCurrency(shift.actualCash) : '-'}</td>
+                                <td className={`px-6 py-4 font-bold text-right whitespace-nowrap ${
+                                    (shift.difference || 0) < 0 ? 'text-red-600' : 
+                                    (shift.difference || 0) > 0 ? 'text-green-600' : 'text-gray-500'
+                                }`}>
+                                    {shift.status === 'Closed' ? formatCurrency(shift.difference || 0) : '-'}
+                                </td>
+                                <td className="px-6 py-4 max-w-xs truncate" title={shift.notes}>{shift.notes || '-'}</td>
+                            </tr>
+                        ))}
+                        {paginatedShifts.length === 0 && (
+                            <tr><td colSpan={10} className="px-6 py-8 text-center text-gray-500">No shift history found.</td></tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+            <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+                itemsPerPage={itemsPerPage}
+                totalItems={sortedShifts.length}
+            />
+
+            {viewingShift && (
+                <Modal isOpen={!!viewingShift} onClose={() => setViewingShift(null)} title="Shift Details" size="md">
+                    <ShiftDetailsModal shift={viewingShift} onClose={() => setViewingShift(null)} />
+                </Modal>
+            )}
+        </>
+    );
+};
+
+export const Users: React.FC = () => {
+    const [activeTab, setActiveTab] = useState<'users' | 'shifts'>('users');
+
+    return (
+        <div className="p-6">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+                <h1 className="text-3xl font-bold text-gray-800 dark:text-white">User Management</h1>
+                <div className="flex bg-gray-200 dark:bg-gray-700 p-1 rounded-lg">
+                    <button 
+                        onClick={() => setActiveTab('users')}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'users' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow' : 'text-gray-600 dark:text-gray-300'}`}
+                    >
+                        Users
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('shifts')}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'shifts' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow' : 'text-gray-600 dark:text-gray-300'}`}
+                    >
+                        Shifts
+                    </button>
+                </div>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+                {activeTab === 'users' ? <UsersList /> : <ShiftsList />}
+            </div>
+        </div>
+    );
+};
