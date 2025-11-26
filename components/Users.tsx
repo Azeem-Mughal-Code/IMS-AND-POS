@@ -14,17 +14,19 @@ declare var html2canvas: any;
 
 const UserForm: React.FC<{
     user?: User | null;
-    onSubmit: (userId: string | null, data: { username: string, pass: string }) => void,
+    onSubmit: (userId: string | null, data: { username: string, email: string, pass: string }) => void,
     onCancel: () => void,
     errorMessage?: string,
 }> = ({ user, onSubmit, onCancel, errorMessage }) => {
     const [username, setUsername] = useState('');
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const isEditMode = !!user;
 
     useEffect(() => {
         if(isEditMode) {
             setUsername(user.username);
+            setEmail(user.email || '');
             setPassword('');
         }
     }, [user, isEditMode]);
@@ -32,7 +34,7 @@ const UserForm: React.FC<{
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSubmit(isEditMode ? user.id : null, { username, pass: password });
+        onSubmit(isEditMode ? user.id : null, { username, email, pass: password });
     };
 
     return (
@@ -40,6 +42,10 @@ const UserForm: React.FC<{
             <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
                 <input type="text" value={username} onChange={e => setUsername(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email (Optional - for Login)</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" placeholder="user@example.com" />
             </div>
             <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
@@ -288,12 +294,12 @@ const UsersList: React.FC = () => {
         );
     }, [filteredAndSortedUsers, currentPage, itemsPerPage]);
 
-    const handleUserFormSubmit = (userId: string | null, data: { username: string, pass: string }) => {
+    const handleUserFormSubmit = async (userId: string | null, data: { username: string, email: string, pass: string }) => {
         setFormError('');
         const isEditMode = !!userId;
-        const result = isEditMode
-            ? updateUser(userId!, data.username, data.pass)
-            : addUser(data.username, data.pass, UserRole.Cashier);
+        const result = await (isEditMode
+            ? updateUser(userId!, data.username, data.pass, data.email)
+            : addUser(data.username, data.pass, UserRole.Cashier, data.email));
         
         if (result.success) {
             showToast(`User ${isEditMode ? 'updated' : 'added'} successfully!`, 'success');
@@ -328,7 +334,7 @@ const UsersList: React.FC = () => {
 
     const openEditModal = (user: User) => {
         if (user.role === UserRole.Admin) {
-            showToast('Admin accounts cannot be edited.', 'error');
+            showToast('Admin accounts cannot be edited here. Go to Settings > Profile.', 'error');
             return;
         }
         setEditingUser(user);
@@ -389,6 +395,7 @@ const UsersList: React.FC = () => {
                 <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
                     <tr>
                     <SortableHeader sortKey="username">Username</SortableHeader>
+                    <th className="px-6 py-3">Email</th>
                     <SortableHeader sortKey="role">Role</SortableHeader>
                     <th scope="col" className="px-6 py-3 text-right">Actions</th>
                     </tr>
@@ -397,6 +404,7 @@ const UsersList: React.FC = () => {
                     {paginatedUsers.map(user => (
                     <tr key={user.id}>
                         <td data-label="Username" className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{user.username} {user.id === currentUser?.id && <span className="text-xs font-normal text-gray-500 dark:text-gray-400">(You)</span>}</td>
+                        <td data-label="Email" className="px-6 py-4">{user.email || '-'}</td>
                         <td data-label="Role" className="px-6 py-4">{user.role}</td>
                         <td data-label="Actions" className="px-6 py-4 text-right space-x-2">
                             <button

@@ -1,6 +1,17 @@
 
 import Dexie, { Table } from 'dexie';
 import { Product, Sale, Customer, PurchaseOrder, Supplier, User, Workspace, Shift, HeldOrder, Category, InventoryAdjustment, Notification } from '../types';
+import { encryptData, decryptData } from './crypto';
+
+// Define configuration for encrypted fields
+const ENCRYPTED_FIELDS: Record<string, string[]> = {
+  products: ['costPrice'],
+  sales: ['cogs', 'profit'],
+  customers: ['phone', 'email', 'address', 'notes'],
+  // purchaseOrders items contains costPrice, and totalCost might be sensitive. 
+  // Simplifying by encrypting entire 'items' array if possible, but field level is cleaner for structure.
+  purchaseOrders: ['totalCost'], 
+};
 
 // Define the Dexie Database Class
 export class IMSDatabase extends Dexie {
@@ -25,14 +36,14 @@ export class IMSDatabase extends Dexie {
   // Legacy Key-Value store for settings/legacy state compatibility
   keyval!: Table<{ key: string; value: any }>;
 
+  // Runtime Encryption Key
+  encryptionKey: CryptoKey | null = null;
+
   constructor() {
     super('IMS_POS_DB');
     
     // Version 4: Add deleted_records, settings, and improve indexes
     (this as any).version(4).stores({
-      // Primary tables for structured data (Sync-ready)
-      // ++id = auto-incrementing primary key (we often provide our own string UUIDs, so maybe just 'id')
-      // &id = unique primary key
       products: '&id, sku, name, *categoryIds, sync_status, updated_at',
       sales: '&id, publicId, date, type, status, customerId, salespersonId, sync_status, updated_at',
       customers: '&id, publicId, email, phone, name, sync_status, updated_at',
@@ -45,12 +56,8 @@ export class IMSDatabase extends Dexie {
       categories: '&id, parentId, name, sync_status, updated_at',
       inventoryAdjustments: '&id, productId, variantId, date, sync_status',
       notifications: '&id, isRead, type, timestamp',
-
-      // Sync & Meta tables
       deletedRecords: '&id, table, sync_status',
       settings: '&key, sync_status, updated_at',
-
-      // Legacy Key-Value store for `usePersistedState` compatibility
       keyval: 'key' 
     });
 
@@ -59,6 +66,121 @@ export class IMSDatabase extends Dexie {
       sales: '&id, publicId, date, type, status, customerId, salespersonId, originalSaleId, sync_status, updated_at',
       notifications: '&id, isRead, type, timestamp, relatedId'
     });
+
+    // Version 6: Add email index to users
+    (this as any).version(6).stores({
+      users: '&id, username, email, role, sync_status, updated_at',
+    });
+
+    this.addEncryptionMiddleware();
+  }
+
+  setEncryptionKey(key: CryptoKey | null) {
+    this.encryptionKey = key;
+  }
+
+  addEncryptionMiddleware() {
+    // Hook into creating/updating to Encrypt
+    (this as any).use({
+        stack: "dbcore",
+        name: "encryption",
+        create: (downlevelDatabase: any) => {
+            return {
+                ...downlevelDatabase,
+                table: (tableName: string) => {
+                    const downlevelTable = downlevelDatabase.table(tableName);
+                    const fieldsToEncrypt = ENCRYPTED_FIELDS[tableName];
+
+                    if (!fieldsToEncrypt) return downlevelTable;
+
+                    return {
+                        ...downlevelTable,
+                        mutate: async (req: any) => {
+                            if (!this.encryptionKey || (req.type !== 'add' && req.type !== 'put')) {
+                                return downlevelTable.mutate(req);
+                            }
+
+                            const encryptItem = async (item: any) => {
+                                const cloned = { ...item };
+                                for (const field of fieldsToEncrypt) {
+                                    if (cloned[field] !== undefined) {
+                                        cloned[field] = await encryptData(cloned[field], this.encryptionKey!);
+                                    }
+                                }
+                                // Special handling for deep objects like PurchaseOrder items or Product Variants
+                                if (tableName === 'products' && cloned.variants) {
+                                    // Encrypt variant cost prices
+                                    const newVariants = await Promise.all(cloned.variants.map(async (v: any) => ({
+                                        ...v,
+                                        costPrice: await encryptData(v.costPrice, this.encryptionKey!)
+                                    })));
+                                    cloned.variants = newVariants;
+                                }
+                                if (tableName === 'purchaseOrders' && cloned.items) {
+                                    const newItems = await Promise.all(cloned.items.map(async (i: any) => ({
+                                        ...i,
+                                        costPrice: await encryptData(i.costPrice, this.encryptionKey!)
+                                    })));
+                                    cloned.items = newItems;
+                                }
+                                return cloned;
+                            };
+
+                            const values = await Promise.all(req.values.map(encryptItem));
+                            return downlevelTable.mutate({ ...req, values });
+                        },
+                        get: async (req: any) => {
+                            const res = await downlevelTable.get(req);
+                            if (!this.encryptionKey || !res) return res;
+                            return this.decryptItem(tableName, res);
+                        },
+                        query: async (req: any) => {
+                            const res = await downlevelTable.query(req);
+                            const result = await res.result;
+                            if (!this.encryptionKey || !Array.isArray(result)) return res;
+                            
+                            const decryptedResult = await Promise.all(result.map(item => this.decryptItem(tableName, item)));
+                            
+                            return {
+                                ...res,
+                                result: decryptedResult
+                            };
+                        }
+                    };
+                }
+            };
+        }
+    });
+  }
+
+  async decryptItem(tableName: string, item: any) {
+      const fieldsToEncrypt = ENCRYPTED_FIELDS[tableName];
+      if (!fieldsToEncrypt || !this.encryptionKey) return item;
+
+      const cloned = { ...item };
+      for (const field of fieldsToEncrypt) {
+          if (cloned[field] !== undefined) {
+              cloned[field] = await decryptData(cloned[field], this.encryptionKey);
+          }
+      }
+      
+      // Decrypt deep objects
+      if (tableName === 'products' && cloned.variants) {
+          const newVariants = await Promise.all(cloned.variants.map(async (v: any) => ({
+              ...v,
+              costPrice: await decryptData(v.costPrice, this.encryptionKey!)
+          })));
+          cloned.variants = newVariants;
+      }
+      if (tableName === 'purchaseOrders' && cloned.items) {
+          const newItems = await Promise.all(cloned.items.map(async (i: any) => ({
+              ...i,
+              costPrice: await decryptData(i.costPrice, this.encryptionKey!)
+          })));
+          cloned.items = newItems;
+      }
+
+      return cloned;
   }
 }
 
@@ -66,8 +188,6 @@ export const db = new IMSDatabase();
 
 /**
  * Compatibility Wrapper for `usePersistedState` hook.
- * This allows the existing application state logic to function seamlessly
- * while running on top of the robust Dexie database engine.
  */
 export function getFromDB<T>(key: string): Promise<T | undefined> {
   return new Promise(async (resolve, reject) => {
@@ -93,7 +213,6 @@ export function setInDB<T>(key: string, value: T): Promise<void> {
   });
 }
 
-// Helper to clear the legacy store if needed (e.g. factory reset)
 export async function clearKeyValStore() {
     await db.keyval.clear();
 }

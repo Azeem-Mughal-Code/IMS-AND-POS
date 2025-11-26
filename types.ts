@@ -18,26 +18,19 @@ export interface BaseEntity {
 export interface User extends BaseEntity {
   id: string;
   username: string;
-  password: string; // NOTE: In a real app, this should be hashed.
+  email?: string; // NEW: Allow login via email
+  password: string; // NOTE: In a real app, this should be hashed. Used as "something you know" to derive key.
   role: UserRole;
-}
-
-// NEW: For Global Authentication
-export interface GlobalUser {
-  id: string;
-  email: string;
-  username: string;
-  passwordHash: string; // In a real app, never store plain text passwords
+  salt?: string; // Base64 salt for key derivation
+  encryptedDEK?: string; // Base64 Encrypted Data Encryption Key
+  workspaceId: string; // Link to the workspace this user belongs to
 }
 
 export interface Workspace {
   id: string;
   name: string;
-  alias: string; // Human-readable short code
-  ownerId: string; // The GlobalUser ID of the creator
-  memberIds: string[]; // IDs of GlobalUsers who are members
+  alias: string; // Human-readable short code (Store Code)
 }
-
 
 export enum PaymentType {
   Cash = 'Cash',
@@ -151,7 +144,8 @@ export interface HeldOrder {
   items: CartItem[];
   customer: Customer | null;
   discount: { type: 'percent' | 'fixed', value: number } | null;
-  isTaxExempt: boolean;
+  isTaxExempt: boolean; // Legacy support
+  customTax?: { type: 'percent' | 'fixed', value: number } | null;
   note: string;
 }
 

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { UserRole, PaginationTarget } from '../types';
 import { Modal } from './common/Modal';
-import { LogoutIcon, TagIcon, UserCircleIcon, PencilIcon } from './Icons';
+import { LogoutIcon, TagIcon, UserCircleIcon, PencilIcon, CheckCircleIcon, XMarkIcon, ClipboardIcon, BuildingStoreIcon } from './Icons';
 import { AccordionSection } from './common/AccordionSection';
 import { ToggleSwitch } from './common/ToggleSwitch';
 import { Dropdown } from './common/Dropdown';
@@ -14,25 +14,24 @@ import { ZoomSelector } from './settings/ZoomSelector';
 import { useAuth } from './context/AuthContext';
 import { useSettings } from './context/SettingsContext';
 import { TimezoneSelector } from './settings/TimezoneSelector';
-import { useGlobalAuth } from './context/GlobalAuthContext';
 import { useUIState } from './context/UIStateContext';
 
 export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitchWorkspace }) => {
-    const { currentUser, updateUser } = useAuth();
+    const { currentUser, updateUser, currentWorkspace, updateBusinessDetails } = useAuth();
     const { 
         workspaceId, workspaceName,
-        isSplitPaymentEnabled, setIsSplitPaymentEnabled, isChangeDueEnabled, setIsChangeDueEnabled,
         isIntegerCurrency, setIsIntegerCurrency, isTaxEnabled, setIsTaxEnabled, taxRate, setTaxRate,
         isDiscountEnabled, setIsDiscountEnabled, discountRate, setDiscountRate, discountThreshold, setDiscountThreshold,
         cashierPermissions,
         storeAddress, setStoreAddress, storePhone, setStorePhone, receiptFooter, setReceiptFooter,
         paginationConfig, setPaginationLimit
     } = useSettings();
-    const { currentGlobalUser, getWorkspaceById } = useGlobalAuth();
+    const { showToast } = useUIState();
 
     const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
     
     const [profileUsername, setProfileUsername] = useState(currentUser?.username || '');
+    const [profileEmail, setProfileEmail] = useState(currentUser?.email || '');
     const [profilePassword, setProfilePassword] = useState('');
     const [profileConfirmPassword, setProfileConfirmPassword] = useState('');
     const [profileError, setProfileError] = useState('');
@@ -40,7 +39,14 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
 
     const [expandedSection, setExpandedSection] = useState<string | null>('profile');
     
-    const workspace = useMemo(() => getWorkspaceById(workspaceId), [getWorkspaceById, workspaceId]);
+    // Business Edit State
+    const [isEditBusinessModalOpen, setIsEditBusinessModalOpen] = useState(false);
+    const [editBusinessName, setEditBusinessName] = useState('');
+    const [editStoreCode, setEditStoreCode] = useState('');
+    const [businessEditError, setBusinessEditError] = useState('');
+    const [copiedCode, setCopiedCode] = useState(false);
+
+    const workspace = currentWorkspace;
 
     if (!currentUser) return null;
 
@@ -57,14 +63,15 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
     useEffect(() => {
         if (isEditProfileModalOpen) {
             setProfileUsername(currentUser.username);
+            setProfileEmail(currentUser.email || '');
             setProfilePassword('');
             setProfileConfirmPassword('');
             setProfileError('');
             setProfileSuccess('');
         }
-    }, [isEditProfileModalOpen, currentUser.username]);
+    }, [isEditProfileModalOpen, currentUser]);
 
-    const handleProfileUpdate = () => {
+    const handleProfileUpdate = async () => {
         setProfileError('');
         setProfileSuccess('');
 
@@ -78,15 +85,46 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
             return;
         }
         
-        const result = updateUser(currentUser.id, profileUsername, profilePassword);
-        
+        try {
+            const result = await updateUser(currentUser.id, profileUsername, profilePassword, profileEmail);
+            
+            if (result.success) {
+                setProfileSuccess("Profile updated successfully!");
+                setTimeout(() => {
+                    setIsEditProfileModalOpen(false);
+                }, 1500)
+            } else {
+                setProfileError(result.message || "Failed to update profile.");
+            }
+        } catch (error) {
+            console.error("Profile update failed", error);
+            setProfileError("An unexpected error occurred.");
+        }
+    };
+
+    const openEditBusinessModal = () => {
+        setEditBusinessName(workspaceName || '');
+        setEditStoreCode(workspace?.alias || '');
+        setBusinessEditError('');
+        setIsEditBusinessModalOpen(true);
+    };
+
+    const handleUpdateBusiness = async () => {
+        setBusinessEditError('');
+        const result = await updateBusinessDetails(editBusinessName, editStoreCode);
         if (result.success) {
-            setProfileSuccess("Profile updated successfully!");
-            setTimeout(() => {
-                setIsEditProfileModalOpen(false);
-            }, 1500)
+            showToast('Business details updated successfully.', 'success');
+            setIsEditBusinessModalOpen(false);
         } else {
-            setProfileError(result.message || "Failed to update profile.");
+            setBusinessEditError(result.message || 'Failed to update business details.');
+        }
+    };
+
+    const handleCopyCode = () => {
+        if (workspace?.alias) {
+            navigator.clipboard.writeText(workspace.alias);
+            setCopiedCode(true);
+            setTimeout(() => setCopiedCode(false), 2000);
         }
     };
 
@@ -179,31 +217,70 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
                     expandedSection={expandedSection}
                     setExpandedSection={setExpandedSection}
                 >
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                        <div className="flex items-center gap-4">
-                            <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-full">
-                                <UserCircleIcon className="w-8 h-8 text-gray-500 dark:text-gray-400" />
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-lg text-gray-800 dark:text-white">{currentUser.username}</h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded inline-block mt-1">{currentUser.role}</p>
+                    <div className="space-y-6">
+                        {/* User Profile Card */}
+                        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-full">
+                                        <UserCircleIcon className="w-8 h-8 text-gray-500 dark:text-gray-400" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-lg text-gray-800 dark:text-white">{currentUser.username}</h3>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded inline-block mt-1 mr-2">{currentUser.role}</p>
+                                        {currentUser.email && <p className="text-sm text-blue-600 dark:text-blue-400 inline-block">{currentUser.email}</p>}
+                                    </div>
+                                </div>
+                                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                                    {canEditProfile && (
+                                        <button onClick={() => setIsEditProfileModalOpen(true)} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/70 text-sm font-medium transition-colors">
+                                            <PencilIcon className="w-4 h-4" />
+                                            Edit Profile
+                                        </button>
+                                    )}
+                                    <button 
+                                        onClick={onSwitchWorkspace}
+                                        className="flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 text-sm font-medium transition-colors"
+                                    >
+                                        <LogoutIcon className="w-4 h-4"/>
+                                        Logout
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                            {canEditProfile && (
-                                <button onClick={() => setIsEditProfileModalOpen(true)} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/70 text-sm font-medium transition-colors">
-                                    <PencilIcon className="w-4 h-4" />
-                                    Edit Profile
-                                </button>
-                            )}
-                            <button 
-                                onClick={onSwitchWorkspace}
-                                className="flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 text-sm font-medium transition-colors"
-                            >
-                                <LogoutIcon className="w-4 h-4"/>
-                                Logout
-                            </button>
-                        </div>
+
+                        {/* Business Card (Admin Only) */}
+                        {currentUser.role === UserRole.Admin && (
+                            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 shadow-sm relative overflow-hidden">
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
+                                    <div className="flex items-center gap-4 w-full sm:w-auto">
+                                        <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full text-blue-600 dark:text-blue-400 flex-shrink-0">
+                                            <BuildingStoreIcon className="w-8 h-8" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <h3 className="font-bold text-lg text-gray-900 dark:text-white truncate">{workspaceName}</h3>
+                                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                                <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Store Code:</span>
+                                                <div className="flex items-center bg-gray-100 dark:bg-gray-700 rounded px-2 py-0.5 border border-gray-200 dark:border-gray-600">
+                                                    <code className="text-sm font-mono font-bold text-gray-800 dark:text-gray-200">{workspace?.alias}</code>
+                                                    <button onClick={handleCopyCode} className="ml-2 text-gray-400 hover:text-blue-500 transition-colors" title="Copy Code">
+                                                        {copiedCode ? <CheckCircleIcon className="w-4 h-4 text-green-500" /> : <ClipboardIcon className="w-4 h-4" />}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button onClick={openEditBusinessModal} className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 text-sm font-medium transition-colors w-full sm:w-auto">
+                                        <PencilIcon className="w-4 h-4" />
+                                        Edit Business
+                                    </button>
+                                </div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-4 flex items-start gap-1">
+                                    <span className="mt-0.5 text-blue-500">ℹ️</span> 
+                                    Use your Store Code or Email (if set) to login from other devices.
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </AccordionSection>
             )}
@@ -240,26 +317,6 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
                     setExpandedSection={setExpandedSection}
                 >
                     <div className="space-y-6">
-                        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase mb-1">Business Name</label>
-                                    <p className="font-semibold text-gray-900 dark:text-white text-lg">{workspaceName}</p>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase mb-1">Store Code</label>
-                                    <div className="flex items-center gap-2">
-                                        <TagIcon className="w-4 h-4 text-blue-500" />
-                                        <span className="font-mono font-bold text-gray-900 dark:text-white text-lg">{workspace?.alias || 'N/A'}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-4 flex items-start gap-1">
-                                <span className="mt-0.5">ℹ️</span> 
-                                Business Name and Store Code can only be modified from the Workspace Selector screen.
-                            </p>
-                        </div>
-
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Store Address</label>
@@ -329,7 +386,7 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
                                     <ToggleSwitch
                                         enabled={isTaxEnabled}
                                         onChange={setIsTaxEnabled}
-                                        label="Enable Sales Tax"
+                                        label="Enable Sales Tax (Default)"
                                     />
                                     {isTaxEnabled && (
                                         <div className="flex items-center gap-2">
@@ -345,17 +402,6 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
                                         </div>
                                     )}
                                 </div>
-                                
-                                <ToggleSwitch
-                                    enabled={isChangeDueEnabled}
-                                    onChange={setIsChangeDueEnabled}
-                                    label="Show Change Due"
-                                />
-                                <ToggleSwitch
-                                    enabled={isSplitPaymentEnabled}
-                                    onChange={setIsSplitPaymentEnabled}
-                                    label="Enable Split Payments"
-                                />
                             </div>
                         </div>
 
@@ -455,12 +501,14 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
                 </AccordionSection>
             )}
 
+            {/* Profile Edit Modal */}
             <Modal isOpen={isEditProfileModalOpen} onClose={() => setIsEditProfileModalOpen(false)} title="Edit Profile" size="sm">
                 <div className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
                         <input type="text" value={profileUsername} onChange={e => setProfileUsername(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
                     </div>
+                    {/* Email field removed as requested */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">New Password</label>
                         <input type="password" value={profilePassword} onChange={e => setProfilePassword(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="Leave blank to keep current" />
@@ -474,6 +522,38 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
                     <div className="flex justify-end gap-2 pt-4">
                         <button onClick={() => setIsEditProfileModalOpen(false)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-md">Cancel</button>
                         <button onClick={handleProfileUpdate} className="px-4 py-2 bg-blue-600 text-white rounded-md">Save Changes</button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Business Edit Modal */}
+            <Modal isOpen={isEditBusinessModalOpen} onClose={() => setIsEditBusinessModalOpen(false)} title="Edit Business Details" size="sm">
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Business Name</label>
+                        <input 
+                            type="text" 
+                            value={editBusinessName} 
+                            onChange={e => setEditBusinessName(e.target.value)} 
+                            className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" 
+                            placeholder="Enter Business Name"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Store Code</label>
+                        <input 
+                            type="text" 
+                            value={editStoreCode} 
+                            onChange={e => setEditStoreCode(e.target.value.toUpperCase())} 
+                            className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white uppercase font-mono" 
+                            placeholder="WS-XXXXXX"
+                        />
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Must be unique and at least 3 characters.</p>
+                    </div>
+                    {businessEditError && <p className="text-red-500 text-sm text-center">{businessEditError}</p>}
+                    <div className="flex justify-end gap-2 pt-4">
+                        <button onClick={() => setIsEditBusinessModalOpen(false)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-md">Cancel</button>
+                        <button onClick={handleUpdateBusiness} className="px-4 py-2 bg-blue-600 text-white rounded-md">Save Changes</button>
                     </div>
                 </div>
             </Modal>

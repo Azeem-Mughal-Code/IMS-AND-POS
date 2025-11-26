@@ -1,0 +1,324 @@
+
+import React, { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { UserIcon, SearchIcon, ShieldCheckIcon, CheckCircleIcon, ClipboardIcon, TagIcon } from '../Icons';
+import { Modal } from '../common/Modal';
+
+export const UnifiedAuth: React.FC = () => {
+    const { login, loginByEmail, registerBusiness, enterGuestMode } = useAuth();
+    const [mode, setMode] = useState<'login' | 'register'>('login');
+    
+    // Login State
+    const [loginIdentifier, setLoginIdentifier] = useState(''); // Can be storeCode or email
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    
+    // Register State
+    const [regBusinessName, setRegBusinessName] = useState('');
+    const [regUsername, setRegUsername] = useState('');
+    const [regEmail, setRegEmail] = useState('');
+    const [regPassword, setRegPassword] = useState('');
+    
+    const [error, setError] = useState('');
+    const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState(false);
+    const [recoveryKey, setRecoveryKey] = useState('');
+    const [registeredStoreCode, setRegisteredStoreCode] = useState('');
+    const [copied, setCopied] = useState(false);
+    const [copiedStoreCode, setCopiedStoreCode] = useState(false);
+    const [isSavedConfirmed, setIsSavedConfirmed] = useState(false);
+
+    // Determine if loginIdentifier looks like an email
+    const isLoginEmail = loginIdentifier.includes('@');
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+
+        if (mode === 'login') {
+            if (isLoginEmail) {
+                // Login by Email
+                const result = await loginByEmail(loginIdentifier, password);
+                if (!result.success) {
+                    setError(result.message || 'Login failed.');
+                }
+            } else {
+                // Login by Store Code + Username
+                const result = await login(loginIdentifier, username, password);
+                if (!result.success) {
+                    setError(result.message || 'Login failed.');
+                }
+            }
+        } else {
+            if (regPassword.length < 4) {
+                setError("Password must be at least 4 characters.");
+                return;
+            }
+            const result = await registerBusiness(regBusinessName, regUsername, regEmail, regPassword);
+            if (result.success) {
+                if (result.recoveryKey && result.storeCode) {
+                    setRecoveryKey(result.recoveryKey);
+                    setRegisteredStoreCode(result.storeCode);
+                    setIsSavedConfirmed(false);
+                    setIsRecoveryModalOpen(true);
+                }
+            } else {
+                setError(result.message || 'Registration failed.');
+            }
+        }
+    };
+
+    const handleRegistrationSuccess = async () => {
+        setIsRecoveryModalOpen(false);
+        // Auto login using the registration credentials
+        // Prefer Store Code login for fresh registration stability
+        const result = await login(registeredStoreCode, regUsername, regPassword);
+        if (!result.success) {
+            setError(result.message || 'Login failed after registration.');
+        }
+    };
+
+    const handleCopyKey = () => {
+        navigator.clipboard.writeText(recoveryKey);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    const handleCopyStoreCode = () => {
+        navigator.clipboard.writeText(registeredStoreCode);
+        setCopiedStoreCode(true);
+        setTimeout(() => setCopiedStoreCode(false), 2000);
+    };
+
+    return (
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col justify-center items-center p-4 transition-colors duration-300">
+            <div className="text-center mb-8">
+                <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 mb-2">
+                    IMS & POS
+                </h1>
+                <p className="text-gray-600 dark:text-gray-300 font-medium">Retail Management System</p>
+            </div>
+
+            <div className="w-full max-w-md bg-white dark:bg-gray-800 shadow-2xl rounded-2xl overflow-hidden">
+                <div className="flex border-b border-gray-100 dark:border-gray-700">
+                    <button 
+                        onClick={() => { setMode('login'); setError(''); }}
+                        className={`flex-1 py-4 text-sm font-semibold transition-all ${
+                            mode === 'login' 
+                            ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 bg-blue-50/50 dark:bg-blue-900/10' 
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                    >
+                        Login
+                    </button>
+                    <button 
+                        onClick={() => { setMode('register'); setError(''); }}
+                        className={`flex-1 py-4 text-sm font-semibold transition-all ${
+                            mode === 'register' 
+                            ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 bg-blue-50/50 dark:bg-blue-900/10' 
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                    >
+                        Register Business
+                    </button>
+                </div>
+
+                <div className="p-8">
+                    <form onSubmit={handleSubmit} className="space-y-5">
+                        {mode === 'login' ? (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Store Code or Email</label>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                                            <SearchIcon />
+                                        </div>
+                                        <input 
+                                            type="text" 
+                                            value={loginIdentifier} 
+                                            onChange={e => setLoginIdentifier(e.target.value)} 
+                                            required 
+                                            className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all placeholder-gray-400"
+                                            placeholder="WS-XXXXXX or email@example.com"
+                                        />
+                                    </div>
+                                </div>
+                                
+                                {/* Conditionally show Username only if not logging in via Email */}
+                                {!isLoginEmail && (
+                                    <div className="animate-fadeIn">
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Username</label>
+                                        <input 
+                                            type="text" 
+                                            value={username} 
+                                            onChange={e => setUsername(e.target.value)} 
+                                            required={!isLoginEmail}
+                                            className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                            placeholder="username"
+                                        />
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
+                                    <input 
+                                        type="password" 
+                                        value={password} 
+                                        onChange={e => setPassword(e.target.value)} 
+                                        required 
+                                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        placeholder="••••••••"
+                                    />
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Business Name</label>
+                                    <input 
+                                        type="text" 
+                                        value={regBusinessName} 
+                                        onChange={e => setRegBusinessName(e.target.value)} 
+                                        required 
+                                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        placeholder="My Shop"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Owner Email</label>
+                                    <input 
+                                        type="email" 
+                                        value={regEmail} 
+                                        onChange={e => setRegEmail(e.target.value)} 
+                                        required 
+                                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        placeholder="admin@example.com"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Owner Username</label>
+                                    <input 
+                                        type="text" 
+                                        value={regUsername} 
+                                        onChange={e => setRegUsername(e.target.value)} 
+                                        required 
+                                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        placeholder="admin"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
+                                    <input 
+                                        type="password" 
+                                        value={regPassword} 
+                                        onChange={e => setRegPassword(e.target.value)} 
+                                        required 
+                                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        placeholder="••••••••"
+                                    />
+                                </div>
+                            </>
+                        )}
+
+                        {error && <p className="text-red-500 text-sm text-center bg-red-50 dark:bg-red-900/20 p-2 rounded-md">{error}</p>}
+                        
+                        <button 
+                            type="submit" 
+                            className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200"
+                        >
+                            {mode === 'login' ? 'Log In' : 'Create Business'}
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <button
+                onClick={enterGuestMode}
+                className="mt-8 flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 rounded-full shadow-md text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:shadow-lg transition-all duration-200 group"
+            >
+                <div className="p-1.5 bg-gray-100 dark:bg-gray-700 rounded-full group-hover:bg-blue-100 dark:group-hover:bg-blue-900/30 transition-colors">
+                    <UserIcon className="h-4 w-4" />
+                </div>
+                <span className="text-sm font-medium">Try Demo Mode</span>
+            </button>
+
+            <Modal isOpen={isRecoveryModalOpen} onClose={handleRegistrationSuccess} title="Registration Successful!" size="lg">
+                <div className="space-y-6">
+                    
+                    <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl p-5 text-center">
+                        <div className="flex items-center justify-center gap-2 mb-2 text-blue-800 dark:text-blue-200">
+                            <TagIcon className="w-5 h-5" />
+                            <h3 className="font-semibold uppercase tracking-wider text-xs">Your Store Code</h3>
+                        </div>
+                        <div className="flex items-center justify-center gap-3">
+                            <p className="text-3xl font-mono font-black text-blue-600 dark:text-blue-400 tracking-tight select-all">
+                                {registeredStoreCode}
+                            </p>
+                            <button 
+                                onClick={handleCopyStoreCode}
+                                className="p-2 bg-white dark:bg-blue-900/50 rounded-full shadow-sm hover:bg-blue-100 dark:hover:bg-blue-800/50 transition-colors text-blue-600 dark:text-blue-300"
+                                title="Copy Store Code"
+                            >
+                                {copiedStoreCode ? <CheckCircleIcon className="w-5 h-5 text-green-500" /> : <ClipboardIcon className="w-5 h-5" />}
+                            </button>
+                        </div>
+                        <p className="text-sm text-blue-700 dark:text-blue-300 mt-2">
+                            You can log in using this code + username, OR using your email.
+                        </p>
+                    </div>
+
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-5">
+                        <div className="flex items-start gap-3 mb-3">
+                            <ShieldCheckIcon className="h-6 w-6 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                            <div>
+                                <h3 className="font-bold text-red-800 dark:text-red-200">Save Your Recovery Key</h3>
+                                <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                                    This key is the <strong>ONLY</strong> way to restore your data if you forget your password. We cannot recover it for you.
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <div className="relative">
+                            <textarea 
+                                readOnly
+                                value={recoveryKey} 
+                                className="w-full h-24 p-3 rounded-md bg-white dark:bg-gray-800 font-mono text-xs text-gray-800 dark:text-gray-200 break-all border border-red-200 dark:border-red-800 resize-none focus:outline-none focus:ring-2 focus:ring-red-500"
+                            />
+                            <button 
+                                onClick={handleCopyKey}
+                                className="absolute top-2 right-2 p-2 bg-gray-100 dark:bg-gray-700 rounded-md shadow-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-gray-700 dark:text-gray-200"
+                                title="Copy to Clipboard"
+                            >
+                                {copied ? <CheckCircleIcon className="w-4 h-4 text-green-500" /> : <ClipboardIcon className="w-4 h-4" />}
+                            </button>
+                        </div>
+                        <div className="mt-2 text-xs text-red-600 dark:text-red-400 font-semibold text-center">
+                            ⚠️ Do not share this key with anyone. Store it in a secure location.
+                        </div>
+                    </div>
+
+                    <label className="flex items-center gap-3 mt-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 cursor-pointer select-none transition-colors hover:bg-gray-100 dark:hover:bg-gray-800">
+                        <input 
+                            type="checkbox" 
+                            checked={isSavedConfirmed} 
+                            onChange={(e) => setIsSavedConfirmed(e.target.checked)}
+                            className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 transition-all cursor-pointer"
+                        />
+                        <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                            I have saved my Store Code and Recovery Key.
+                        </span>
+                    </label>
+
+                    <div className="flex justify-end pt-2">
+                        <button 
+                            onClick={handleRegistrationSuccess} 
+                            disabled={!isSavedConfirmed}
+                            className={`w-full sm:w-auto px-6 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-lg transition-all duration-200 ${!isSavedConfirmed ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:bg-blue-700 hover:scale-[1.02]'}`}
+                        >
+                            Continue to App
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+        </div>
+    );
+};

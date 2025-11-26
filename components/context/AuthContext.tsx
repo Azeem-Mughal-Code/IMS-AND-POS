@@ -1,18 +1,30 @@
 
-import React, { createContext, useContext, ReactNode, useEffect, useCallback, useMemo, useRef } from 'react';
-import { User, UserRole, GlobalUser } from '../../types';
-import usePersistedState from '../../hooks/usePersistedState';
-import { useUIState } from './UIStateContext';
+import React, { createContext, useContext, ReactNode, useState, useCallback, useEffect } from 'react';
+import { User, UserRole, Workspace } from '../../types';
+import { db, getFromDB, setInDB } from '../../utils/db';
+import { generateSalt, deriveKeyFromPassword, generateDataKey, wrapKey, unwrapKey, exportKey, importKey } from '../../utils/crypto';
+import { generateUniqueNanoID, generateUUIDv7 } from '../../utils/idGenerator';
 
 interface AuthContextType {
-    users: User[];
+    users: User[]; // Users of the CURRENT workspace
     currentUser: User | null;
-    login: (username: string, pass: string) => boolean;
-    signup: (username: string, pass: string) => { success: boolean, message?: string };
-    onLogout: (user: User) => Promise<void>;
-    addUser: (username: string, pass: string, role: UserRole) => { success: boolean, message?: string };
-    updateUser: (userId: string, newUsername: string, newPassword?: string) => { success: boolean, message?: string };
+    currentWorkspace: Workspace | null;
+    
+    login: (storeCode: string, username: string, pass: string) => Promise<{ success: boolean, message?: string }>;
+    loginByEmail: (email: string, pass: string) => Promise<{ success: boolean, message?: string }>;
+    registerBusiness: (businessName: string, username: string, email: string, pass: string) => Promise<{ success: boolean, message?: string, recoveryKey?: string, storeCode?: string }>;
+    logout: () => void;
+    
+    addUser: (username: string, pass: string, role: UserRole, email?: string) => Promise<{ success: boolean, message?: string }>;
+    updateUser: (userId: string, newUsername: string, newPassword?: string, newEmail?: string) => Promise<{ success: boolean, message?: string, recoveryKey?: string }>;
     deleteUser: (userId: string) => { success: boolean; message?: string };
+    recoverAccount: (username: string, recoveryKey: string, newPassword: string) => Promise<{ success: boolean; message?: string }>;
+    getDecryptedKey: (password: string) => Promise<string | null>;
+    
+    // Special Guest Mode
+    enterGuestMode: () => Promise<void>;
+    updateStoreCode: (newCode: string) => Promise<{ success: boolean, message?: string }>; // Deprecated, use updateBusinessDetails
+    updateBusinessDetails: (name: string, code: string) => Promise<{ success: boolean, message?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -23,133 +35,407 @@ export const useAuth = () => {
     return context;
 };
 
-export const AuthProvider: React.FC<{ children: ReactNode; workspaceId: string; globalUser: GlobalUser | null }> = ({ children, workspaceId, globalUser }) => {
-    const ls_prefix = `ims-${workspaceId}`;
-    const [users, setUsers] = usePersistedState<User[]>(`${ls_prefix}-users`, []);
-    const [currentUser, setCurrentUser, setCurrentUserAsync] = usePersistedState<User | null>(`${ls_prefix}-currentUser`, null);
-    const { setActiveView, addNotification } = useUIState();
-    
-    // Ref to track if a logout is in progress to prevent auto-login race conditions
-    const isLoggingOut = useRef(false);
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [users, setUsers] = useState<User[]>([]); // Local state of users for the current workspace
 
-    const isGuestWorkspace = workspaceId === 'guest_workspace';
-
+    // Load session on mount
     useEffect(() => {
-        if (isGuestWorkspace && !currentUser) {
-            // Auto-login guest user
-            const guestUser = users.find(u => u.id === 'guest');
-            if (guestUser) {
-                setCurrentUser(guestUser);
-            } else {
-                // Create guest user if it doesn't exist. Give them admin role for full trial access.
-                const newGuestUser: User = { id: 'guest', username: 'Guest', password: '', role: UserRole.Admin };
-                setUsers(prev => [...prev, newGuestUser]);
-                setCurrentUser(newGuestUser);
-            }
-        } else if (!isGuestWorkspace && currentUser?.id === 'guest') {
-            // If we switched to a real workspace but are still logged in as guest (e.g. browser back), log out.
-            setCurrentUser(null);
-        } else if (!isGuestWorkspace && !currentUser && globalUser && users.length > 0) {
-            // Auto-login logic for workspace owners
-            // Prevent auto-login if we just explicitly logged out
-            if (isLoggingOut.current) return;
+        const restoreSession = async () => {
+            try {
+                const session = await getFromDB<{ workspaceId: string, userId: string }>('ims-session');
+                if (session && session.workspaceId && session.userId) {
+                    const ws = await db.workspaces.get(session.workspaceId);
+                    if (!ws) return;
 
-            // We look for a local admin user that matches the global user's credentials
-            const localAdmin = users.find(u => u.username === globalUser.username && u.role === UserRole.Admin);
+                    // Load users for this workspace
+                    const wsUsers = await getFromDB<User[]>(`ims-${ws.id}-users`) || [];
+                    const user = wsUsers.find(u => u.id === session.userId);
+
+                    if (user) {
+                        // IMPORTANT: For this local-first architecture without password memory, 
+                        // we cannot auto-unlock the DB encryption key on refresh. 
+                        // The user must re-login to provide the password for key derivation.
+                        // Therefore, we invalidate the session if we can't ensure the key is present.
+                        await db.keyval.delete('ims-session');
+                    }
+                }
+            } catch (e) {
+                console.error("Session restore failed", e);
+            }
+        };
+        restoreSession();
+    }, []);
+
+    const login = useCallback(async (storeCode: string, username: string, pass: string): Promise<{ success: boolean, message?: string }> => {
+        try {
+            const normalizedCode = storeCode.trim().toUpperCase();
+            // 1. Find Workspace
+            const workspace = await db.workspaces.where('alias').equals(normalizedCode).first();
             
-            // In a real app, we'd verify the password hash more securely or use a session token.
-            // Here we check if the stored password (which is the hash for the seeded admin) matches the global user's password hash.
-            if (localAdmin && localAdmin.password === globalUser.passwordHash) {
-                setCurrentUser(localAdmin);
-                // Force view to dashboard if entering as admin
-                setActiveView('dashboard');
+            // Support Guest Mode Login explicitly or by alias
+            if (normalizedCode === 'GUEST' || (!workspace && storeCode === 'guest_workspace')) {
+                 // Guest logic handled via enterGuestMode usually, but if they type it manually:
+                 return { success: false, message: 'Please use the "Demo Mode" button.' };
             }
-        }
-    }, [isGuestWorkspace, currentUser, users, setUsers, setCurrentUser, globalUser, setActiveView]);
 
-    const login = useCallback((username: string, pass: string): boolean => {
-        const user = users.find(u => u.username === username && u.password === pass);
-        if (user) {
-          isLoggingOut.current = false;
-          setCurrentUser(user);
-          setActiveView(user.role === UserRole.Admin ? 'dashboard' : 'pos');
-          if (user.role === UserRole.Cashier) {
-            addNotification(`Cashier '${user.username}' logged in.`, 'USER', user.id);
-          }
-          return true;
+            if (!workspace) {
+                return { success: false, message: 'Store Code not found.' };
+            }
+
+            // 2. Get Users for Workspace
+            const wsUsers = await getFromDB<User[]>(`ims-${workspace.id}-users`) || [];
+            const user = wsUsers.find(u => u.username.toLowerCase() === username.toLowerCase());
+
+            if (!user) {
+                return { success: false, message: 'Invalid username or password.' };
+            }
+
+            // 3. Validate Password (Simple string check for demo, normally bcrypt)
+            if (user.password !== pass) {
+                return { success: false, message: 'Invalid username or password.' };
+            }
+
+            // 4. Unlock DB (Decrypt DEK)
+            try {
+                if (user.encryptedDEK && user.salt) {
+                    const kek = await deriveKeyFromPassword(pass, user.salt);
+                    const dek = await unwrapKey(user.encryptedDEK, kek);
+                    db.setEncryptionKey(dek);
+                } else {
+                    db.setEncryptionKey(null);
+                }
+            } catch (e) {
+                console.error("Crypto error", e);
+                return { success: false, message: 'Security error: Could not decrypt data key.' };
+            }
+
+            // 5. Set Session
+            setUsers(wsUsers);
+            setCurrentWorkspace(workspace);
+            setCurrentUser(user);
+            
+            return { success: true };
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Login failed due to an error.' };
         }
-        return false;
-    }, [users, setCurrentUser, setActiveView, addNotification]);
-      
-    const signup = useCallback((username: string, pass: string): { success: boolean, message?: string } => {
-        if (users.some(u => u.username === username)) {
-            return { success: false, message: 'Username is already taken.' };
+    }, []);
+
+    const loginByEmail = useCallback(async (email: string, pass: string): Promise<{ success: boolean, message?: string }> => {
+        try {
+            // 1. Find User by Email
+            // Note: We need to scan workspaces to find the user because our users are stored per workspace in keyval `ims-{id}-users` for legacy/sync reasons,
+            // BUT we indexed `users` table in Dexie v6. However, users are currently stored in key-value blobs in this architecture.
+            // We must pivot to using the Dexie table index properly or scan efficiently.
+            // CURRENT ARCHITECTURE LIMITATION: 'users' are stored as arrays in keyval store.
+            // We need to scan workspaces to find the email. This is fine for local-first with few workspaces.
+            
+            const allWorkspaces = await db.workspaces.toArray();
+            let foundUser: User | null = null;
+            let foundWorkspace: Workspace | null = null;
+            let foundUsersArray: User[] = [];
+
+            for (const ws of allWorkspaces) {
+                const wsUsers = await getFromDB<User[]>(`ims-${ws.id}-users`) || [];
+                const user = wsUsers.find(u => u.email?.toLowerCase() === email.toLowerCase());
+                if (user) {
+                    foundUser = user;
+                    foundWorkspace = ws;
+                    foundUsersArray = wsUsers;
+                    break;
+                }
+            }
+
+            if (!foundUser || !foundWorkspace) {
+                return { success: false, message: 'No account found with this email.' };
+            }
+
+            // 2. Validate Password
+            if (foundUser.password !== pass) {
+                return { success: false, message: 'Invalid password.' };
+            }
+
+            // 3. Unlock DB
+            try {
+                if (foundUser.encryptedDEK && foundUser.salt) {
+                    const kek = await deriveKeyFromPassword(pass, foundUser.salt);
+                    const dek = await unwrapKey(foundUser.encryptedDEK, kek);
+                    db.setEncryptionKey(dek);
+                } else {
+                    db.setEncryptionKey(null);
+                }
+            } catch (e) {
+                console.error("Crypto error", e);
+                return { success: false, message: 'Security error: Could not decrypt data key.' };
+            }
+
+            // 4. Set Session
+            setUsers(foundUsersArray);
+            setCurrentWorkspace(foundWorkspace);
+            setCurrentUser(foundUser);
+
+            return { success: true };
+
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Login failed due to an error.' };
         }
-        const newUser: User = { id: `user_${Date.now()}`, username, password: pass, role: UserRole.Admin };
-        setUsers([newUser]);
-        isLoggingOut.current = false;
-        setCurrentUser(newUser);
-        setActiveView('dashboard');
+    }, []);
+
+    const registerBusiness = useCallback(async (businessName: string, username: string, email: string, pass: string): Promise<{ success: boolean, message?: string, recoveryKey?: string, storeCode?: string }> => {
+        try {
+            // 1. Create Workspace
+            const workspaceId = generateUUIDv7();
+            const existingAliases = await db.workspaces.toArray().then(ws => ws.map(w => w.alias));
+            const alias = generateUniqueNanoID([], (i, id) => existingAliases.includes(id), 6, 'WS-'); 
+            
+            const newWorkspace: Workspace = {
+                id: workspaceId,
+                name: businessName,
+                alias: alias
+            };
+
+            // 2. Create Crypto Keys
+            const salt = generateSalt();
+            const kek = await deriveKeyFromPassword(pass, salt);
+            const dek = await generateDataKey();
+            const encryptedDEK = await wrapKey(dek, kek);
+            const recoveryKey = await exportKey(dek);
+
+            // 3. Create Admin User
+            const newUser: User = {
+                id: `user_${Date.now()}`,
+                username,
+                email,
+                password: pass,
+                role: UserRole.Admin,
+                salt,
+                encryptedDEK,
+                workspaceId
+            };
+
+            // 4. Save
+            await db.workspaces.add(newWorkspace);
+            await setInDB(`ims-${workspaceId}-users`, [newUser]);
+
+            return { success: true, recoveryKey, storeCode: alias };
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Registration failed.' };
+        }
+    }, []);
+
+    const enterGuestMode = useCallback(async () => {
+        const guestId = 'guest_workspace';
+        const guestWs: Workspace = { id: guestId, name: 'Demo Store', alias: 'DEMO' };
+        
+        const guestUser: User = { id: 'guest', username: 'Guest Admin', password: '', role: UserRole.Admin, workspaceId: guestId };
+        
+        // Ephemeral key for guest
+        const key = await generateDataKey();
+        db.setEncryptionKey(key);
+
+        // Initialize guest data if needed
+        let existingUsers = await getFromDB<User[]>(`ims-${guestId}-users`) || [];
+        if (existingUsers.length === 0) {
+            existingUsers = [guestUser];
+            await setInDB(`ims-${guestId}-users`, existingUsers);
+        }
+
+        setCurrentWorkspace(guestWs);
+        setUsers(existingUsers);
+        setCurrentUser(guestUser);
+    }, []);
+
+    const logout = useCallback(() => {
+        db.setEncryptionKey(null);
+        setCurrentUser(null);
+        setCurrentWorkspace(null);
+        setUsers([]);
+        db.keyval.delete('ims-session');
+    }, []);
+
+    // User Management (Scoped to current workspace)
+    const addUser = useCallback(async (username: string, pass: string, role: UserRole, email?: string): Promise<{ success: boolean, message?: string }> => {
+        if (!currentWorkspace) return { success: false, message: 'No active workspace.' };
+        if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
+            return { success: false, message: 'Username taken.' };
+        }
+        if (email && users.some(u => u.email?.toLowerCase() === email.toLowerCase())) {
+            return { success: false, message: 'Email already in use in this workspace.' };
+        }
+
+        try {
+            // Encrypt DEK for new user
+            const currentDEK = db.encryptionKey;
+            if (!currentDEK) {
+                console.error("addUser: DB encryption key is missing.");
+                return { success: false, message: 'System is locked. Cannot add user.' };
+            }
+
+            const salt = generateSalt();
+            const kek = await deriveKeyFromPassword(pass, salt);
+            const encryptedDEK = await wrapKey(currentDEK, kek);
+
+            const newUser: User = {
+                id: `user_${Date.now()}`,
+                username,
+                email,
+                password: pass,
+                role,
+                salt,
+                encryptedDEK,
+                workspaceId: currentWorkspace.id
+            };
+
+            const updatedUsers = [...users, newUser];
+            setUsers(updatedUsers);
+            await setInDB(`ims-${currentWorkspace.id}-users`, updatedUsers);
+            
+            return { success: true };
+        } catch (error) {
+            console.error("addUser failed", error);
+            return { success: false, message: "Failed to secure user credentials." };
+        }
+    }, [users, currentWorkspace]);
+
+    const updateUser = useCallback(async (userId: string, newUsername: string, newPassword?: string, newEmail?: string): Promise<{ success: boolean, message?: string, recoveryKey?: string }> => {
+        if (!currentWorkspace) return { success: false, message: 'No active workspace.' };
+        
+        const userIndex = users.findIndex(u => u.id === userId);
+        if (userIndex === -1) return { success: false, message: 'User not found.' };
+        
+        const user = users[userIndex];
+        if (users.some(u => u.id !== userId && u.username.toLowerCase() === newUsername.toLowerCase())) {
+            return { success: false, message: 'Username taken.' };
+        }
+        if (newEmail && users.some(u => u.id !== userId && u.email?.toLowerCase() === newEmail.toLowerCase())) {
+            return { success: false, message: 'Email already in use.' };
+        }
+
+        let updatedUser = { ...user, username: newUsername, email: newEmail };
+        let recoveryKey: string | undefined;
+
+        if (newPassword && newPassword !== user.password) {
+             const currentDEK = db.encryptionKey;
+             if (currentDEK) {
+                 try {
+                     const salt = generateSalt();
+                     const kek = await deriveKeyFromPassword(newPassword, salt);
+                     const encryptedDEK = await wrapKey(currentDEK, kek);
+                     
+                     updatedUser.password = newPassword;
+                     updatedUser.salt = salt;
+                     updatedUser.encryptedDEK = encryptedDEK;
+
+                     if (currentUser?.id === userId) {
+                         recoveryKey = await exportKey(currentDEK);
+                     }
+                 } catch (e) {
+                     console.error("updateUser crypto failed", e);
+                     return { success: false, message: "Failed to update password." };
+                 }
+             } else {
+                 // Guest mode or unlocked?
+                 updatedUser.password = newPassword;
+             }
+        }
+
+        const newUsers = [...users];
+        newUsers[userIndex] = updatedUser;
+        setUsers(newUsers);
+        await setInDB(`ims-${currentWorkspace.id}-users`, newUsers);
+        
+        if (currentUser?.id === userId) setCurrentUser(updatedUser);
+
+        return { success: true, recoveryKey };
+    }, [users, currentWorkspace, currentUser]);
+
+    const deleteUser = useCallback((userId: string) => {
+        if (!currentWorkspace) return { success: false, message: 'No active workspace.' };
+        if (userId === currentUser?.id) return { success: false, message: 'Cannot delete self.' };
+        
+        const newUsers = users.filter(u => u.id !== userId);
+        setUsers(newUsers);
+        setInDB(`ims-${currentWorkspace.id}-users`, newUsers);
         return { success: true };
-    }, [users, setUsers, setCurrentUser, setActiveView]);
+    }, [users, currentWorkspace, currentUser]);
 
-    const onLogout = useCallback(async (user: User) => {
-        isLoggingOut.current = true; // Prevent auto-login effect from re-triggering immediately
-        if (user.id !== 'guest' && user.role === UserRole.Cashier) {
-            addNotification(`Cashier '${user.username}' logged out.`, 'USER', user.id);
+    const recoverAccount = useCallback(async (username: string, recoveryKeyBase64: string, newPassword: string): Promise<{ success: boolean, message?: string }> => {
+        if (!currentWorkspace) return { success: false, message: 'No active session.' };
+        
+        const user = users.find(u => u.username === username);
+        if (!user) return { success: false, message: 'User not found.' };
+
+        try {
+            const dek = await importKey(recoveryKeyBase64);
+            const salt = generateSalt();
+            const kek = await deriveKeyFromPassword(newPassword, salt);
+            const encryptedDEK = await wrapKey(dek, kek);
+
+            const updatedUser = { ...user, password: newPassword, salt, encryptedDEK };
+            const newUsers = users.map(u => u.id === user.id ? updatedUser : u);
+            
+            setUsers(newUsers);
+            await setInDB(`ims-${currentWorkspace.id}-users`, newUsers);
+            
+            // If recovering self, update session
+            if (currentUser?.id === user.id) {
+                db.setEncryptionKey(dek);
+                setCurrentUser(updatedUser);
+            }
+
+            return { success: true };
+        } catch (e) {
+            return { success: false, message: 'Invalid key.' };
         }
-        await setCurrentUserAsync(null);
-    }, [addNotification, setCurrentUserAsync]);
-  
-    const addUser = useCallback((username: string, pass: string, role: UserRole): { success: boolean, message?: string } => {
-        if (users.some(u => u.username === username)) {
-         return { success: false, message: 'Username is already taken.' };
-       }
-       const newUser: User = { id: `user_${Date.now()}`, username, password: pass, role };
-       setUsers(prev => [...prev, newUser]);
-       return { success: true };
-     }, [users, setUsers]);
-   
-     const deleteUser = useCallback((userId: string): { success: boolean; message?: string } => {
-         const userToDelete = users.find(u => u.id === userId);
-         if (!userToDelete) return { success: false, message: 'User not found.' };
-         if (userToDelete.role === UserRole.Admin) return { success: false, message: 'Cannot delete an admin account.' };
-         if (userToDelete.id === currentUser?.id) return { success: false, message: 'Cannot delete your own account.' };
-         setUsers(prev => prev.filter(u => u.id !== userId));
-         return { success: true };
-     }, [users, currentUser, setUsers]);
-   
-     const updateUser = useCallback((userId: string, newUsername: string, newPassword?: string): { success: boolean, message?: string } => {
-       const userToUpdate = users.find(u => u.id === userId);
-       if (!userToUpdate) return { success: false, message: 'User not found.' };
-   
-       if (currentUser?.role !== UserRole.Admin && currentUser?.id !== userId) return { success: false, message: 'Permission denied.' };
-       
-       if (userToUpdate.role === UserRole.Admin && userToUpdate.id !== currentUser.id) {
-           return { success: false, message: "Admins cannot edit other admin accounts."};
-       }
-   
-       if (users.some(u => u.username === newUsername && u.id !== userId)) {
-         return { success: false, message: 'Username is already taken.' };
-       }
-   
-       let updatedUser: User | null = null;
-       const updatedUsers = users.map(user => {
-         if (user.id === userId) {
-           updatedUser = { ...user, username: newUsername, password: newPassword && newPassword.length > 0 ? newPassword : user.password };
-           return updatedUser;
-         }
-         return user;
-       });
-       setUsers(updatedUsers);
-       if (currentUser?.id === userId && updatedUser) setCurrentUser(updatedUser);
-       return { success: true };
-     }, [users, currentUser, setUsers, setCurrentUser]);
+    }, [users, currentWorkspace, currentUser]);
 
-    const value = useMemo(() => ({
-        users, currentUser, login, signup, onLogout, addUser, updateUser, deleteUser
-    }), [users, currentUser, login, signup, onLogout, addUser, updateUser, deleteUser]);
+    const getDecryptedKey = useCallback(async (password: string): Promise<string | null> => {
+        if (!currentUser || !currentUser.encryptedDEK || !currentUser.salt) return null;
+        try {
+            const kek = await deriveKeyFromPassword(password, currentUser.salt);
+            const dek = await unwrapKey(currentUser.encryptedDEK, kek);
+            return await exportKey(dek);
+        } catch (e) {
+            return null;
+        }
+    }, [currentUser]);
 
+    // Deprecated, maintained for backward compatibility within file
+    const updateStoreCode = useCallback(async (newCode: string): Promise<{ success: boolean, message?: string }> => {
+        return updateBusinessDetails(currentWorkspace?.name || '', newCode);
+    }, [currentWorkspace]);
+
+    const updateBusinessDetails = useCallback(async (name: string, code: string): Promise<{ success: boolean, message?: string }> => {
+        if (!currentWorkspace) return { success: false, message: 'No active workspace.' };
+        
+        const normalizedCode = code.trim().toUpperCase();
+        const trimmedName = name.trim();
+
+        if (normalizedCode.length < 3) return { success: false, message: 'Store Code must be at least 3 characters.' };
+        if (!/^[A-Z0-9-]+$/.test(normalizedCode)) return { success: false, message: 'Store Code can only contain letters, numbers, and hyphens.' };
+        if (trimmedName.length === 0) return { success: false, message: 'Business Name cannot be empty.' };
+
+        const existing = await db.workspaces.where('alias').equals(normalizedCode).first();
+        if (existing && existing.id !== currentWorkspace.id) {
+            return { success: false, message: 'Store Code is already taken.' };
+        }
+
+        await db.workspaces.update(currentWorkspace.id, { name: trimmedName, alias: normalizedCode });
+        setCurrentWorkspace(prev => prev ? { ...prev, name: trimmedName, alias: normalizedCode } : null);
+        
+        return { success: true };
+    }, [currentWorkspace]);
+
+    const value = {
+        users, currentUser, currentWorkspace,
+        login, loginByEmail, registerBusiness, logout, enterGuestMode,
+        addUser, updateUser, deleteUser, recoverAccount, getDecryptedKey,
+        updateStoreCode, updateBusinessDetails
+    };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

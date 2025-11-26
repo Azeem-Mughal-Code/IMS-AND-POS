@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Product, CartItem, PaymentType, Sale, Payment, ProductVariant, Customer, HeldOrder } from '../types';
 import { SearchIcon, PlusIcon, MinusIcon, TrashIcon, PhotoIcon, ChevronDownIcon, TagIcon, UserCircleIcon, CheckCircleIcon, ClipboardIcon } from './Icons';
@@ -12,77 +13,212 @@ import { useSettings } from './context/SettingsContext';
 import { useUIState } from './context/UIStateContext';
 import { useCustomers } from './context/CustomerContext';
 import { VariantSelectionModal } from './common/ProductVariantSelector';
+import { FilterMenu, FilterSelectItem } from './common/FilterMenu';
+import usePersistedState from '../hooks/usePersistedState';
 
 declare var html2canvas: any;
 
 const DiscountModalContent: React.FC<{
     currentDiscount: { type: 'percent' | 'fixed', value: number } | null;
+    defaultDiscountRate: number;
+    isDefaultDiscountEnabled: boolean;
+    defaultDiscountThreshold: number;
+    formatCurrency: (val: number) => string;
     onApply: (discount: { type: 'percent' | 'fixed', value: number } | null) => void;
     onClose: () => void;
-}> = ({ currentDiscount, onApply, onClose }) => {
+}> = ({ currentDiscount, defaultDiscountRate, isDefaultDiscountEnabled, defaultDiscountThreshold, formatCurrency, onApply, onClose }) => {
+    const [mode, setMode] = useState<'default' | 'custom'>(currentDiscount ? 'custom' : 'default');
     const [type, setType] = useState<'percent' | 'fixed'>(currentDiscount?.type || 'percent');
-    const [value, setValue] = useState<string>(currentDiscount ? currentDiscount.value.toString() : '');
+    const [value, setValue] = useState<string>(currentDiscount ? currentDiscount.value.toString() : '0');
 
     const handleApply = () => {
-        const numVal = parseFloat(value);
-        if (isNaN(numVal) || numVal < 0) return;
-        onApply({ type, value: numVal });
+        if (mode === 'default') {
+            onApply(null);
+        } else {
+            const numVal = parseFloat(value);
+            if (isNaN(numVal) || numVal < 0) return;
+            onApply({ type, value: numVal });
+        }
         onClose();
     };
 
-    const handleRemove = () => {
-        onApply(null);
+    const defaultLabel = isDefaultDiscountEnabled 
+        ? `Default Discount (${(defaultDiscountRate * 100).toFixed(1)}% on orders over ${formatCurrency(defaultDiscountThreshold)})`
+        : 'Default Discount (Disabled)';
+
+    return (
+        <div className="space-y-4">
+            <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Discount Mode</label>
+                <div className="flex flex-col gap-2">
+                    <label className="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <input 
+                            type="radio" 
+                            name="discountMode" 
+                            checked={mode === 'default'} 
+                            onChange={() => setMode('default')} 
+                            className="text-blue-600 focus:ring-blue-500 border-gray-300"
+                        />
+                        <span className="text-gray-800 dark:text-gray-200">{defaultLabel}</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <input 
+                            type="radio" 
+                            name="discountMode" 
+                            checked={mode === 'custom'} 
+                            onChange={() => setMode('custom')} 
+                            className="text-blue-600 focus:ring-blue-500 border-gray-300"
+                        />
+                        <span className="text-gray-800 dark:text-gray-200">Custom Discount</span>
+                    </label>
+                </div>
+            </div>
+
+            {mode === 'custom' && (
+                <div className="pl-6 border-l-2 border-gray-200 dark:border-gray-600 space-y-4">
+                    <div className="flex rounded-md shadow-sm">
+                        <button
+                            type="button"
+                            onClick={() => setType('percent')}
+                            className={`flex-1 px-3 py-2 text-xs font-medium rounded-l-md border ${type === 'percent' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
+                        >
+                            Percentage (%)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setType('fixed')}
+                            className={`flex-1 px-3 py-2 text-xs font-medium rounded-r-md border-t border-b border-r ${type === 'fixed' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
+                        >
+                            Fixed Amount
+                        </button>
+                    </div>
+                    <div className="relative rounded-md shadow-sm">
+                        <input
+                            type="number"
+                            value={value}
+                            onChange={(e) => setValue(e.target.value)}
+                            className={`block w-full rounded-md border-gray-300 dark:border-gray-600 pr-12 focus:border-blue-500 focus:ring-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white`}
+                            placeholder="0.00"
+                        />
+                        {type === 'percent' && (
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                                <span className="text-gray-500 sm:text-sm">%</span>
+                            </div>
+                        )}
+                    </div>
+                    <button 
+                        type="button" 
+                        onClick={() => { setType('fixed'); setValue('0'); }}
+                        className="text-xs text-red-600 hover:underline"
+                    >
+                        Set to No Discount (Fixed $0)
+                    </button>
+                </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
+                <button type="button" onClick={handleApply} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Apply</button>
+            </div>
+        </div>
+    );
+};
+
+const TaxModalContent: React.FC<{
+    currentTax: { type: 'percent' | 'fixed', value: number } | null;
+    defaultTaxRate: number;
+    isDefaultTaxEnabled: boolean;
+    onApply: (tax: { type: 'percent' | 'fixed', value: number } | null) => void;
+    onClose: () => void;
+}> = ({ currentTax, defaultTaxRate, isDefaultTaxEnabled, onApply, onClose }) => {
+    const [mode, setMode] = useState<'default' | 'custom'>((currentTax === null || (currentTax.type === 'percent' && currentTax.value === defaultTaxRate * 100 && isDefaultTaxEnabled)) ? 'default' : 'custom');
+    const [type, setType] = useState<'percent' | 'fixed'>(currentTax?.type || 'percent');
+    const [value, setValue] = useState<string>(currentTax ? currentTax.value.toString() : (defaultTaxRate * 100).toString());
+
+    const handleApply = () => {
+        if (mode === 'default') {
+            onApply(null); // Null implies default tax logic
+        } else {
+            const numVal = parseFloat(value);
+            if (isNaN(numVal) || numVal < 0) return;
+            onApply({ type, value: numVal });
+        }
         onClose();
     };
 
     return (
         <div className="space-y-4">
             <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Discount Type</label>
-                <div className="flex rounded-md shadow-sm">
-                    <button
-                        type="button"
-                        onClick={() => setType('percent')}
-                        className={`flex-1 px-4 py-2 text-sm font-medium rounded-l-md border ${type === 'percent' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
-                    >
-                        Percentage (%)
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setType('fixed')}
-                        className={`flex-1 px-4 py-2 text-sm font-medium rounded-r-md border-t border-b border-r ${type === 'fixed' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
-                    >
-                        Fixed Amount
-                    </button>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tax Mode</label>
+                <div className="flex flex-col gap-2">
+                    <label className="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <input 
+                            type="radio" 
+                            name="taxMode" 
+                            checked={mode === 'default'} 
+                            onChange={() => setMode('default')} 
+                            className="text-blue-600 focus:ring-blue-500 border-gray-300"
+                        />
+                        <span className="text-gray-800 dark:text-gray-200">Default Tax ({isDefaultTaxEnabled ? `${(defaultTaxRate * 100).toFixed(1)}%` : 'Disabled'})</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <input 
+                            type="radio" 
+                            name="taxMode" 
+                            checked={mode === 'custom'} 
+                            onChange={() => setMode('custom')} 
+                            className="text-blue-600 focus:ring-blue-500 border-gray-300"
+                        />
+                        <span className="text-gray-800 dark:text-gray-200">Custom Tax</span>
+                    </label>
                 </div>
             </div>
-            <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {type === 'percent' ? 'Percentage Value' : 'Amount'}
-                </label>
-                <div className="relative rounded-md shadow-sm">
-                    <input
-                        type="number"
-                        value={value}
-                        onChange={(e) => setValue(e.target.value)}
-                        className={`block w-full rounded-md border-gray-300 dark:border-gray-600 pr-12 focus:border-blue-500 focus:ring-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white`}
-                        placeholder="0.00"
-                    />
-                    {type === 'percent' && (
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                            <span className="text-gray-500 sm:text-sm">%</span>
-                        </div>
-                    )}
+
+            {mode === 'custom' && (
+                <div className="pl-6 border-l-2 border-gray-200 dark:border-gray-600 space-y-4">
+                    <div className="flex rounded-md shadow-sm">
+                        <button
+                            type="button"
+                            onClick={() => setType('percent')}
+                            className={`flex-1 px-3 py-2 text-xs font-medium rounded-l-md border ${type === 'percent' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
+                        >
+                            Percentage
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setType('fixed')}
+                            className={`flex-1 px-3 py-2 text-xs font-medium rounded-r-md border-t border-b border-r ${type === 'fixed' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
+                        >
+                            Fixed Amount
+                        </button>
+                    </div>
+                    <div className="relative rounded-md shadow-sm">
+                        <input
+                            type="number"
+                            value={value}
+                            onChange={(e) => setValue(e.target.value)}
+                            className={`block w-full rounded-md border-gray-300 dark:border-gray-600 pr-12 focus:border-blue-500 focus:ring-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white`}
+                            placeholder="0.00"
+                        />
+                        {type === 'percent' && (
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                                <span className="text-gray-500 sm:text-sm">%</span>
+                            </div>
+                        )}
+                    </div>
+                    <button 
+                        type="button" 
+                        onClick={() => { setType('fixed'); setValue('0'); }}
+                        className="text-xs text-red-600 hover:underline"
+                    >
+                        Set to No Tax (Fixed $0)
+                    </button>
                 </div>
-            </div>
-            <div className="flex justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
-                <button type="button" onClick={handleRemove} className="px-4 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors">
-                    Remove Discount
-                </button>
-                <div className="flex gap-2">
-                    <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
-                    <button type="button" onClick={handleApply} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Apply</button>
-                </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
+                <button type="button" onClick={handleApply} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Apply</button>
             </div>
         </div>
     );
@@ -313,7 +449,8 @@ const PaymentModalContent: React.FC<{
     onCompleteSale: (payments: Payment[]) => void,
     onClose: () => void,
 }> = ({ total, onCompleteSale, onClose }) => {
-    const { isChangeDueEnabled, isIntegerCurrency, formatCurrency } = useSettings();
+    const { isIntegerCurrency, formatCurrency } = useSettings();
+    const { showToast } = useUIState();
     const [payments, setPayments] = useState<Payment[]>([]);
     const [currentAmount, setCurrentAmount] = useState('');
 
@@ -321,42 +458,41 @@ const PaymentModalContent: React.FC<{
     const absTotal = Math.abs(total);
 
     const totalPaid = useMemo(() => payments.reduce((sum, p) => sum + Math.abs(p.amount), 0), [payments]);
-    const remaining = absTotal - totalPaid;
-    const change = isChangeDueEnabled && totalPaid > absTotal ? totalPaid - absTotal : 0;
-    const canComplete = totalPaid >= absTotal;
+    const remaining = Math.max(0, absTotal - totalPaid);
+    
+    // Change is due if we paid more than total
+    const change = totalPaid > absTotal ? totalPaid - absTotal : 0;
+    
+    // Can complete if paid enough (remaining <= 0)
+    const canComplete = totalPaid >= absTotal - 0.001; 
     
     useEffect(() => {
-        const newRemaining = absTotal - totalPaid;
-        setCurrentAmount(newRemaining > 0 ? newRemaining.toFixed(isIntegerCurrency ? 0 : 2) : '');
-    }, [total, totalPaid, isIntegerCurrency]);
+        if (remaining > 0) {
+            setCurrentAmount(remaining.toFixed(isIntegerCurrency ? 0 : 2));
+        } else {
+            setCurrentAmount('');
+        }
+    }, [total, totalPaid, isIntegerCurrency, absTotal, remaining]);
 
     const addPayment = (type: PaymentType) => {
         let amount = parseFloat(currentAmount);
         if (isNaN(amount) || amount <= 0) return;
 
-        if (!isChangeDueEnabled && amount > remaining) {
-            amount = remaining;
-        }
-
-        if (amount > 0.005) {
-            setPayments(prev => [...prev, { type, amount: isRefund ? -amount : amount }]);
-            const newRemaining = remaining - amount;
-            setCurrentAmount(newRemaining > 0 ? newRemaining.toFixed(isIntegerCurrency ? 0 : 2) : '');
-        }
+        setPayments(prev => [...prev, { type, amount: isRefund ? -amount : amount }]);
     };
 
     const removePayment = (index: number) => {
         const newPayments = payments.filter((_, i) => i !== index);
         setPayments(newPayments);
-        const newTotalPaid = newPayments.reduce((sum, p) => sum + Math.abs(p.amount), 0);
-        setCurrentAmount((absTotal - newTotalPaid).toFixed(isIntegerCurrency ? 0 : 2));
     };
 
     return (
         <div className="space-y-4 text-gray-900 dark:text-gray-100">
-            <div className="text-center">
-                <p className="text-lg text-gray-600 dark:text-gray-300">{isRefund ? 'Refund Amount' : 'Total Due'}</p>
-                <p className={`text-5xl font-bold ${isRefund ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-white'}`}>{formatCurrency(absTotal)}</p>
+            <div className="flex justify-between items-start">
+                <div className="flex-grow text-center">
+                    <p className="text-lg text-gray-600 dark:text-gray-300">{isRefund ? 'Refund Amount' : 'Total Due'}</p>
+                    <p className={`text-5xl font-bold ${isRefund ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-white'}`}>{formatCurrency(absTotal)}</p>
+                </div>
             </div>
             
             {payments.length > 0 && (
@@ -372,12 +508,12 @@ const PaymentModalContent: React.FC<{
             )}
 
             <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                 {remaining > 0 ? (
+                 {remaining > 0.001 ? (
                     <div className="flex justify-between text-xl font-semibold mb-4">
                         <span className="text-gray-900 dark:text-white">Remaining:</span>
                         <span className="text-red-500">{formatCurrency(remaining)}</span>
                     </div>
-                ) : isChangeDueEnabled && !isRefund ? (
+                ) : !isRefund ? (
                     <div className="flex justify-between text-xl font-semibold mb-4">
                         <span className="text-gray-900 dark:text-white">Change Due:</span>
                         <span className="text-green-500">{formatCurrency(change)}</span>
@@ -396,22 +532,23 @@ const PaymentModalContent: React.FC<{
                         value={currentAmount}
                         onChange={(e) => setCurrentAmount(e.target.value)}
                         placeholder="Amount"
-                        className="flex-grow block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
+                        disabled={remaining <= 0.001}
+                        className="flex-grow block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 disabled:bg-gray-100 dark:disabled:bg-gray-800"
                      />
-                     <button onClick={() => setCurrentAmount(remaining.toFixed(isIntegerCurrency ? 0 : 2))} disabled={remaining <= 0} className="px-3 py-2 bg-gray-200 dark:bg-gray-600 rounded-md text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-50 disabled:opacity-50 text-gray-800 dark:text-white">
+                     <button onClick={() => setCurrentAmount(remaining.toFixed(isIntegerCurrency ? 0 : 2))} disabled={remaining <= 0.001} className="px-3 py-2 bg-gray-200 dark:bg-gray-600 rounded-md text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-50 disabled:opacity-50 text-gray-800 dark:text-white">
                          Full
                      </button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
-                    <button onClick={() => addPayment(PaymentType.Cash)} className="w-full py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 disabled:bg-blue-300" disabled={remaining <= 0}>Cash</button>
-                    <button onClick={() => addPayment(PaymentType.Card)} className="w-full py-2 bg-indigo-500 text-white font-semibold rounded-lg hover:bg-indigo-600 disabled:bg-indigo-300" disabled={remaining <= 0}>Card</button>
-                    <button onClick={() => addPayment(PaymentType.Other)} className="w-full py-2 bg-gray-500 text-white font-semibold rounded-lg hover:bg-gray-600 disabled:bg-gray-300" disabled={remaining <= 0}>Other</button>
+                    <button onClick={() => addPayment(PaymentType.Cash)} disabled={remaining <= 0.001} className="w-full py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed">Cash</button>
+                    <button onClick={() => addPayment(PaymentType.Card)} disabled={remaining <= 0.001} className="w-full py-2 bg-indigo-500 text-white font-semibold rounded-lg hover:bg-indigo-600 disabled:bg-indigo-300 disabled:cursor-not-allowed">Card</button>
+                    <button onClick={() => addPayment(PaymentType.Other)} disabled={remaining <= 0.001} className="w-full py-2 bg-gray-500 text-white font-semibold rounded-lg hover:bg-gray-600 disabled:bg-gray-300 disabled:cursor-not-allowed">Other</button>
                 </div>
             </div>
             
             <div className="flex justify-end gap-2 pt-4">
                 <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
-                <button type="button" onClick={() => onCompleteSale(payments)} disabled={!canComplete} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400">Complete {isRefund ? 'Refund' : 'Sale'}</button>
+                <button type="button" onClick={() => onCompleteSale(payments)} disabled={!canComplete} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed">Complete {isRefund ? 'Refund' : 'Sale'}</button>
             </div>
         </div>
     );
@@ -419,14 +556,14 @@ const PaymentModalContent: React.FC<{
 
 
 export const POS: React.FC<POSProps> = () => {
-  const { products } = useProducts();
+  const { products, categories } = useProducts();
   const { sales, processSale, currentShift, openShift, closeShift, holdOrder, heldOrders, retrieveOrder, deleteHeldOrder } = useSales();
   const { currentUser } = useAuth();
-  const { isSplitPaymentEnabled, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, isIntegerCurrency, cashierPermissions, formatCurrency, formatDateTime, paginationConfig } = useSettings();
+  const { workspaceId, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, isIntegerCurrency, cashierPermissions, formatCurrency, formatDateTime, paginationConfig } = useSettings();
   const { showToast, setActiveView } = useUIState();
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [cart, setCart] = usePersistedState<CartItem[]>(`ims-${workspaceId}-pos-cart`, []);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentModalKey, setPaymentModalKey] = useState(Date.now());
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
@@ -434,7 +571,7 @@ export const POS: React.FC<POSProps> = () => {
   
   const [activeTab, setActiveTab] = useState<'Register' | 'Returns'>('Register');
   const [selectedSaleForReturn, setSelectedSaleForReturn] = useState<Sale | null>(null);
-  const [returnSearchTerm, setReturnSearchTerm] = useState('');
+  const [returnSearchTerm, setReturnSearchTerm] = useState<string>('');
   
   const [catalogPage, setCatalogPage] = useState(1);
   const [salesPage, setSalesPage] = useState(1);
@@ -444,18 +581,21 @@ export const POS: React.FC<POSProps> = () => {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const printableAreaRef = useRef<HTMLDivElement>(null);
 
-  const [cartDiscount, setCartDiscount] = useState<{ type: 'percent' | 'fixed', value: number } | null>(null);
-  const [isTaxExempt, setIsTaxExempt] = useState(false);
+  const [cartDiscount, setCartDiscount] = usePersistedState<{ type: 'percent' | 'fixed', value: number } | null>(`ims-${workspaceId}-pos-discount`, null);
+  const [cartTax, setCartTax] = usePersistedState<{ type: 'percent' | 'fixed', value: number } | null>(`ims-${workspaceId}-pos-tax`, null);
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
+  const [isTaxModalOpen, setIsTaxModalOpen] = useState(false);
   const [isClearCartConfirmOpen, setIsClearCartConfirmOpen] = useState(false);
   const [isHoldOrderModalOpen, setIsHoldOrderModalOpen] = useState(false);
   const [isRetrieveOrderModalOpen, setIsRetrieveOrderModalOpen] = useState(false);
   
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = usePersistedState<Customer | null>(`ims-${workspaceId}-pos-customer`, null);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
 
   const [isCloseShiftModalOpen, setIsCloseShiftModalOpen] = useState(false);
   const [isStartShiftModalOpen, setIsStartShiftModalOpen] = useState(false);
+
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
   const canProcessReturns = currentUser.role === UserRole.Admin || cashierPermissions.canProcessReturns;
   
@@ -509,22 +649,50 @@ export const POS: React.FC<POSProps> = () => {
     }
   };
 
+  const categoryOptions = useMemo(() => {
+      const options: { value: string; label: string }[] = [];
+      const buildOptions = (parentId: string | null = null, prefix = '') => {
+          categories
+              .filter(c => c.parentId === parentId)
+              .forEach(c => {
+                  options.push({ value: c.id, label: `${prefix}${c.name}` });
+                  buildOptions(c.id, `${prefix}${c.name} > `);
+              });
+      };
+      buildOptions();
+      return [{ value: 'All', label: 'All Categories' }, ...options];
+  }, [categories]);
+
   const allFilteredProducts = useMemo<Product[]>(() => {
     let result = products;
+
+    if (selectedCategory !== 'All') {
+        const getDescendantIds = (categoryId: string): string[] => {
+            const children = categories.filter(c => c.parentId === categoryId);
+            let ids = children.map(c => c.id);
+            children.forEach(child => {
+                ids = [...ids, ...getDescendantIds(child.id)];
+            });
+            return ids;
+        };
+        const filterIds = [selectedCategory, ...getDescendantIds(selectedCategory)];
+        result = result.filter(p => p.categoryIds.some(id => filterIds.includes(id)));
+    }
+
     if (searchTerm) {
         const lowerTerm = searchTerm.toLowerCase();
-        result = products.filter(p =>
+        result = result.filter(p =>
             p.name.toLowerCase().includes(lowerTerm) ||
             p.sku.toLowerCase().includes(lowerTerm)
         );
     }
     return result;
-  }, [searchTerm, products]);
+  }, [searchTerm, products, selectedCategory, categories]);
 
   const catalogItemsPerPage = paginationConfig.posCatalog || 10;
   useEffect(() => {
       setCatalogPage(1);
-  }, [searchTerm, catalogItemsPerPage]);
+  }, [searchTerm, catalogItemsPerPage, selectedCategory]);
 
   const paginatedProducts = useMemo<Product[]>(() => {
       const start = (catalogPage - 1) * catalogItemsPerPage;
@@ -555,7 +723,7 @@ export const POS: React.FC<POSProps> = () => {
                     name: composedName,
                     sku: composedSku,
                     retailPrice: variant.retailPrice,
-                    costPrice: variant.costPrice,
+                    costPrice: Number(variant.costPrice) || 0,
                     stock: variant.stock,
                     quantity: 1,
                 };
@@ -592,7 +760,7 @@ export const POS: React.FC<POSProps> = () => {
             name: product.name,
             sku: product.sku,
             retailPrice: product.retailPrice,
-            costPrice: product.costPrice,
+            costPrice: Number(product.costPrice) || 0,
             stock: product.stock,
             quantity: 1,
         };
@@ -651,7 +819,7 @@ export const POS: React.FC<POSProps> = () => {
   const handleClearCart = () => {
       setCart([]);
       setCartDiscount(null);
-      setIsTaxExempt(false);
+      setCartTax(null);
       setIsClearCartConfirmOpen(false);
       setSelectedCustomer(null);
   }
@@ -662,7 +830,8 @@ export const POS: React.FC<POSProps> = () => {
           items: cart,
           customer: selectedCustomer,
           discount: cartDiscount,
-          isTaxExempt: isTaxExempt,
+          isTaxExempt: false, // Legacy, kept as false
+          customTax: cartTax,
           note: note || `Order ${new Date().toLocaleTimeString()}`,
       });
       showToast("Order held successfully.", 'success');
@@ -674,7 +843,14 @@ export const POS: React.FC<POSProps> = () => {
       setCart(order.items);
       setSelectedCustomer(order.customer);
       setCartDiscount(order.discount);
-      setIsTaxExempt(order.isTaxExempt);
+      if (order.customTax) {
+          setCartTax(order.customTax);
+      } else if (order.isTaxExempt) {
+          // Backwards compatibility for held orders before tax update
+          setCartTax({ type: 'fixed', value: 0 });
+      } else {
+          setCartTax(null);
+      }
       deleteHeldOrder(order.id);
       setIsRetrieveOrderModalOpen(false);
       showToast("Order loaded.", 'success');
@@ -691,7 +867,6 @@ export const POS: React.FC<POSProps> = () => {
     };
     
     let discount = 0;
-    
     const positiveSubtotal = cart.filter(i => i.quantity > 0).reduce((sum, i) => sum + i.retailPrice * i.quantity, 0);
     
     if (cartDiscount) {
@@ -708,12 +883,21 @@ export const POS: React.FC<POSProps> = () => {
     const roundedDiscount = roundCurrency(discount);
 
     const netTaxableAmount = subtotal - roundedDiscount;
+    
     let tax = 0;
-    if (isTaxEnabled && !isTaxExempt) {
+    if (cartTax) {
+        // Manual override for this cart
+        if (cartTax.type === 'fixed') {
+            tax = cartTax.value;
+        } else {
+            tax = netTaxableAmount * (cartTax.value / 100);
+        }
+    } else if (isTaxEnabled) {
+        // Default system tax
         tax = netTaxableAmount * taxRate;
     }
+    
     const roundedTax = roundCurrency(tax);
-
     const total = subtotal - roundedDiscount + roundedTax;
 
     return { 
@@ -722,12 +906,12 @@ export const POS: React.FC<POSProps> = () => {
         tax: roundedTax, 
         total: roundCurrency(total) 
     };
-  }, [cart, isTaxEnabled, taxRate, isDiscountEnabled, discountThreshold, discountRate, isIntegerCurrency, cartDiscount, isTaxExempt]);
+  }, [cart, isTaxEnabled, taxRate, isDiscountEnabled, discountThreshold, discountRate, isIntegerCurrency, cartDiscount, cartTax]);
 
   const handleCompleteSale = (payments: Payment[]) => {
-    const cogs = cart.reduce((sum, item) => sum + item.costPrice * item.quantity, 0);
+    const cogs = cart.reduce((sum, item) => sum + (Number(item.costPrice) || 0) * item.quantity, 0);
     
-    const distinctOriginalIds = [...new Set(cart.map(i => i.originalSaleId).filter(Boolean))];
+    const distinctOriginalIds = [...new Set(cart.map(i => i.originalSaleId).filter((id): id is string => !!id))];
     const originalSaleId = distinctOriginalIds.length === 1 ? distinctOriginalIds[0] : undefined;
 
     const sale: Omit<Sale, 'id' | 'date'> = {
@@ -753,17 +937,14 @@ export const POS: React.FC<POSProps> = () => {
         setLastSale(newSale);
         setCart([]);
         setCartDiscount(null);
-        setIsTaxExempt(false);
+        setCartTax(null);
         setSelectedCustomer(null);
         setIsPaymentModalOpen(false);
         setIsReceiptModalOpen(true);
         setActiveTab('Register');
     } catch (error) {
-        if (error instanceof Error) {
-            showToast(error.message, 'error');
-        } else {
-            showToast('An unknown error occurred while processing the sale.', 'error');
-        }
+        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred while processing the sale.';
+        showToast(errorMessage, 'error');
         setIsPaymentModalOpen(false);
     }
   };
@@ -1050,37 +1231,49 @@ export const POS: React.FC<POSProps> = () => {
         <div className="w-full md:w-2/5 flex flex-col gap-4">
             
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
-                <div className="relative mb-4">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                        <SearchIcon />
-                    </div>
-                    <input
-                        ref={searchInputRef}
-                        type="text"
-                        placeholder="Scan barcode or search product..."
-                        value={searchTerm}
-                        onChange={e => { setSearchTerm(e.target.value); setHighlightedIndex(-1); }}
-                        onKeyDown={handleSearchKeyDown}
-                        className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500 placeholder-gray-500 dark:placeholder-gray-400"
-                    />
-                    {searchTerm && (
-                        <div className="absolute z-20 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                            {allFilteredProducts.length > 0 ? (
-                                allFilteredProducts.map((p, index) => (
-                                    <div 
-                                        key={p.id} 
-                                        onClick={() => addToCart(p)} 
-                                        className={`p-3 cursor-pointer flex justify-between items-center border-b border-gray-100 dark:border-gray-600 last:border-0 ${highlightedIndex === index ? 'bg-blue-100 dark:bg-blue-900/50' : 'hover:bg-gray-100 dark:hover:bg-gray-600'}`}
-                                    >
-                                        <span className="text-gray-900 dark:text-white font-medium">{p.name}</span>
-                                        <span className="text-gray-500 dark:text-gray-300 text-sm">{formatCurrency(p.retailPrice)}</span>
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="p-3 text-center text-gray-500 dark:text-gray-400">No products found</div>
-                            )}
+                <div className="flex gap-2 mb-4">
+                    <div className="relative flex-grow">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                            <SearchIcon />
                         </div>
-                    )}
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            placeholder="Scan barcode or search product..."
+                            value={searchTerm}
+                            onChange={e => { setSearchTerm(e.target.value); setHighlightedIndex(-1); }}
+                            onKeyDown={handleSearchKeyDown}
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500 placeholder-gray-500 dark:placeholder-gray-400"
+                        />
+                        {searchTerm && (
+                            <div className="absolute z-20 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                {allFilteredProducts.length > 0 ? (
+                                    allFilteredProducts.map((p, index) => (
+                                        <div 
+                                            key={p.id} 
+                                            onClick={() => addToCart(p)} 
+                                            className={`p-3 cursor-pointer flex justify-between items-center border-b border-gray-100 dark:border-gray-600 last:border-0 ${highlightedIndex === index ? 'bg-blue-100 dark:bg-blue-900/50' : 'hover:bg-gray-100 dark:hover:bg-gray-600'}`}
+                                        >
+                                            <span className="text-gray-900 dark:text-white font-medium">{p.name}</span>
+                                            <span className="text-gray-500 dark:text-gray-300 text-sm">{formatCurrency(p.retailPrice)}</span>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="p-3 text-center text-gray-500 dark:text-gray-400">No products found</div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex-shrink-0">
+                        <FilterMenu activeFilterCount={selectedCategory !== 'All' ? 1 : 0}>
+                            <FilterSelectItem 
+                                label="Category" 
+                                value={selectedCategory} 
+                                onChange={setSelectedCategory} 
+                                options={categoryOptions} 
+                            />
+                        </FilterMenu>
+                    </div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -1170,16 +1363,16 @@ export const POS: React.FC<POSProps> = () => {
                         <ClipboardIcon className="h-4 w-4 mb-1" />
                         <span className="text-[10px] font-bold uppercase">Hold</span>
                     </button>
-                    {isTaxEnabled && (
-                        <button 
-                            onClick={() => setIsTaxExempt(!isTaxExempt)} 
-                            disabled={cart.length === 0}
-                            className={`flex flex-col items-center justify-center p-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${!isTaxExempt ? 'border-green-200 dark:border-green-900/50 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
-                        >
-                            <span className="text-sm font-bold mb-0 leading-none">{!isTaxExempt ? 'ON' : 'OFF'}</span>
-                            <span className="text-[10px] font-bold uppercase mt-1">Tax</span>
-                        </button>
-                    )}
+                    <button 
+                        onClick={() => setIsTaxModalOpen(true)} 
+                        disabled={cart.length === 0}
+                        className={`flex flex-col items-center justify-center p-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${cartTax ? (cartTax.type === 'fixed' && cartTax.value === 0 ? 'border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20' : 'border-blue-200 dark:border-blue-900/50 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20') : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                    >
+                        <span className="text-sm font-bold mb-0 leading-none">
+                            {cartTax ? (cartTax.type === 'fixed' ? (cartTax.value === 0 ? 'OFF' : `$${cartTax.value}`) : `${cartTax.value}%`) : (isTaxEnabled ? `${(taxRate * 100).toFixed(0)}%` : 'OFF')}
+                        </span>
+                        <span className="text-[10px] font-bold uppercase mt-1">Tax</span>
+                    </button>
                 </div>
 
                 <div className="mt-auto border-t border-gray-200 dark:border-gray-700 pt-4">
@@ -1193,12 +1386,13 @@ export const POS: React.FC<POSProps> = () => {
                             <span>-{formatCurrency(totals.discount)}</span>
                         </div>
                     )}
-                    {isTaxEnabled && !isTaxExempt && (
-                        <div className="flex justify-between items-center mb-2 text-gray-600 dark:text-gray-400 text-sm">
-                            <span>Tax ({ (taxRate * 100).toFixed(0) }%)</span>
-                            <span>{formatCurrency(totals.tax)}</span>
-                        </div>
-                    )}
+                    <div className="flex justify-between items-center mb-2 text-gray-600 dark:text-gray-400 text-sm">
+                        <span>
+                            Tax
+                            {cartTax ? (cartTax.type === 'percent' ? ` (${cartTax.value}%)` : cartTax.value === 0 ? ' (Exempt)' : '') : (isTaxEnabled ? ` (${(taxRate * 100).toFixed(0)}%)` : '')}
+                        </span>
+                        <span>{formatCurrency(totals.tax)}</span>
+                    </div>
                     <div className="flex justify-between items-center mb-4 text-2xl font-bold text-gray-900 dark:text-white">
                         <span>Total</span>
                         <span>{formatCurrency(totals.total)}</span>
@@ -1234,11 +1428,25 @@ export const POS: React.FC<POSProps> = () => {
           />
       )}
 
-      <Modal isOpen={isDiscountModalOpen} onClose={() => setIsDiscountModalOpen(false)} title="Apply Discount" size="sm">
+      <Modal isOpen={isDiscountModalOpen} onClose={() => setIsDiscountModalOpen(false)} title="Discount Configuration" size="sm">
           <DiscountModalContent 
               currentDiscount={cartDiscount} 
+              defaultDiscountRate={discountRate}
+              isDefaultDiscountEnabled={isDiscountEnabled}
+              defaultDiscountThreshold={discountThreshold}
+              formatCurrency={formatCurrency}
               onApply={setCartDiscount} 
               onClose={() => setIsDiscountModalOpen(false)} 
+          />
+      </Modal>
+
+      <Modal isOpen={isTaxModalOpen} onClose={() => setIsTaxModalOpen(false)} title="Tax Configuration" size="sm">
+          <TaxModalContent 
+              currentTax={cartTax}
+              defaultTaxRate={taxRate}
+              isDefaultTaxEnabled={isTaxEnabled}
+              onApply={setCartTax}
+              onClose={() => setIsTaxModalOpen(false)}
           />
       </Modal>
 

@@ -391,6 +391,20 @@ export const Reports: React.FC = () => {
     );
   };
   
+  const getAdjustedProfit = (sale: Sale) => {
+      // Check if profit equals total (implies COGS is 0 or missing), but items have cost
+      // We compare with a small epsilon to handle floating point issues
+      const isSuspicious = Math.abs(sale.profit - sale.total) < 0.01 && Math.abs(sale.total) > 0.01;
+      
+      if (isSuspicious) {
+          const calculatedCogs = sale.items.reduce((sum, item) => sum + (Number(item.costPrice) || 0) * item.quantity, 0);
+          // Only override if calculated COGS suggests a non-zero cost
+          if (Math.abs(calculatedCogs) > 0.01) {
+              return sale.total - calculatedCogs;
+          }
+      }
+      return sale.profit;
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -478,7 +492,7 @@ export const Reports: React.FC = () => {
                     {s.items.reduce((sum, item) => sum + item.quantity, 0)}
                   </td>
                   <td data-label="Total" className="px-6 py-4">{formatCurrency(s.total)}</td>
-                  {currentUser.role === UserRole.Admin && <td data-label="Profit" className="px-6 py-4">{formatCurrency(s.profit)}</td>}
+                  {currentUser.role === UserRole.Admin && <td data-label="Profit" className="px-6 py-4">{formatCurrency(getAdjustedProfit(s))}</td>}
                 </tr>
               ))}
             </tbody>

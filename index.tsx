@@ -2,8 +2,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import { GlobalAuthProvider } from './components/context/GlobalAuthContext';
-import 'recharts'; // Dummy import to satisfy dependency checker, recharts is loaded via script in production.
+import { AuthProvider } from './components/context/AuthContext';
+import 'recharts'; // Dummy import to satisfy dependency checker
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -13,8 +13,8 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <GlobalAuthProvider>
+    <AuthProvider>
       <App />
-    </GlobalAuthProvider>
+    </AuthProvider>
   </React.StrictMode>
 );

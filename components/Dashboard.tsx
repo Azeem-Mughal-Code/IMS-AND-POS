@@ -58,12 +58,6 @@ export const Dashboard: React.FC = () => {
   const [timeRange, setTimeRange] = useState<TimeRange>('weekly');
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
-  const tooltipItemSorter = (item: any) => {
-    if (item.dataKey === 'Sales') return 0;
-    if (item.dataKey === 'Profit') return 1;
-    return 2;
-  };
-
   const unreadCount = useMemo(() => notifications.filter(n => !n.isRead).length, [notifications]);
 
   const filteredSales = useMemo(() => {
@@ -92,23 +86,88 @@ export const Dashboard: React.FC = () => {
   }, [sales, timeRange]);
   
   const stats = useMemo(() => {
-    const totalSales = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
-    const totalCogs = filteredSales.reduce((sum, sale) => sum + sale.cogs, 0);
-    const totalProfit = totalSales - totalCogs;
+    // Helper to safely parse numbers, handling undefined/null/NaN
+    const safeNum = (n: any) => {
+        if (typeof n === 'number') return isNaN(n) ? 0 : n;
+        if (typeof n === 'string') {
+            const val = parseFloat(n);
+            return isNaN(val) ? 0 : val;
+        }
+        return 0;
+    };
+
+    const result = filteredSales.reduce((acc, sale) => {
+        const saleTotal = safeNum(sale.total);
+        
+        // Calculate COGS: Use stored value, fallback to summing items if 0/missing
+        let saleCogs = safeNum(sale.cogs);
+        // If COGS is 0 but there are items, try to calculate from item cost prices
+        if (saleCogs === 0 && sale.items && sale.items.length > 0) {
+             saleCogs = sale.items.reduce((itemSum, item) => {
+                 return itemSum + (safeNum(item.costPrice) * safeNum(item.quantity));
+             }, 0);
+        }
+
+        // Calculate Profit
+        let saleProfit = safeNum(sale.profit);
+        
+        // Recalculate profit if it seems inconsistent (e.g. equals total but we found valid cogs)
+        // or if it was missing/zero when it shouldn't be.
+        if ((saleProfit === 0 || saleProfit === saleTotal) && saleCogs !== 0) {
+             saleProfit = saleTotal - saleCogs;
+        }
+
+        return {
+            totalSales: acc.totalSales + saleTotal,
+            totalCogs: acc.totalCogs + saleCogs,
+            totalProfit: acc.totalProfit + saleProfit
+        };
+    }, { totalSales: 0, totalCogs: 0, totalProfit: 0 });
+
     const lowStockItems = products.filter(p => p.stock <= p.lowStockThreshold).length;
 
-    return { totalSales, totalCogs, totalProfit, lowStockItems };
+    return { ...result, lowStockItems };
   }, [filteredSales, products]);
 
   const { chartData, chartTitle } = useMemo(() => {
     const now = new Date();
+    const safeAdd = (current: number, addition: any) => current + (parseFloat(addition) || 0);
+
+    // Helper to calculate adjusted profit ensuring consistency with stats
+    const getAdjustedProfit = (sale: any) => {
+        const safeNum = (n: any) => {
+            if (typeof n === 'number') return isNaN(n) ? 0 : n;
+            if (typeof n === 'string') {
+                const val = parseFloat(n);
+                return isNaN(val) ? 0 : val;
+            }
+            return 0;
+        };
+        const saleTotal = safeNum(sale.total);
+        let saleCogs = safeNum(sale.cogs);
+        // If COGS is 0 but there are items, try to calculate from item cost prices
+        if (saleCogs === 0 && sale.items && sale.items.length > 0) {
+             saleCogs = sale.items.reduce((itemSum: number, item: any) => {
+                 return itemSum + (safeNum(item.costPrice) * safeNum(item.quantity));
+             }, 0);
+        }
+        let saleProfit = safeNum(sale.profit);
+        // If profit matches total (implies 0 cost) or is 0, but we have calculated cost, use calculated profit
+        if ((saleProfit === 0 || Math.abs(saleProfit - saleTotal) < 0.01) && Math.abs(saleCogs) > 0.01) {
+             saleProfit = saleTotal - saleCogs;
+        }
+        return saleProfit;
+    };
+
     switch (timeRange) {
         case 'today': {
             const data = Array(24).fill(0).map((_, i) => ({ name: `${i}:00`, Sales: 0, Profit: 0 }));
             filteredSales.forEach(sale => {
                 const hour = new Date(sale.date).getHours();
-                data[hour].Sales += sale.total;
-                data[hour].Profit += sale.profit;
+                if (data[hour]) {
+                    data[hour].Sales = safeAdd(data[hour].Sales, sale.total);
+                    data[hour].Profit = safeAdd(data[hour].Profit, getAdjustedProfit(sale));
+                }
             });
             return { chartData: data, chartTitle: 'Today' };
         }
@@ -131,12 +190,8 @@ export const Dashboard: React.FC = () => {
             const profitByDay: { [key: string]: number } = {};
             filteredSales.forEach(sale => {
                 const key = toLocalDateKey(new Date(sale.date));
-                if (salesByDay[key] === undefined) {
-                    salesByDay[key] = 0;
-                    profitByDay[key] = 0;
-                }
-                salesByDay[key] += sale.total;
-                profitByDay[key] += sale.profit;
+                salesByDay[key] = safeAdd(salesByDay[key] || 0, sale.total);
+                profitByDay[key] = safeAdd(profitByDay[key] || 0, getAdjustedProfit(sale));
             });
 
             data.forEach(day => {
@@ -157,8 +212,8 @@ export const Dashboard: React.FC = () => {
             filteredSales.forEach(sale => {
                 const dayOfMonth = new Date(sale.date).getDate();
                 if(data[dayOfMonth - 1]) {
-                    data[dayOfMonth - 1].Sales += sale.total;
-                    data[dayOfMonth - 1].Profit += sale.profit;
+                    data[dayOfMonth - 1].Sales = safeAdd(data[dayOfMonth - 1].Sales, sale.total);
+                    data[dayOfMonth - 1].Profit = safeAdd(data[dayOfMonth - 1].Profit, getAdjustedProfit(sale));
                 }
             });
             return { chartData: data, chartTitle: 'This Month' };
@@ -168,8 +223,10 @@ export const Dashboard: React.FC = () => {
             const data = monthNames.map(m => ({ name: m, Sales: 0, Profit: 0 }));
             filteredSales.forEach(sale => {
                 const month = new Date(sale.date).getMonth();
-                data[month].Sales += sale.total;
-                data[month].Profit += sale.profit;
+                if (data[month]) {
+                    data[month].Sales = safeAdd(data[month].Sales, sale.total);
+                    data[month].Profit = safeAdd(data[month].Profit, getAdjustedProfit(sale));
+                }
             });
             return { chartData: data, chartTitle: 'This Year' };
         }
@@ -182,12 +239,8 @@ export const Dashboard: React.FC = () => {
             filteredSales.forEach(sale => {
                 const d = new Date(sale.date);
                 const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                if (salesByMonth[key] === undefined) {
-                    salesByMonth[key] = 0;
-                    profitByMonth[key] = 0;
-                }
-                salesByMonth[key] += sale.total;
-                profitByMonth[key] += sale.profit;
+                salesByMonth[key] = safeAdd(salesByMonth[key] || 0, sale.total);
+                profitByMonth[key] = safeAdd(profitByMonth[key] || 0, getAdjustedProfit(sale));
             });
             const data = Object.keys(salesByMonth).sort().map(key => {
                 const [year, month] = key.split('-');
@@ -205,8 +258,74 @@ export const Dashboard: React.FC = () => {
     }
   }, [filteredSales, timeRange, formatDateTime]);
   
-  const ChartComponent = timeRange === 'today' ? BarChart : LineChart;
-  const ChartElement = timeRange === 'today' ? Bar : Line;
+  // Common Chart Props
+  const commonAxisProps = {
+      stroke: "#A0AEC0",
+      fontSize: 12,
+      tickLine: false,
+      axisLine: false,
+  };
+
+  const CustomTooltip = ({ active, payload, label }: any) => {
+      if (active && payload && payload.length) {
+          return (
+              <div className="bg-slate-800/90 backdrop-blur-sm p-3 rounded-lg shadow-lg border border-slate-700">
+                  <p className="text-gray-200 font-semibold mb-2">{label}</p>
+                  {payload.map((entry: any) => (
+                      <div key={entry.name} className="flex items-center gap-2 text-sm">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                          <span className="text-gray-300">{entry.name}:</span>
+                          <span className="font-mono font-medium text-white">{formatCurrency(entry.value)}</span>
+                      </div>
+                  ))}
+              </div>
+          );
+      }
+      return null;
+  };
+
+  const renderChart = () => {
+      if (timeRange === 'today') {
+          return (
+            <BarChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#4A5568" vertical={false} opacity={0.3} />
+                <XAxis dataKey="name" {...commonAxisProps} />
+                <YAxis tickFormatter={yAxisTickFormatter} {...commonAxisProps} />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(100,116,139,0.1)' }} />
+                <Legend wrapperStyle={{ paddingTop: '10px', color: '#E2E8F0' }} />
+                <Bar dataKey="Sales" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Sales" maxBarSize={50} />
+                <Bar dataKey="Profit" fill="#10b981" radius={[4, 4, 0, 0]} name="Profit" maxBarSize={50} />
+            </BarChart>
+          );
+      }
+      return (
+        <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#4A5568" vertical={false} opacity={0.3} />
+            <XAxis dataKey="name" {...commonAxisProps} />
+            <YAxis tickFormatter={yAxisTickFormatter} {...commonAxisProps} />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend wrapperStyle={{ paddingTop: '10px', color: '#E2E8F0' }} />
+            <Line 
+                type="monotone" 
+                dataKey="Sales" 
+                stroke="#3b82f6" 
+                strokeWidth={3} 
+                dot={{ r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff' }} 
+                activeDot={{ r: 6, strokeWidth: 0 }} 
+                name="Sales" 
+            />
+            <Line 
+                type="monotone" 
+                dataKey="Profit" 
+                stroke="#10b981" 
+                strokeWidth={3} 
+                dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }} 
+                activeDot={{ r: 6, strokeWidth: 0 }} 
+                name="Profit" 
+            />
+        </LineChart>
+      );
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -248,34 +367,7 @@ export const Dashboard: React.FC = () => {
         <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-4">Sales & Profit Overview ({chartTitle})</h2>
         <div className="w-full min-w-0 relative [&_*:focus]:outline-none" style={{ height: 300 }}>
           <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
-            <ChartComponent data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#4A5568" />
-              <XAxis dataKey="name" stroke="#A0AEC0" />
-              <YAxis stroke="#A0AEC0" tickFormatter={yAxisTickFormatter} />
-              <Tooltip
-                itemSorter={tooltipItemSorter}
-                contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.8)', border: 'none' }}
-                labelStyle={{ color: '#E2E8F0' }}
-                formatter={(value: number, name: string) => [formatCurrency(value), name]}
-              />
-              <Legend wrapperStyle={{ color: '#E2E8F0' }} />
-              <ChartElement 
-                type="monotone" 
-                dataKey="Sales" 
-                stroke="#4299E1" 
-                fill="#4299E1"
-                strokeWidth={2} 
-                activeDot={{ r: 8 }} 
-              />
-              <ChartElement 
-                type="monotone" 
-                dataKey="Profit" 
-                stroke="#48BB78" 
-                fill="#48BB78"
-                strokeWidth={2} 
-                activeDot={{ r: 8 }} 
-              />
-            </ChartComponent>
+            {renderChart()}
           </ResponsiveContainer>
         </div>
       </div>

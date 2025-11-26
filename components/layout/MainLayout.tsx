@@ -19,7 +19,7 @@ import { useSettings } from '../context/SettingsContext';
 import { useSales } from '../context/SalesContext';
 
 export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitchWorkspace }) => {
-    const { currentUser, onLogout } = useAuth();
+    const { currentUser } = useAuth();
     const { workspaceId, workspaceName, cashierPermissions } = useSettings();
     const { activeView, setActiveView, toasts, dismissToast } = useUIState();
     const { currentShift } = useSales();
@@ -57,17 +57,11 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             setIsShiftWarningOpen(true);
             return;
         }
-        if (currentUser) {
-            await onLogout(currentUser);
-        }
         onSwitchWorkspace();
     };
 
     const handleSwitchToAuth = async () => {
         setIsAuthWarningModalOpen(false);
-        if (currentUser) {
-            await onLogout(currentUser);
-        }
         onSwitchWorkspace();
     };
 
@@ -175,7 +169,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
                                     </button>
                                     <div className="my-1 h-px bg-gray-200 dark:bg-gray-700"></div>
                                     <button onClick={handleSwitchWorkspaceWithDelay} className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md text-red-600 hover:bg-red-50 dark:hover:bg-gray-700 dark:hover:bg-opacity-50">
-                                        <LogoutIcon className="h-5 w-5" /> <span>Switch Workspace</span>
+                                        <LogoutIcon className="h-5 w-5" /> <span>Logout</span>
                                     </button>
                                 </div>
                             </div>

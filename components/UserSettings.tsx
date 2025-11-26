@@ -172,18 +172,23 @@ export const UserSettings: React.FC = () => {
     );
   }, [filteredAndSortedUsers, currentPage, itemsPerPage]);
 
-  const handleUserFormSubmit = (userId: string | null, data: { username: string, pass: string }) => {
+  const handleUserFormSubmit = async (userId: string | null, data: { username: string, pass: string }) => {
     setFormError('');
     const isEditMode = !!userId;
-    const result = isEditMode
-        ? updateUser(userId!, data.username, data.pass)
-        : addUser(data.username, data.pass, UserRole.Cashier);
-    
-    if (result.success) {
-        showToast(`User ${isEditMode ? 'updated' : 'added'} successfully!`, 'success');
-        closeUserModal();
-    } else {
-        setFormError(result.message || `Failed to ${isEditMode ? 'update' : 'add'} user.`);
+    try {
+        const result = isEditMode
+            ? await updateUser(userId!, data.username, data.pass)
+            : await addUser(data.username, data.pass, UserRole.Cashier);
+        
+        if (result.success) {
+            showToast(`User ${isEditMode ? 'updated' : 'added'} successfully!`, 'success');
+            closeUserModal();
+        } else {
+            setFormError(result.message || `Failed to ${isEditMode ? 'update' : 'add'} user.`);
+        }
+    } catch (error) {
+        console.error("User operation failed", error);
+        setFormError("An unexpected error occurred. Please check the console.");
     }
   };
 

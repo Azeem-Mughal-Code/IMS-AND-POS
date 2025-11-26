@@ -1,6 +1,7 @@
+
 import React, { useState, useRef, useMemo } from 'react';
 import { Modal } from '../common/Modal';
-import { ExportIcon, ImportIcon, DangerIcon, ShieldCheckIcon } from '../Icons';
+import { ExportIcon, ImportIcon, DangerIcon, ShieldCheckIcon, CheckCircleIcon, ClipboardIcon, EyeIcon } from '../Icons';
 import { Product, Sale, PruneTarget } from '../../types';
 import { Dropdown } from '../common/Dropdown';
 import { useAuth } from '../context/AuthContext';
@@ -26,12 +27,11 @@ const StatusCheckbox: React.FC<{
 );
 
 export const DataManagement: React.FC = () => {
-    const { currentUser, users } = useAuth();
+    const { currentUser, getDecryptedKey, recoverAccount, users } = useAuth();
     const { products, importProducts, factoryReset: productReset } = useProducts();
     const { sales, purchaseOrders, clearSales, factoryReset: salesReset, pruneData: pruneSalesData } = useSales();
     const { 
-        workspaceId, workspaceName, theme, itemsPerPage, currency, currencies, currencyDisplay, isSplitPaymentEnabled,
-        isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled,
+        workspaceId, workspaceName, theme, itemsPerPage, currency, currencies, currencyDisplay, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled,
         discountRate, discountThreshold, cashierPermissions, restoreBackup, timezoneOffsetMinutes
     } = useSettings();
     const { notifications, factoryReset: uiReset, pruneData: pruneUiData, showToast } = useUIState();
@@ -39,6 +39,7 @@ export const DataManagement: React.FC = () => {
     const [isImportExportOpen, setIsImportExportOpen] = useState(false);
     const [isBackupRestoreOpen, setIsBackupRestoreOpen] = useState(false);
     const [isDangerZoneOpen, setIsDangerZoneOpen] = useState(false);
+    const [isSecurityOpen, setIsSecurityOpen] = useState(false);
     
     // State for Import/Export Modal
     const [activeImpExpTab, setActiveImpExpTab] = useState<'export' | 'import'>('export');
@@ -49,6 +50,13 @@ export const DataManagement: React.FC = () => {
     const [backupFile, setBackupFile] = useState<File | null>(null);
     const [restorePassword, setRestorePassword] = useState('');
     const backupFileInputRef = useRef<HTMLInputElement>(null);
+
+    // State for Security (View Key / Recovery)
+    const [securityAction, setSecurityAction] = useState<'viewKey' | 'repairKey' | null>(null);
+    const [securityPassword, setSecurityPassword] = useState('');
+    const [revealedKey, setRevealedKey] = useState<string | null>(null);
+    const [copiedKey, setCopiedKey] = useState(false);
+    const [repairKeyInput, setRepairKeyInput] = useState('');
 
     // State for Danger Zone
     const [dangerAction, setDangerAction] = useState<'clearSales' | 'factoryReset' | 'pruneData' | null>(null);
@@ -79,7 +87,6 @@ export const DataManagement: React.FC = () => {
     const allPruneStatusesSelected = pruneStatuses.length === saleStatuses.length;
     
     const factoryReset = () => {
-        // This needs to call the reset function from each context
         productReset(currentUser);
         salesReset();
         uiReset();
@@ -92,7 +99,6 @@ export const DataManagement: React.FC = () => {
             return pruneUiData(target, options);
         }
     };
-
 
     const convertToCSV = (data: any[], type: 'products' | 'sales') => {
         if (!data || data.length === 0) return '';
@@ -149,7 +155,7 @@ export const DataManagement: React.FC = () => {
     };
 
     const handleCreateBackup = () => {
-        const backupData = { workspaceName, products, sales, inventoryAdjustments: [], purchaseOrders, notifications, itemsPerPage, currency, currencies, currencyDisplay, isSplitPaymentEnabled, isChangeDueEnabled, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, cashierPermissions, theme, users, timezoneOffsetMinutes };
+        const backupData = { workspaceName, products, sales, inventoryAdjustments: [], purchaseOrders, notifications, itemsPerPage, currency, currencies, currencyDisplay, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, cashierPermissions, theme, users, timezoneOffsetMinutes };
         const date = new Date().toISOString().split('T')[0];
         downloadFile(JSON.stringify(backupData, null, 2), `ims-backup-${workspaceName}-${date}.json`, 'application/json');
     };
@@ -165,6 +171,48 @@ export const DataManagement: React.FC = () => {
             if (result.success) { setTimeout(() => window.location.reload(), 2000); }
         } catch (error) { showToast('Failed to read or parse backup file. Is it a valid JSON backup?', 'error'); }
     };
+
+    const handleViewRecoveryKey = async () => {
+        if (!securityPassword) { showToast('Password required.', 'error'); return; }
+        const key = await getDecryptedKey(securityPassword);
+        if (key) {
+            setRevealedKey(key);
+            setSecurityPassword(''); // clear password from state
+        } else {
+            showToast('Incorrect password or key not found.', 'error');
+        }
+    };
+
+    const handleCopyKey = () => {
+        if (revealedKey) {
+            navigator.clipboard.writeText(revealedKey);
+            setCopiedKey(true);
+            setTimeout(() => setCopiedKey(false), 2000);
+        }
+    };
+
+    const handleRepairKey = async () => {
+        if (!repairKeyInput) { showToast('Key required.', 'error'); return; }
+        if (!securityPassword) { showToast('Password required to verify ownership.', 'error'); return; }
+        if (securityPassword !== currentUser.password) { showToast('Incorrect password.', 'error'); return; }
+
+        // Attempt to repair/re-wrap the key
+        const result = await recoverAccount(currentUser.username, repairKeyInput, currentUser.password);
+        if (result.success) {
+            showToast('Security key repaired successfully.', 'success');
+            closeSecurityModal();
+        } else {
+            showToast(result.message || 'Failed to repair key.', 'error');
+        }
+    };
+
+    const closeSecurityModal = () => {
+        setIsSecurityOpen(false);
+        setSecurityAction(null);
+        setSecurityPassword('');
+        setRevealedKey(null);
+        setRepairKeyInput('');
+    }
 
     const dangerDetails = useMemo(() => {
         switch (dangerAction) {
@@ -227,6 +275,17 @@ export const DataManagement: React.FC = () => {
                         </div>
                     </div>
                 </button>
+                <button onClick={() => setIsSecurityOpen(true)} className={buttonStyle}>
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-purple-100 dark:bg-purple-900/50 rounded-lg">
+                            <EyeIcon className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+                        </div>
+                        <div>
+                            <h3 className="font-semibold text-lg text-gray-800 dark:text-gray-100">Encryption & Recovery</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">View recovery key or repair encryption settings.</p>
+                        </div>
+                    </div>
+                </button>
             </div>
 
             <div className="mt-4 p-4 border border-red-300 dark:border-red-700 rounded-lg bg-red-50 dark:bg-red-900/20">
@@ -244,6 +303,7 @@ export const DataManagement: React.FC = () => {
               </div>
             </div>
 
+            {/* Import/Export Modal */}
             <Modal isOpen={isImportExportOpen} onClose={() => setIsImportExportOpen(false)} title="Import / Export Data" size="md">
                 <div className="border-b border-gray-200 dark:border-gray-700">
                     <nav className="-mb-px flex space-x-4" aria-label="Tabs">
@@ -253,7 +313,7 @@ export const DataManagement: React.FC = () => {
                 </div>
                 {activeImpExpTab === 'export' ? (
                     <div className="py-6 space-y-4">
-                        <p className="text-sm text-gray-600 dark:text-gray-300">Download your business data as CSV files. Sales data is flattened, with each row representing one item within a sale.</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-300">Download your business data as CSV files.</p>
                         <button onClick={() => handleExport('products')} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"><ExportIcon /> Export Products</button>
                         <button onClick={() => handleExport('sales')} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"><ExportIcon /> Export Sales</button>
                     </div>
@@ -261,7 +321,7 @@ export const DataManagement: React.FC = () => {
                     <div className="py-6 space-y-4">
                         <div>
                             <h4 className="font-semibold text-gray-800 dark:text-white">CSV File Format</h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">Your CSV file must contain the following columns: <code className="text-xs bg-gray-100 dark:bg-gray-700 p-1 rounded-md">sku,name,retailPrice,costPrice,stock,lowStockThreshold</code>. Products with existing SKUs will be skipped.</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">Required columns: <code className="text-xs bg-gray-100 dark:bg-gray-700 p-1 rounded-md">sku,name,retailPrice,costPrice,stock,lowStockThreshold</code>.</p>
                         </div>
                         <input type="file" accept=".csv" ref={fileInputRef} onChange={e => { if (e.target.files) setImportFile(e.target.files[0]); }} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-800" />
                         <div className="flex justify-end pt-2"><button onClick={handleImport} disabled={!importFile} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400">Import</button></div>
@@ -269,16 +329,17 @@ export const DataManagement: React.FC = () => {
                 )}
             </Modal>
 
+            {/* Backup/Restore Modal */}
             <Modal isOpen={isBackupRestoreOpen} onClose={() => setIsBackupRestoreOpen(false)} title="Backup & Restore" size="md">
                 <div className="py-6 space-y-6">
                     <div>
                         <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Create Full Backup</h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">Download a single JSON file containing all your business data, including products, sales, users, and settings.</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">Download a JSON file of your entire database.</p>
                         <button onClick={handleCreateBackup} className="mt-2 w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"><ExportIcon /> Create Backup</button>
                     </div>
                     <div className="border-t pt-6 dark:border-gray-700">
                         <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Restore from Backup</h3>
-                        <p className="text-sm text-red-600 dark:text-red-400 mt-1">Restoring will overwrite all current data. This action is irreversible.</p>
+                        <p className="text-sm text-red-600 dark:text-red-400 mt-1">Restoring will overwrite all current data.</p>
                         <div className="mt-4 space-y-4">
                             <input type="file" accept=".json" ref={backupFileInputRef} onChange={e => { if (e.target.files) setBackupFile(e.target.files[0]); }} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-800" />
                             <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Admin Password</label><input type="password" value={restorePassword} onChange={e => setRestorePassword(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700" /></div>
@@ -288,86 +349,115 @@ export const DataManagement: React.FC = () => {
                 </div>
             </Modal>
 
-            <Modal isOpen={isDangerZoneOpen} onClose={() => setIsDangerZoneOpen(false)} title="Danger Zone" size="lg">
+            {/* Security & Recovery Modal */}
+            <Modal isOpen={isSecurityOpen} onClose={closeSecurityModal} title="Encryption & Recovery" size="md">
+                {!securityAction ? (
+                    <div className="space-y-6 py-4">
+                        <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                            <h4 className="font-semibold text-gray-900 dark:text-white">View Recovery Key</h4>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-3">Reveal the raw recovery key. You can use this to reset your password if forgotten.</p>
+                            <button onClick={() => setSecurityAction('viewKey')} className="px-4 py-2 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50">Reveal Key</button>
+                        </div>
+                        <div className="p-4 border border-orange-200 dark:border-orange-900/50 rounded-lg bg-orange-50 dark:bg-orange-900/10">
+                            <h4 className="font-semibold text-orange-900 dark:text-orange-200">Emergency Key Repair</h4>
+                            <p className="text-sm text-orange-800 dark:text-orange-300 mt-1 mb-3">If your data appears encrypted/garbled even when logged in, re-enter your recovery key here to fix access.</p>
+                            <button onClick={() => setSecurityAction('repairKey')} className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700">Repair Access</button>
+                        </div>
+                    </div>
+                ) : securityAction === 'viewKey' ? (
+                    <div className="space-y-4">
+                        {!revealedKey ? (
+                            <>
+                                <p className="text-sm text-gray-600 dark:text-gray-300">Please enter your current password to view the recovery key.</p>
+                                <input type="password" value={securityPassword} onChange={e => setSecurityPassword(e.target.value)} className="w-full p-2 border rounded-md bg-white dark:bg-gray-700 dark:border-gray-600" placeholder="Password" />
+                                <div className="flex justify-end gap-2">
+                                    <button onClick={closeSecurityModal} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
+                                    <button onClick={handleViewRecoveryKey} className="px-4 py-2 bg-blue-600 text-white rounded-md">Reveal</button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <p className="text-sm font-bold text-red-600 dark:text-red-400">Do not share this key.</p>
+                                <div className="relative">
+                                    <textarea readOnly value={revealedKey} className="w-full h-24 p-3 rounded-md bg-gray-100 dark:bg-gray-700 font-mono text-xs break-all" />
+                                    <button onClick={handleCopyKey} className="absolute top-2 right-2 p-1 bg-white dark:bg-gray-600 rounded shadow-sm">
+                                        {copiedKey ? <CheckCircleIcon className="w-4 h-4 text-green-500" /> : <ClipboardIcon className="w-4 h-4 text-gray-500" />}
+                                    </button>
+                                </div>
+                                <div className="flex justify-end">
+                                    <button onClick={closeSecurityModal} className="px-4 py-2 bg-blue-600 text-white rounded-md">Done</button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        <p className="text-sm text-gray-600 dark:text-gray-300">Enter your saved Recovery Key to restore access to the database for this user.</p>
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Recovery Key</label>
+                            <textarea value={repairKeyInput} onChange={e => setRepairKeyInput(e.target.value)} className="w-full h-24 p-2 border rounded-md bg-white dark:bg-gray-700 dark:border-gray-600 font-mono text-xs" placeholder="Paste key here..." />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Confirm Current Password</label>
+                            <input type="password" value={securityPassword} onChange={e => setSecurityPassword(e.target.value)} className="w-full p-2 border rounded-md bg-white dark:bg-gray-700 dark:border-gray-600" />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <button onClick={closeSecurityModal} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
+                            <button onClick={handleRepairKey} className="px-4 py-2 bg-orange-600 text-white rounded-md">Repair</button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
+
+            {/* Danger Zone Modal */}
+            <Modal isOpen={isDangerZoneOpen} onClose={closeDangerModal} title="Danger Zone" size="lg">
                 <div className="py-6 space-y-6">
                     <div className="p-4 border border-red-200 dark:border-red-900/50 rounded-lg">
                         <h3 className="font-semibold text-red-700 dark:text-red-300">Prune Old Data</h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Permanently delete old records to reduce data size. This action cannot be undone.</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Permanently delete old records to reduce data size.</p>
                         <button onClick={() => setDangerAction('pruneData')} className="mt-2 text-sm font-medium px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-md">Prune Data...</button>
                     </div>
                     <div className="p-4 border border-red-200 dark:border-red-900/50 rounded-lg">
                         <h3 className="font-semibold text-red-700 dark:text-red-300">Clear Sales Data</h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Permanently delete sales records, including associated returns and stock history. Product stock levels will NOT be changed.</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Permanently delete sales records. Stock levels will NOT be changed.</p>
                         <button onClick={() => setDangerAction('clearSales')} className="mt-2 text-sm font-medium px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-md">Clear Sales...</button>
                     </div>
                     <div className="p-4 border border-red-200 dark:border-red-900/50 rounded-lg">
                         <h3 className="font-semibold text-red-700 dark:text-red-300">Factory Reset</h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Delete all products, sales, and cashier accounts. Your admin account will be preserved.</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Delete all products, sales, and cashier accounts.</p>
                         <button onClick={() => setDangerAction('factoryReset')} className="mt-2 text-sm font-medium px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-md">Factory Reset...</button>
                     </div>
                 </div>
             </Modal>
             
+            {/* Specific Danger Action Confirmation Modal (Reused Logic) */}
             {dangerAction && (
                 <Modal isOpen={!!dangerAction} onClose={closeDangerModal} title={dangerDetails.title}>
                     <div className="space-y-4">
-                        {dangerAction === 'pruneData' && <>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                                You are about to permanently delete old data records. This can help improve performance but cannot be undone.
-                            </p>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Data to Prune</label>
-                                    <Dropdown 
-                                        value={pruneTarget} 
-                                        onChange={(v) => setPruneTarget(v as PruneTarget)}
-                                        options={[
-                                            {value: 'sales', label: 'Sales Records'},
-                                            {value: 'purchaseOrders', label: 'Purchase Orders'},
-                                            {value: 'stockHistory', label: 'Stock History'},
-                                            {value: 'notifications', label: 'Notifications'},
-                                        ]}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Older than (days)</label>
-                                    <input type="number" value={pruneDays} onChange={e => setPruneDays(parseInt(e.target.value, 10))} min="1" className="block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700"/>
-                                </div>
+                        {dangerAction === 'pruneData' && <div>{/* Prune UI */}
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Prune data older than specified days.</p>
+                            <div className="grid grid-cols-2 gap-4 my-4">
+                                <div><label className="block text-sm font-medium">Target</label><Dropdown value={pruneTarget} onChange={v => setPruneTarget(v as any)} options={[{value:'sales',label:'Sales'},{value:'purchaseOrders',label:'POs'},{value:'stockHistory',label:'History'},{value:'notifications',label:'Notifications'}]} /></div>
+                                <div><label className="block text-sm font-medium">Days</label><input type="number" value={pruneDays} onChange={e => setPruneDays(parseInt(e.target.value))} className="w-full rounded-md border-gray-300 dark:bg-gray-700" /></div>
                             </div>
-                            {pruneTarget === 'sales' && <div>
-                                 <p className="text-sm font-medium text-yellow-700 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/50 p-3 rounded-md mb-4">
-                                    When a sales receipt is pruned, its related return receipts and stock history will also be permanently deleted. Product stock levels will not be changed.
-                                </p>
-                                <h4 className="text-sm font-medium mb-2">Only prune sales with these statuses:</h4>
-                                <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-md flex flex-wrap gap-x-6 gap-y-2">
-                                    <StatusCheckbox label="All Statuses" checked={allPruneStatusesSelected} onChange={handlePruneSelectAll} />
-                                    {saleStatuses.map(s => <StatusCheckbox key={s} label={s} checked={pruneStatuses.includes(s)} onChange={c => handlePruneStatusChange(s, c)} />)}
-                                </div>
-                                <p className="text-xs text-gray-500 mt-1">If no statuses are selected, all sales older than the specified days will be pruned.</p>
-                            </div>}
-                        </>}
-
-                        {dangerAction === 'clearSales' && <>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                                You are about to permanently delete sales receipts based on the statuses you select. When a sales receipt is deleted, its related return receipts and stock history entries will also be deleted. <strong className="text-gray-800 dark:text-gray-200">Product stock levels will not be changed.</strong> This is irreversible.
-                            </p>
-                            <div><h4 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">Select sales data to clear:</h4><div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-md flex flex-wrap gap-x-6 gap-y-2"><StatusCheckbox label="All Sales Data" checked={allClearStatusesSelected} onChange={handleClearSelectAll} />{saleStatuses.map(s => <StatusCheckbox key={s} label={s} checked={clearSaleStatuses.includes(s)} onChange={c => handleClearStatusChange(s, c)} />)}</div><p className="text-xs text-gray-500 mt-1">If no statuses are selected, no sales data will be cleared.</p></div>
-                        </>}
+                        </div>}
+                        {dangerAction === 'clearSales' && <div>{/* Clear Sales UI */}
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Select statuses to clear.</p>
+                            <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-md flex flex-wrap gap-4 my-2">
+                                <StatusCheckbox label="All" checked={allClearStatusesSelected} onChange={handleClearSelectAll} />
+                                {saleStatuses.map(s => <StatusCheckbox key={s} label={s} checked={clearSaleStatuses.includes(s)} onChange={c => handleClearStatusChange(s, c)} />)}
+                            </div>
+                        </div>}
                         
-                        {dangerAction === 'factoryReset' && (
-                             <p className="text-sm text-gray-600 dark:text-gray-400">
-                                This will reset your business to its initial state. All products (reverting to defaults), sales records (including returns), stock history, purchase orders, and cashier accounts will be permanently deleted. Your admin account will be preserved. This action is irreversible.
-                            </p>
-                        )}
-
-
-                        <div><label className="block text-sm font-medium">To confirm, type <strong className="font-mono">{dangerDetails.confirmWord}</strong></label><input type="text" value={confirmationText} onChange={e => setConfirmationText(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-red-500 focus:ring-red-500 bg-white dark:bg-gray-700" /></div>
-                        <div><label className="block text-sm font-medium">Please enter your admin password</label><input type="password" value={confirmationPassword} onChange={e => setConfirmationPassword(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-red-500 focus:ring-red-500 bg-white dark:bg-gray-700" /></div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Type <strong className="font-mono">{dangerDetails.confirmWord}</strong> to confirm.</p>
+                        <input type="text" value={confirmationText} onChange={e => setConfirmationText(e.target.value)} className="w-full p-2 border rounded-md dark:bg-gray-700" />
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Admin Password</p>
+                        <input type="password" value={confirmationPassword} onChange={e => setConfirmationPassword(e.target.value)} className="w-full p-2 border rounded-md dark:bg-gray-700" />
                         {dangerError && <p className="text-red-500 text-sm">{dangerError}</p>}
                     </div>
-                    <div className="flex justify-end gap-2 pt-6 mt-6 border-t border-gray-200 dark:border-gray-700">
+                    <div className="flex justify-end gap-2 pt-4">
                         <button onClick={closeDangerModal} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
-                        <button onClick={handleDangerAction} disabled={!isDangerConfirmValid || !confirmationPassword || (dangerAction === 'clearSales' && noClearStatusesSelected)} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400">I understand, proceed</button>
+                        <button onClick={handleDangerAction} disabled={!isDangerConfirmValid} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50">Proceed</button>
                     </div>
                 </Modal>
             )}

@@ -23,10 +23,6 @@ interface SettingsContextType {
     currencyDisplay: 'symbol' | 'code';
     setCurrencyDisplay: (display: 'symbol' | 'code') => void;
     formatCurrency: (amount: number) => string;
-    isSplitPaymentEnabled: boolean;
-    setIsSplitPaymentEnabled: (enabled: boolean) => void;
-    isChangeDueEnabled: boolean;
-    setIsChangeDueEnabled: (enabled: boolean) => void;
     isIntegerCurrency: boolean;
     setIsIntegerCurrency: (enabled: boolean) => void;
     isTaxEnabled: boolean;
@@ -91,8 +87,6 @@ export const SettingsProvider: React.FC<{ children: ReactNode; workspaceId: stri
     const [currencies, setCurrencies] = usePersistedState<Currency[]>(`${ls_prefix}-currencies`, DEFAULT_CURRENCIES);
     const [currency, setCurrency] = usePersistedState<string>(`${ls_prefix}-currency`, 'USD');
     const [currencyDisplay, setCurrencyDisplay] = usePersistedState<'symbol' | 'code'>(`${ls_prefix}-currencyDisplay`, 'symbol');
-    const [isSplitPaymentEnabled, setIsSplitPaymentEnabled] = usePersistedState<boolean>(`${ls_prefix}-isSplitPaymentEnabled`, false);
-    const [isChangeDueEnabled, setIsChangeDueEnabled] = usePersistedState<boolean>(`${ls_prefix}-isChangeDueEnabled`, true);
     const [isIntegerCurrency, setIsIntegerCurrency] = usePersistedState<boolean>(`${ls_prefix}-isIntegerCurrency`, false);
     const [isTaxEnabled, setIsTaxEnabled] = usePersistedState<boolean>(`${ls_prefix}-isTaxEnabled`, true);
     const [taxRate, setTaxRate] = usePersistedState<number>(`${ls_prefix}-taxRate`, 0.08); // 8%
@@ -199,8 +193,6 @@ export const SettingsProvider: React.FC<{ children: ReactNode; workspaceId: stri
             if (data.currencies) setCurrencies(data.currencies);
             if (data.currency) setCurrency(data.currency);
             if (data.currencyDisplay) setCurrencyDisplay(data.currencyDisplay);
-            if (data.isSplitPaymentEnabled !== undefined) setIsSplitPaymentEnabled(data.isSplitPaymentEnabled);
-            if (data.isChangeDueEnabled !== undefined) setIsChangeDueEnabled(data.isChangeDueEnabled);
             if (data.isIntegerCurrency !== undefined) setIsIntegerCurrency(data.isIntegerCurrency);
             if (data.isTaxEnabled !== undefined) setIsTaxEnabled(data.isTaxEnabled);
             if (data.taxRate) setTaxRate(data.taxRate);
@@ -229,8 +221,6 @@ export const SettingsProvider: React.FC<{ children: ReactNode; workspaceId: stri
         currencies, addCurrency, updateCurrency, deleteCurrency,
         currencyDisplay, setCurrencyDisplay,
         formatCurrency,
-        isSplitPaymentEnabled, setIsSplitPaymentEnabled,
-        isChangeDueEnabled, setIsChangeDueEnabled,
         isIntegerCurrency, setIsIntegerCurrency,
         isTaxEnabled, setIsTaxEnabled, taxRate, setTaxRate,
         isDiscountEnabled, setIsDiscountEnabled, discountRate, setDiscountRate, discountThreshold, setDiscountThreshold,
