@@ -35,35 +35,94 @@ Roles and their interactions with the system.
 
 ```mermaid
 graph TD
-    User((User))
+    %% Actors
     Admin((Admin))
     Cashier((Cashier))
     
-    User <|-- Admin
-    User <|-- Cashier
-
+    %% System Boundary
     subgraph "POS System"
         Auth[Login / Register]
-        OpenShift[Open Shift]
-        CloseShift[Close Shift]
-        ProcessSale[Process Sale / Return]
-        ManageInv[Manage Inventory]
-        ViewReports[View Reports & Analysis]
-        ConfigSettings[Configure Settings]
+        Shift[Open/Close Shift]
+        Sale[Process Sale / Return]
+        Inv[Manage Inventory]
+        Reports[View Reports & Analysis]
+        Settings[Configure Settings]
     end
 
-    User --> Auth
-    Cashier --> OpenShift
-    Cashier --> CloseShift
-    Cashier --> ProcessSale
+    %% Relationships
+    Cashier --> Auth
+    Cashier --> Shift
+    Cashier --> Sale
     
-    Admin --> ManageInv
-    Admin --> ViewReports
-    Admin --> ConfigSettings
-    Admin --> ProcessSale
+    Admin --> Auth
+    Admin --> Shift
+    Admin --> Sale
+    Admin --> Inv
+    Admin --> Reports
+    Admin --> Settings
 ```
 
-### 2. Entity Relationship (Simplified)
+### 2. Class Diagram
+Core domain model structure.
+
+```mermaid
+classDiagram
+    class User {
+        +String id
+        +String username
+        +Role role
+        +login()
+        +logout()
+    }
+
+    class Workspace {
+        +String id
+        +String name
+        +String alias
+    }
+
+    class Product {
+        +String id
+        +String sku
+        +String name
+        +Float retailPrice
+        +Float costPrice
+        +Int stock
+        +adjustStock()
+    }
+
+    class Sale {
+        +String id
+        +String publicId
+        +Date date
+        +Float total
+        +Float profit
+        +calculateTotals()
+    }
+
+    class CartItem {
+        +String productId
+        +String name
+        +Int quantity
+        +Float price
+    }
+
+    class Customer {
+        +String id
+        +String name
+        +String phone
+    }
+
+    Workspace "1" *-- "*" User
+    Workspace "1" *-- "*" Product
+    Workspace "1" *-- "*" Sale
+    Sale "1" *-- "*" CartItem
+    Product "1" -- "0..*" CartItem
+    Sale "0..*" -- "0..1" Customer
+    Sale "0..*" -- "1" User
+```
+
+### 3. Entity Relationship (Simplified)
 Data structure overview.
 
 ```mermaid
@@ -83,7 +142,7 @@ erDiagram
     PURCHASE_ORDER ||--|{ PO_ITEM : contains
 ```
 
-### 3. POS Process Flow (Activity Diagram)
+### 4. POS Process Flow (Activity Diagram)
 The lifecycle of a transaction.
 
 ```mermaid
