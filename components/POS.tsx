@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Product, CartItem, PaymentType, Sale, Payment, ProductVariant, Customer, HeldOrder } from '../types';
 import { SearchIcon, PlusIcon, MinusIcon, TrashIcon, PhotoIcon, ChevronDownIcon, TagIcon, UserCircleIcon, CheckCircleIcon, ClipboardIcon, ArrowUturnLeftIcon, BanknotesIcon } from './Icons';
@@ -1473,7 +1472,13 @@ export const POS: React.FC<POSProps> = () => {
                     <button 
                         onClick={() => setIsDiscountModalOpen(true)} 
                         disabled={cart.length === 0}
-                        className={`flex flex-col items-center justify-center p-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${cartDiscount ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300'}`}
+                        className={`flex flex-col items-center justify-center p-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
+                            cartDiscount 
+                                ? (cartDiscount.value === 0 
+                                    ? 'border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/10' 
+                                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400')
+                                : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300'
+                        }`}
                     >
                         <TagIcon className="h-4 w-4 mb-1" />
                         <span className="text-[10px] font-bold uppercase">{discountLabel}</span>
@@ -1489,7 +1494,13 @@ export const POS: React.FC<POSProps> = () => {
                     <button 
                         onClick={() => setIsTaxModalOpen(true)} 
                         disabled={cart.length === 0}
-                        className={`flex flex-col items-center justify-center p-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${cartTax ? (cartTax.type === 'fixed' && cartTax.value === 0 ? 'border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400' : 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400') : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300'}`}
+                        className={`flex flex-col items-center justify-center p-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
+                            cartTax 
+                                ? (cartTax.value === 0 
+                                    ? 'border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/10' 
+                                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400')
+                                : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300'
+                        }`}
                     >
                         <BanknotesIcon className="h-4 w-4 mb-1" />
                         <span className="text-[10px] font-bold uppercase">{taxLabel}</span>
