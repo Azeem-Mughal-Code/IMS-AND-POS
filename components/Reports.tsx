@@ -61,7 +61,7 @@ export const Reports: React.FC = () => {
   const { products } = useProducts();
   const { currentUser, users } = useAuth();
   const { reportsViewState, onReportsSalesViewUpdate, onReportsProductsViewUpdate, showToast } = useUIState();
-  const { formatCurrency, formatDateTime, paginationConfig } = useSettings();
+  const { formatCurrency, formatDateTime, paginationConfig, includeTaxInProfit } = useSettings();
     
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -128,7 +128,7 @@ export const Reports: React.FC = () => {
   ];
 
 
-  const handleRefund = () => {
+  const handleRefund = async () => {
     if (!viewingSale || viewingSale.type !== 'Sale' || (viewingSale.status !== 'Completed' && viewingSale.status !== 'Partially Refunded')) return;
     
     // Calculate items to refund and flip quantity to negative
@@ -190,7 +190,7 @@ export const Reports: React.FC = () => {
     };
 
     try {
-        processSale(refundTransaction);
+        await processSale(refundTransaction);
         showToast(`Successfully refunded remaining items for sale ${viewingSale.publicId || viewingSale.id}.`, 'success');
     } catch (e) {
         if (e instanceof Error) {
@@ -397,17 +397,12 @@ export const Reports: React.FC = () => {
           return isNaN(num) ? 0 : num;
       };
 
-      // Check if profit is NaN or zero while total is significant (suspicious)
-      const isSuspicious = isNaN(sale.profit) || ((Math.abs(sale.profit) < 0.01) && Math.abs(sale.total) > 0.01);
+      // Always calculate dynamically to respect the includeTaxInProfit setting immediately
+      const calculatedCogs = sale.items.reduce((sum, item) => sum + (safeNumber(item.costPrice) || 0) * item.quantity, 0);
       
-      if (isSuspicious) {
-          const calculatedCogs = sale.items.reduce((sum, item) => sum + (safeNumber(item.costPrice) || 0) * item.quantity, 0);
-          
-          // Recalculate: (Total - Tax) - COGS
-          const revenue = safeNumber(sale.total) - safeNumber(sale.tax);
-          return revenue - calculatedCogs;
-      }
-      return sale.profit;
+      // Recalculate: (Total - (includeTaxInProfit ? 0 : Tax)) - COGS
+      const revenue = safeNumber(sale.total) - (includeTaxInProfit ? 0 : safeNumber(sale.tax));
+      return revenue - calculatedCogs;
   };
 
   return (
@@ -600,7 +595,7 @@ export const Reports: React.FC = () => {
                     <button onClick={handleSaveAsImage} title="Save as Image" className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                         <PhotoIcon className="h-5 w-5" />
                     </button>
-                    <button onClick={() => window.print()} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Print</button>
+                    <button onClick={() => window.print()} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Print</button>
                     <button onClick={() => setViewingSale(null)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Close</button>
                 </div>
             </div>

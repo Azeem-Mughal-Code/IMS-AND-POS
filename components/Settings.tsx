@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { UserRole, PaginationTarget } from '../types';
 import { Modal } from './common/Modal';
-import { LogoutIcon, TagIcon, UserCircleIcon, PencilIcon, CheckCircleIcon, XMarkIcon, ClipboardIcon, BuildingStoreIcon, ReceiveIcon } from './Icons';
+import { LogoutIcon, TagIcon, UserCircleIcon, PencilIcon, CheckCircleIcon, XMarkIcon, ClipboardIcon, BuildingStoreIcon, ReceiveIcon, DangerIcon } from './Icons';
 import { AccordionSection } from './common/AccordionSection';
 import { ToggleSwitch } from './common/ToggleSwitch';
 import { Dropdown } from './common/Dropdown';
@@ -18,10 +18,11 @@ import { useUIState } from './context/UIStateContext';
 import { syncService } from '../services/SyncService';
 
 export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitchWorkspace }) => {
-    const { currentUser, updateUser, currentWorkspace, updateBusinessDetails } = useAuth();
+    const { currentUser, updateUser, currentWorkspace, updateBusinessDetails, logout } = useAuth();
     const { 
         workspaceId, workspaceName,
         isIntegerCurrency, setIsIntegerCurrency, isTaxEnabled, setIsTaxEnabled, taxRate, setTaxRate,
+        includeTaxInProfit, setIncludeTaxInProfit,
         isDiscountEnabled, setIsDiscountEnabled, discountRate, setDiscountRate, discountThreshold, setDiscountThreshold,
         cashierPermissions,
         storeAddress, setStoreAddress, storePhone, setStorePhone, receiptFooter, setReceiptFooter,
@@ -50,6 +51,10 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
     
     // Sync State
     const [isSyncing, setIsSyncing] = useState(false);
+
+    // Guest Exit State
+    const [isGuestExitModalOpen, setIsGuestExitModalOpen] = useState(false);
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
 
     const workspace = currentWorkspace;
 
@@ -151,6 +156,14 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
         showToast(result.message || (result.success ? 'Sync complete' : 'Sync failed'), result.success ? 'success' : 'error');
     };
 
+    const handleGuestLogout = () => {
+        setIsLoggingOut(true);
+        // Force direct logout to bypass shift check since we are nuking data anyway
+        setTimeout(() => {
+            logout();
+        }, 50);
+    };
+
     const paginationLabels: Record<PaginationTarget, string> = {
         inventory: 'Inventory-Products Table',
         inventoryCategories: 'Inventory-Categories Table',
@@ -214,7 +227,7 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
                 >
                     <div className="text-center">
                         <p className="text-gray-600 dark:text-gray-300 mb-4">Login or create an account to save your business data and access it anywhere.</p>
-                        <button onClick={onSwitchWorkspace} className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-base font-medium w-full sm:w-auto">
+                        <button onClick={() => setIsGuestExitModalOpen(true)} className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-base font-medium w-full sm:w-auto">
                             Login / Sign Up
                         </button>
                     </div>
@@ -398,7 +411,7 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
                                     <ToggleSwitch
                                         enabled={isTaxEnabled}
                                         onChange={setIsTaxEnabled}
-                                        label="Enable Sales Tax (Default)"
+                                        label="Enable Sales Tax"
                                     />
                                     {isTaxEnabled && (
                                         <div className="flex items-center gap-2">
@@ -414,6 +427,14 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
                                         </div>
                                     )}
                                 </div>
+                                <div className="flex items-center justify-between">
+                                    <ToggleSwitch
+                                        enabled={includeTaxInProfit}
+                                        onChange={setIncludeTaxInProfit}
+                                        label="Include Tax in Profit Calculation"
+                                    />
+                                </div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2">If enabled, profit = Revenue + Tax - Cost. Otherwise, Profit = Revenue - Cost.</p>
                             </div>
                         </div>
 
@@ -609,6 +630,31 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
                     <div className="flex justify-end gap-2 pt-4">
                         <button onClick={() => setIsEditBusinessModalOpen(false)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-md">Cancel</button>
                         <button onClick={handleUpdateBusiness} className="px-4 py-2 bg-blue-600 text-white rounded-md">Save Changes</button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Guest Exit Confirmation Modal */}
+            <Modal isOpen={isGuestExitModalOpen} onClose={() => setIsGuestExitModalOpen(false)} title="End Guest Session?">
+                <div className="space-y-4">
+                    <p className="text-gray-600 dark:text-gray-300">
+                        To login or create an account, we must end the current guest session.
+                    </p>
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-md flex items-start gap-3">
+                        <DangerIcon className="h-6 w-6 text-red-600 dark:text-red-400 flex-shrink-0" />
+                        <div>
+                            <h4 className="font-bold text-red-800 dark:text-red-200 text-sm">Warning: Data Deletion</h4>
+                            <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                                All data created in this guest session (sales, products, etc.) will be <strong>permanently deleted</strong> immediately.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-4">
+                        <button onClick={() => setIsGuestExitModalOpen(false)} disabled={isLoggingOut} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 disabled:opacity-50">Cancel</button>
+                        <button onClick={handleGuestLogout} disabled={isLoggingOut} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                            {isLoggingOut && <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>}
+                            {isLoggingOut ? 'Deleting...' : 'End Session & Delete Data'}
+                        </button>
                     </div>
                 </div>
             </Modal>

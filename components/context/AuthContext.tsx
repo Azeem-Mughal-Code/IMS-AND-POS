@@ -2,7 +2,7 @@
 import React, { createContext, useContext, ReactNode, useState, useCallback, useEffect } from 'react';
 import { User, UserRole, Workspace } from '../../types';
 import { db, getFromDB, setInDB } from '../../utils/db';
-import { generateSalt, deriveKeyFromPassword, generateDataKey, wrapKey, unwrapKey, exportKey, importKey } from '../../utils/crypto';
+import { generateSalt, deriveKeyFromPassword, generateDataKey, wrapKey, unwrapKey, exportKey, importKey, hashPassword } from '../../utils/crypto';
 import { generateUniqueNanoID, generateUUIDv7 } from '../../utils/idGenerator';
 import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, INITIAL_SUPPLIERS, DEFAULT_CATEGORIES } from '../../constants';
 
@@ -34,6 +34,43 @@ export const useAuth = () => {
     const context = useContext(AuthContext);
     if (!context) throw new Error('useAuth must be used within an AuthProvider');
     return context;
+};
+
+// Helper function to thoroughly clean up guest data
+const cleanupGuestData = async () => {
+    const guestId = 'guest_workspace';
+    console.log("Cleaning up guest data for:", guestId);
+    
+    // DISABLE Encryption Middleware to prevent 'Decryption failed' errors on old/mismatched keys during deletion
+    db.setEncryptionKey(null);
+
+    try {
+        // 1. Clear actual data tables. 
+        await (db as any).transaction('rw', db.products, db.sales, db.customers, db.purchaseOrders, db.suppliers, db.users, db.workspaces, db.shifts, db.heldOrders, db.categories, db.inventoryAdjustments, db.notifications, async () => {
+            await db.products.where('workspaceId').equals(guestId).delete();
+            await db.sales.where('workspaceId').equals(guestId).delete();
+            await db.customers.where('workspaceId').equals(guestId).delete();
+            await db.purchaseOrders.where('workspaceId').equals(guestId).delete();
+            await db.suppliers.where('workspaceId').equals(guestId).delete();
+            await db.users.where('workspaceId').equals(guestId).delete();
+            await db.workspaces.where('id').equals(guestId).delete();
+            await db.shifts.where('workspaceId').equals(guestId).delete();
+            await db.heldOrders.where('workspaceId').equals(guestId).delete();
+            await db.categories.where('workspaceId').equals(guestId).delete();
+            await db.inventoryAdjustments.where('workspaceId').equals(guestId).delete();
+            await db.notifications.where('workspaceId').equals(guestId).delete();
+        });
+
+        // 2. Clear LocalStorage/KeyVal settings for guest
+        // Fetch all keys first to avoid transaction issues
+        const allKeys = await db.keyval.toCollection().primaryKeys();
+        const guestKeys = allKeys.filter(k => typeof k === 'string' && k.startsWith(`ims-${guestId}`));
+        if (guestKeys.length > 0) {
+            await db.keyval.bulkDelete(guestKeys);
+        }
+    } catch (e) {
+        console.error("Error clearing guest data:", e);
+    }
 };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -77,7 +114,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             
             // Support Guest Mode Login explicitly or by alias
             if (normalizedCode === 'GUEST' || (!workspace && storeCode === 'guest_workspace')) {
-                 // Guest logic handled via enterGuestMode usually, but if they type it manually:
                  return { success: false, message: 'Please use the "Demo Mode" button.' };
             }
 
@@ -93,8 +129,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 return { success: false, message: 'Invalid username or password.' };
             }
 
-            // 3. Validate Password (Simple string check for demo, normally bcrypt)
-            if (user.password !== pass) {
+            // 3. Validate Password (Hash check for new/updated users, plain text check for backward compatibility)
+            const inputHash = await hashPassword(pass);
+            if (user.password !== pass && user.password !== inputHash) {
                 return { success: false, message: 'Invalid username or password.' };
             }
 
@@ -148,7 +185,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
 
             // 2. Validate Password
-            if (foundUser.password !== pass) {
+            const inputHash = await hashPassword(pass);
+            if (foundUser.password !== pass && foundUser.password !== inputHash) {
                 return { success: false, message: 'Invalid password.' };
             }
 
@@ -198,13 +236,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const dek = await generateDataKey();
             const encryptedDEK = await wrapKey(dek, kek);
             const recoveryKey = await exportKey(dek);
+            const hashedPassword = await hashPassword(pass);
 
             // 3. Create Admin User
             const newUser: User = {
                 id: `user_${generateUUIDv7()}`,
                 username,
                 email,
-                password: pass,
+                password: hashedPassword, // Store hashed password
                 role: UserRole.Admin,
                 salt,
                 encryptedDEK,
@@ -255,9 +294,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             await db.categories.bulkAdd(categories);
             await db.customers.bulkAdd(customers);
             
-            // Seed Suppliers in KeyVal (consistent with SupplierView implementation)
-            const suppliers = INITIAL_SUPPLIERS.map(s => ({ ...s, workspaceId }));
-            await setInDB(`ims-${workspaceId}-suppliers`, suppliers);
+            // Seed Suppliers in real DB table now (migrated from KeyVal)
+            const suppliers = INITIAL_SUPPLIERS.map(s => ({ 
+                ...s, 
+                id: `sup_${generateUUIDv7()}`,
+                workspaceId,
+                sync_status: 'pending' as const
+            }));
+            await db.suppliers.bulkAdd(suppliers);
 
             db.setEncryptionKey(null); // Lock DB after seeding
 
@@ -271,32 +315,42 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const enterGuestMode = useCallback(async () => {
         const guestId = 'guest_workspace';
         const guestWs: Workspace = { id: guestId, name: 'Demo Store', alias: 'DEMO' };
-        
         const guestUser: User = { id: 'guest', username: 'Guest Admin', password: '', role: UserRole.Admin, workspaceId: guestId };
         
-        // Ephemeral key for guest
+        // 1. Clean up any previous guest data to ensure fresh state and avoid key mismatch
+        await cleanupGuestData();
+
+        // 2. Generate new ephemeral key for this guest session
         const key = await generateDataKey();
         db.setEncryptionKey(key);
 
-        // Initialize guest data if needed
-        let existingUsers = await getFromDB<User[]>(`ims-${guestId}-users`) || [];
-        if (existingUsers.length === 0) {
-            existingUsers = [guestUser];
-            await setInDB(`ims-${guestId}-users`, existingUsers);
-        }
+        // 3. Initialize guest user in memory/keyval (keyval is not encrypted by middleware, so safe)
+        const existingUsers = [guestUser];
+        await setInDB(`ims-${guestId}-users`, existingUsers);
 
+        // 4. Ensure workspace exists
+        await db.workspaces.put(guestWs);
+
+        // 5. Set Session State
         setCurrentWorkspace(guestWs);
         setUsers(existingUsers);
         setCurrentUser(guestUser);
     }, []);
 
-    const logout = useCallback(() => {
+    const logout = useCallback(async () => {
+        const isGuest = currentWorkspace?.id === 'guest_workspace' || currentUser?.id === 'guest';
+
+        // Clear Guest Data immediately before state reset
+        if (isGuest) {
+            await cleanupGuestData();
+        }
+
         db.setEncryptionKey(null);
         setCurrentUser(null);
         setCurrentWorkspace(null);
         setUsers([]);
-        db.keyval.delete('ims-session');
-    }, []);
+        await db.keyval.delete('ims-session');
+    }, [currentWorkspace, currentUser]);
 
     // User Management (Scoped to current workspace)
     const addUser = useCallback(async (username: string, pass: string, role: UserRole, email?: string): Promise<{ success: boolean, message?: string }> => {
@@ -319,12 +373,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const salt = generateSalt();
             const kek = await deriveKeyFromPassword(pass, salt);
             const encryptedDEK = await wrapKey(currentDEK, kek);
+            const hashedPassword = await hashPassword(pass);
 
             const newUser: User = {
                 id: `user_${generateUUIDv7()}`,
                 username,
                 email,
-                password: pass,
+                password: hashedPassword,
                 role,
                 salt,
                 encryptedDEK,
@@ -359,28 +414,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         let updatedUser = { ...user, username: newUsername, email: newEmail };
         let recoveryKey: string | undefined;
 
-        if (newPassword && newPassword !== user.password) {
-             const currentDEK = db.encryptionKey;
-             if (currentDEK) {
-                 try {
-                     const salt = generateSalt();
-                     const kek = await deriveKeyFromPassword(newPassword, salt);
-                     const encryptedDEK = await wrapKey(currentDEK, kek);
-                     
-                     updatedUser.password = newPassword;
-                     updatedUser.salt = salt;
-                     updatedUser.encryptedDEK = encryptedDEK;
+        if (newPassword) {
+             const inputHash = await hashPassword(newPassword);
+             // Check if password actually changed (handle legacy plain text or new hash)
+             if (newPassword !== user.password && inputHash !== user.password) {
+                 const currentDEK = db.encryptionKey;
+                 if (currentDEK) {
+                     try {
+                         const salt = generateSalt();
+                         const kek = await deriveKeyFromPassword(newPassword, salt);
+                         const encryptedDEK = await wrapKey(currentDEK, kek);
+                         
+                         updatedUser.password = inputHash;
+                         updatedUser.salt = salt;
+                         updatedUser.encryptedDEK = encryptedDEK;
 
-                     if (currentUser?.id === userId) {
-                         recoveryKey = await exportKey(currentDEK);
+                         if (currentUser?.id === userId) {
+                             recoveryKey = await exportKey(currentDEK);
+                         }
+                     } catch (e) {
+                         console.error("updateUser crypto failed", e);
+                         return { success: false, message: "Failed to update password." };
                      }
-                 } catch (e) {
-                     console.error("updateUser crypto failed", e);
-                     return { success: false, message: "Failed to update password." };
+                 } else {
+                     // Guest mode or unlocked?
+                     updatedUser.password = inputHash;
                  }
-             } else {
-                 // Guest mode or unlocked?
-                 updatedUser.password = newPassword;
              }
         }
 
@@ -424,8 +483,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const salt = generateSalt();
             const kek = await deriveKeyFromPassword(newPassword, salt);
             const encryptedDEK = await wrapKey(dek, kek);
+            const hashedPassword = await hashPassword(newPassword);
 
-            const updatedUser = { ...user, password: newPassword, salt, encryptedDEK };
+            const updatedUser = { ...user, password: hashedPassword, salt, encryptedDEK };
             const newUsers = users.map(u => u.id === user.id ? updatedUser : u);
             
             setUsers(newUsers);

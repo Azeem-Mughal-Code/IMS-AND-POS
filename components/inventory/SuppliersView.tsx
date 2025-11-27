@@ -1,21 +1,21 @@
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Supplier, SortConfig, SupplierSortKeys } from '../../types';
-import usePersistedState from '../../hooks/usePersistedState';
 import { useSettings } from '../context/SettingsContext';
 import { useUIState } from '../context/UIStateContext';
 import { Modal } from '../common/Modal';
 import { Pagination } from '../common/Pagination';
 import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, ChevronUpIcon, ChevronDownIcon, PhotoIcon } from '../Icons';
-import { INITIAL_SUPPLIERS } from '../../constants';
 import { generateUUIDv7, generateUniqueNanoID } from '../../utils/idGenerator';
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from '../../utils/db';
 
 declare var html2canvas: any;
 
 // Self-contained Supplier Form
 const SupplierForm: React.FC<{ 
     supplier?: Supplier | null; 
-    onSubmit: (data: Omit<Supplier, 'id'>) => { success: boolean, message?: string }; 
+    onSubmit: (data: Omit<Supplier, 'id'>) => Promise<{ success: boolean, message?: string }>; 
     onCancel: () => void; 
 }> = ({ supplier, onSubmit, onCancel }) => {
     const [formData, setFormData] = useState({
@@ -31,10 +31,10 @@ const SupplierForm: React.FC<{
         setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
-        const result = onSubmit(formData);
+        const result = await onSubmit(formData);
         if (!result.success) {
             setError(result.message || 'An error occurred.');
         }
@@ -140,7 +140,9 @@ const SupplierDetailsModal: React.FC<{ supplier: Supplier; onClose: () => void }
 export const SuppliersView: React.FC = () => {
     const { workspaceId, paginationConfig } = useSettings();
     const { showToast, suppliersViewState, onSuppliersViewUpdate } = useUIState();
-    const [suppliers, setSuppliers] = usePersistedState<Supplier[]>(`ims-${workspaceId}-suppliers`, INITIAL_SUPPLIERS);
+    
+    // Switch to LiveQuery to support DB Middleware Encryption
+    const suppliers = useLiveQuery<Supplier[]>(() => db.suppliers.where('workspaceId').equals(workspaceId).toArray(), [workspaceId]) || [];
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
@@ -158,49 +160,59 @@ export const SuppliersView: React.FC = () => {
         onSuppliersViewUpdate({ sortConfig: { key, direction } });
     };
 
-    const handleAddSupplier = (data: Omit<Supplier, 'id'>) => {
-        if (suppliers.some(s => s.name.toLowerCase() === data.name.toLowerCase())) {
+    const handleAddSupplier = async (data: Omit<Supplier, 'id'>) => {
+        if (suppliers.some((s: Supplier) => s.name.toLowerCase() === data.name.toLowerCase())) {
             return { success: false, message: 'A supplier with this name already exists.' };
         }
         
         const internalId = generateUUIDv7();
-        const publicId = generateUniqueNanoID(suppliers, (s, id) => s.publicId === id, 6, 'SUP-');
+        const publicId = generateUniqueNanoID(suppliers, (s: Supplier, id) => s.publicId === id, 6, 'SUP-');
 
         const newSupplier: Supplier = { 
             ...data, 
             id: internalId,
-            publicId: publicId
+            publicId: publicId,
+            workspaceId,
+            sync_status: 'pending'
         };
-        setSuppliers(prev => [...prev, newSupplier]);
+        await db.suppliers.add(newSupplier);
         showToast('Supplier added successfully.', 'success');
         setIsModalOpen(false);
         return { success: true };
     };
 
-    const handleUpdateSupplier = (data: Omit<Supplier, 'id'>) => {
+    const handleUpdateSupplier = async (data: Omit<Supplier, 'id'>) => {
         if (!editingSupplier) return { success: false };
-        if (suppliers.some(s => s.name.toLowerCase() === data.name.toLowerCase() && s.id !== editingSupplier.id)) {
+        if (suppliers.some((s: Supplier) => s.name.toLowerCase() === data.name.toLowerCase() && s.id !== editingSupplier.id)) {
             return { success: false, message: 'A supplier with this name already exists.' };
         }
-        setSuppliers(prev => prev.map(s => s.id === editingSupplier.id ? { ...s, ...data } : s));
+        await db.suppliers.update(editingSupplier.id, { ...data, sync_status: 'pending', updated_at: new Date().toISOString() });
         showToast('Supplier updated successfully.', 'success');
         setIsModalOpen(false);
         setEditingSupplier(null);
         return { success: true };
     };
     
-    const handleDeleteSupplier = () => {
+    const handleDeleteSupplier = async () => {
         if (!deletingSupplier) return;
         // NOTE: In a real app, check if supplier is used in any POs before deleting.
-        setSuppliers(prev => prev.filter(s => s.id !== deletingSupplier.id));
+        await (db as any).transaction('rw', db.suppliers, db.deletedRecords, async () => {
+            await db.suppliers.delete(deletingSupplier.id);
+            await db.deletedRecords.add({
+                id: deletingSupplier.id,
+                table: 'suppliers',
+                deletedAt: new Date().toISOString(),
+                sync_status: 'pending'
+            });
+        });
         showToast('Supplier deleted successfully.', 'success');
         setDeletingSupplier(null);
     }
     
     const filteredAndSorted = useMemo(() => {
         return suppliers
-            .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()) || (s.contactPerson && s.contactPerson.toLowerCase().includes(searchTerm.toLowerCase())) || (s.publicId && s.publicId.toLowerCase().includes(searchTerm.toLowerCase())))
-            .sort((a,b) => {
+            .filter((s: Supplier) => s.name.toLowerCase().includes(searchTerm.toLowerCase()) || (s.contactPerson && s.contactPerson.toLowerCase().includes(searchTerm.toLowerCase())) || (s.publicId && s.publicId.toLowerCase().includes(searchTerm.toLowerCase())))
+            .sort((a: Supplier, b: Supplier) => {
                 const valA = a[sortConfig.key];
                 const valB = b[sortConfig.key];
                 const comparison = String(valA).localeCompare(String(valB));

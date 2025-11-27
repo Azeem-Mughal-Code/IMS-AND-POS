@@ -141,7 +141,7 @@ export const MoonIcon = () => (
 
 export const ComputerDesktopIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M15.562 3.375a2.25 2.25 0 012.25 2.25v7.5a2.25 2.25 0 01-2.25 2.25H8.438a2.25 2.25 0 01-2.25-2.25v-7.5a2.25 2.25 0 012.25-2.25h7.124zM18.75 11.25a.75.75 0 000-1.5h.375a.75.75 0 000-1.5h-.375a.75.75 0 000-1.5h.375a.75.75 0 00-.75.75v4.5a.75.75 0 00.75.75h.375a.75.75 0 000-1.5h-.375z" />
+    <path d="M15.562 3.375a2.25 2.25 0 012.25 2.25v7.5a2.25 2.25 0 01-2.25 2.25H8.438a2.25 2.25 0 01-2.25-2.25v-7.5a2.25 2.25 0 012.25-2.25h7.124zM18.75 11.25a.75.75 0 000-1.5h.375a.75.75 0 000-1.5h-.375a.75.75 0 00-.75.75v4.5a.75.75 0 00.75.75h.375a.75.75 0 000-1.5h-.375z" />
     <path d="M4.5 3.375a.75.75 0 00-.75.75v12a.75.75 0 00.75.75h15a.75.75 0 00.75-.75v-12a.75.75 0 00-.75-.75h-15z" />
   </svg>
 );
@@ -178,7 +178,7 @@ export const FilterIcon = () => (
 
 export const ReceiveIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 06.586 13H4" />
     </svg>
 );
 
@@ -277,4 +277,16 @@ export const DownloadIcon = ({ className }: { className?: string }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-6 w-6"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
     </svg>
+);
+
+export const ArrowUturnLeftIcon = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+    </svg>
+);
+
+export const BanknotesIcon = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-6 w-6"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+  </svg>
 );

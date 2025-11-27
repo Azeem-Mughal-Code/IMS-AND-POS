@@ -6,12 +6,25 @@ import { encryptData, decryptData } from './crypto';
 // Define configuration for encrypted fields
 const ENCRYPTED_FIELDS: Record<string, string[]> = {
   products: ['costPrice'],
-  sales: ['cogs', 'profit'],
+  sales: ['cogs', 'profit', 'total', 'subtotal', 'tax', 'discount'],
   customers: ['phone', 'email', 'address', 'notes'],
-  // purchaseOrders items contains costPrice, and totalCost might be sensitive. 
-  // Simplifying by encrypting entire 'items' array if possible, but field level is cleaner for structure.
-  purchaseOrders: ['totalCost'], 
+  suppliers: ['contactPerson', 'email', 'phone', 'address'],
+  purchaseOrders: ['totalCost'],
+  shifts: ['startFloat', 'actualCash', 'difference', 'cashSales', 'cashRefunds'],
+  inventoryAdjustments: ['reason'],
 };
+
+// Helper to check valid IDB key
+function isValidIDBKey(key: any): boolean {
+    if (key === undefined || key === null) return false;
+    const type = typeof key;
+    if (type === 'number') return !isNaN(key);
+    if (type === 'string') return true;
+    if (key instanceof Date) return !isNaN(key.getTime());
+    if (key instanceof ArrayBuffer) return true;
+    if (Array.isArray(key)) return key.every(isValidIDBKey);
+    return false;
+}
 
 // Define the Dexie Database Class
 export class IMSDatabase extends Dexie {
@@ -88,6 +101,9 @@ export class IMSDatabase extends Dexie {
                             if (!this.encryptionKey || (req.type !== 'add' && req.type !== 'put')) {
                                 return downlevelTable.mutate(req);
                             }
+                            
+                            // Check if values exist to prevent errors on delete operations that might slip through
+                            if (!req.values) return downlevelTable.mutate(req);
 
                             const encryptItem = async (item: any) => {
                                 const cloned = { ...item };
@@ -119,31 +135,37 @@ export class IMSDatabase extends Dexie {
                             return downlevelTable.mutate({ ...req, values });
                         },
                         get: async (req: any) => {
-                            // DBCore get request has a 'key' property.
-                            // If the key is missing or invalid, return undefined immediately to prevent IDB error.
-                            if (req.key === undefined || req.key === null) return undefined;
+                            const key = req.key;
+                            if (!isValidIDBKey(key)) {
+                                return undefined;
+                            }
 
                             try {
                                 const res = await downlevelTable.get(req);
                                 if (!this.encryptionKey || !res) return res;
                                 return this.decryptItem(tableName, res);
                             } catch (error) {
-                                // Catch "DataError: Failed to execute 'get' on 'IDBObjectStore': The parameter is not a valid key."
+                                // Swallow invalid key errors that might slip through or other IDB read errors
                                 console.warn(`DB Middleware: Failed to get key for table ${tableName}`, error);
                                 return undefined;
                             }
                         },
                         query: async (req: any) => {
-                            const res = await downlevelTable.query(req);
-                            const result = await res.result;
-                            if (!this.encryptionKey || !Array.isArray(result)) return res;
-                            
-                            const decryptedResult = await Promise.all(result.map(item => this.decryptItem(tableName, item)));
-                            
-                            return {
-                                ...res,
-                                result: decryptedResult
-                            };
+                            try {
+                                const res = await downlevelTable.query(req);
+                                const result = await res.result;
+                                if (!this.encryptionKey || !Array.isArray(result)) return res;
+                                
+                                const decryptedResult = await Promise.all(result.map(item => this.decryptItem(tableName, item)));
+                                
+                                return {
+                                    ...res,
+                                    result: decryptedResult
+                                };
+                            } catch (error) {
+                                console.error(`DB Middleware: Query failed for table ${tableName}`, error);
+                                throw error;
+                            }
                         }
                     };
                 }
@@ -157,26 +179,31 @@ export class IMSDatabase extends Dexie {
       if (!fieldsToEncrypt || !this.encryptionKey) return item;
 
       const cloned = { ...item };
-      for (const field of fieldsToEncrypt) {
-          if (cloned[field] !== undefined) {
-              cloned[field] = await decryptData(cloned[field], this.encryptionKey);
+      try {
+          for (const field of fieldsToEncrypt) {
+              if (cloned[field] !== undefined) {
+                  cloned[field] = await decryptData(cloned[field], this.encryptionKey);
+              }
           }
-      }
-      
-      // Decrypt deep objects
-      if (tableName === 'products' && cloned.variants) {
-          const newVariants = await Promise.all(cloned.variants.map(async (v: any) => ({
-              ...v,
-              costPrice: await decryptData(v.costPrice, this.encryptionKey!)
-          })));
-          cloned.variants = newVariants;
-      }
-      if (tableName === 'purchaseOrders' && cloned.items) {
-          const newItems = await Promise.all(cloned.items.map(async (i: any) => ({
-              ...i,
-              costPrice: await decryptData(i.costPrice, this.encryptionKey!)
-          })));
-          cloned.items = newItems;
+          
+          // Decrypt deep objects
+          if (tableName === 'products' && cloned.variants) {
+              const newVariants = await Promise.all(cloned.variants.map(async (v: any) => ({
+                  ...v,
+                  costPrice: await decryptData(v.costPrice, this.encryptionKey!)
+              })));
+              cloned.variants = newVariants;
+          }
+          if (tableName === 'purchaseOrders' && cloned.items) {
+              const newItems = await Promise.all(cloned.items.map(async (i: any) => ({
+                  ...i,
+                  costPrice: await decryptData(i.costPrice, this.encryptionKey!)
+              })));
+              cloned.items = newItems;
+          }
+      } catch (e) {
+          console.warn("Failed to decrypt item", e);
+          return item; // Fallback to original if decryption fails
       }
 
       return cloned;
@@ -191,11 +218,16 @@ export const db = new IMSDatabase();
 export function getFromDB<T>(key: string): Promise<T | undefined> {
   return new Promise(async (resolve, reject) => {
     try {
+      if (!isValidIDBKey(key)) {
+          resolve(undefined);
+          return;
+      }
       const result = await db.keyval.get(key);
       resolve(result?.value);
     } catch (error) {
       console.error(`Dexie get error for key ${key}:`, error);
-      reject(error);
+      // Resolve undefined instead of reject to prevent app crashes on legacy data issues
+      resolve(undefined); 
     }
   });
 }
@@ -203,6 +235,10 @@ export function getFromDB<T>(key: string): Promise<T | undefined> {
 export function setInDB<T>(key: string, value: T): Promise<void> {
   return new Promise(async (resolve, reject) => {
     try {
+      if (!isValidIDBKey(key)) {
+          reject(new Error("Invalid Key"));
+          return;
+      }
       await db.keyval.put({ key, value });
       resolve();
     } catch (error) {

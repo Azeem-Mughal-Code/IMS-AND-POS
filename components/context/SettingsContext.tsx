@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, ReactNode, useCallback, useMemo, useEffect } from 'react';
 import { CashierPermissions, Currency, PaginationConfig, PaginationTarget } from '../../types';
 import usePersistedState from '../../hooks/usePersistedState';
@@ -22,13 +23,15 @@ interface SettingsContextType {
     deleteCurrency: (code: string) => { success: boolean, message?: string };
     currencyDisplay: 'symbol' | 'code';
     setCurrencyDisplay: (display: 'symbol' | 'code') => void;
-    formatCurrency: (amount: number) => string;
+    formatCurrency: (amount: any) => string;
     isIntegerCurrency: boolean;
     setIsIntegerCurrency: (enabled: boolean) => void;
     isTaxEnabled: boolean;
     setIsTaxEnabled: (enabled: boolean) => void;
     taxRate: number;
     setTaxRate: (rate: number) => void;
+    includeTaxInProfit: boolean;
+    setIncludeTaxInProfit: (enabled: boolean) => void;
     isDiscountEnabled: boolean;
     setIsDiscountEnabled: (enabled: boolean) => void;
     discountRate: number;
@@ -92,8 +95,9 @@ export const SettingsProvider: React.FC<{ children: ReactNode; workspaceId: stri
     const [currency, setCurrency] = usePersistedState<string>(`${ls_prefix}-currency`, 'USD');
     const [currencyDisplay, setCurrencyDisplay] = usePersistedState<'symbol' | 'code'>(`${ls_prefix}-currencyDisplay`, 'symbol');
     const [isIntegerCurrency, setIsIntegerCurrency] = usePersistedState<boolean>(`${ls_prefix}-isIntegerCurrency`, false);
-    const [isTaxEnabled, setIsTaxEnabled] = usePersistedState<boolean>(`${ls_prefix}-isTaxEnabled`, true);
+    const [isTaxEnabled, setIsTaxEnabled] = usePersistedState<boolean>(`${ls_prefix}-isTaxEnabled`, false);
     const [taxRate, setTaxRate] = usePersistedState<number>(`${ls_prefix}-taxRate`, 0.08); // 8%
+    const [includeTaxInProfit, setIncludeTaxInProfit] = usePersistedState<boolean>(`${ls_prefix}-includeTaxInProfit`, false);
     const [isDiscountEnabled, setIsDiscountEnabled] = usePersistedState<boolean>(`${ls_prefix}-isDiscountEnabled`, false);
     const [discountRate, setDiscountRate] = usePersistedState<number>(`${ls_prefix}-discountRate`, 0.1); // 10%
     const [discountThreshold, setDiscountThreshold] = usePersistedState<number>(`${ls_prefix}-discountThreshold`, 100);
@@ -147,16 +151,22 @@ export const SettingsProvider: React.FC<{ children: ReactNode; workspaceId: stri
 
     const activeCurrency = useMemo(() => currencies.find(c => c.code === currency) || currencies[0] || { code: 'USD', symbol: '$', name: '' }, [currency, currencies]);
 
-    const formatCurrency = useCallback((amount: number) => {
+    const formatCurrency = useCallback((amount: any) => {
+        const num = parseFloat(amount);
+        if (isNaN(num)) {
+             const displaySymbol = currencyDisplay === 'symbol' ? activeCurrency.symbol : activeCurrency.code;
+             return `${displaySymbol}${(0).toFixed(isIntegerCurrency ? 0 : 2)}`;
+        }
+
         try {
             const displaySymbol = currencyDisplay === 'symbol' ? activeCurrency.symbol : activeCurrency.code;
             const formatted = new Intl.NumberFormat(undefined, {
                 minimumFractionDigits: isIntegerCurrency ? 0 : 2,
                 maximumFractionDigits: isIntegerCurrency ? 0 : 2,
-            }).format(amount);
+            }).format(num);
             return `${displaySymbol}${formatted}`;
         } catch (e) {
-            return `${activeCurrency.symbol}${amount.toFixed(isIntegerCurrency ? 0 : 2)}`;
+            return `${activeCurrency.symbol}${num.toFixed(isIntegerCurrency ? 0 : 2)}`;
         }
     }, [activeCurrency, currencyDisplay, isIntegerCurrency]);
     
@@ -233,6 +243,7 @@ export const SettingsProvider: React.FC<{ children: ReactNode; workspaceId: stri
             if (data.isIntegerCurrency !== undefined) setIsIntegerCurrency(data.isIntegerCurrency);
             if (data.isTaxEnabled !== undefined) setIsTaxEnabled(data.isTaxEnabled);
             if (data.taxRate) setTaxRate(data.taxRate);
+            if (data.includeTaxInProfit !== undefined) setIncludeTaxInProfit(data.includeTaxInProfit);
             if (data.isDiscountEnabled !== undefined) setIsDiscountEnabled(data.isDiscountEnabled);
             if (data.discountRate) setDiscountRate(data.discountRate);
             if (data.discountThreshold) setDiscountThreshold(data.discountThreshold);
@@ -262,6 +273,7 @@ export const SettingsProvider: React.FC<{ children: ReactNode; workspaceId: stri
         formatCurrency,
         isIntegerCurrency, setIsIntegerCurrency,
         isTaxEnabled, setIsTaxEnabled, taxRate, setTaxRate,
+        includeTaxInProfit, setIncludeTaxInProfit,
         isDiscountEnabled, setIsDiscountEnabled, discountRate, setDiscountRate, discountThreshold, setDiscountThreshold,
         cashierPermissions, setCashierPermissions,
         restoreBackup,

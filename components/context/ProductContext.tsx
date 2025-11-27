@@ -2,7 +2,7 @@
 import React, { createContext, useContext, ReactNode, useCallback, useEffect } from 'react';
 import { useLiveQuery } from "dexie-react-hooks";
 import { Product, InventoryAdjustment, PriceHistoryEntry, User, Category, ProductVariant, NotificationType } from '../../types';
-import { INITIAL_PRODUCTS, DEFAULT_CATEGORIES } from '../../constants';
+import { INITIAL_PRODUCTS, DEFAULT_CATEGORIES, INITIAL_SUPPLIERS } from '../../constants';
 import { useAuth } from './AuthContext';
 import { useUIState } from './UIStateContext';
 import { db } from '../../utils/db';
@@ -77,8 +77,17 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
                     workspaceId
                 }));
 
+                // Seed Suppliers for Guest Mode (Encrypted via middleware since key is set in AuthContext)
+                const newSuppliers = INITIAL_SUPPLIERS.map(s => ({
+                    ...s,
+                    id: `sup_${generateUUIDv7()}`,
+                    workspaceId,
+                    sync_status: 'pending' as const
+                }));
+
                 await db.products.bulkAdd(newProducts);
                 await db.categories.bulkAdd(newCategories);
+                await db.suppliers.bulkAdd(newSuppliers);
             }
         };
         seedData();
@@ -519,19 +528,16 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
 
     const factoryReset = async (adminUser: User) => {
         // Clear all tables for this workspace
-        await (db as any).transaction('rw', db.products, db.categories, db.inventoryAdjustments, db.notifications, db.deletedRecords, async () => {
+        await (db as any).transaction('rw', db.products, db.categories, db.inventoryAdjustments, db.notifications, db.deletedRecords, db.suppliers, async () => {
             await db.products.where('workspaceId').equals(workspaceId).delete();
             await db.categories.where('workspaceId').equals(workspaceId).delete();
             await db.inventoryAdjustments.where('workspaceId').equals(workspaceId).delete();
-            // Sync records are global technical logs, but clearing them for reset might be desired. 
-            // However, strictly we should filter deletions too, but DeletedRecords doesn't have workspaceId (oversight in my DB design for sync, but okay for local reset).
-            // For factory reset of workspace data, we can leave sync tombstones or clear if we want strict local reset.
-            // Leaving deletedRecords as is to avoid sync issues with other workspaces on same device (unlikely but possible).
-            
+            await db.suppliers.where('workspaceId').equals(workspaceId).delete();
             // Reseed if Guest
             if (workspaceId === 'guest_workspace') {
                 await db.products.bulkAdd(INITIAL_PRODUCTS.map(p => ({...p, sync_status: 'pending', workspaceId})));
                 await db.categories.bulkAdd(DEFAULT_CATEGORIES.map(c => ({...c, sync_status: 'pending', workspaceId})));
+                await db.suppliers.bulkAdd(INITIAL_SUPPLIERS.map(s => ({...s, sync_status: 'pending', workspaceId})));
             }
         });
     };

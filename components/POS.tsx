@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Product, CartItem, PaymentType, Sale, Payment, ProductVariant, Customer, HeldOrder } from '../types';
-import { SearchIcon, PlusIcon, MinusIcon, TrashIcon, PhotoIcon, ChevronDownIcon, TagIcon, UserCircleIcon, CheckCircleIcon, ClipboardIcon } from './Icons';
+import { SearchIcon, PlusIcon, MinusIcon, TrashIcon, PhotoIcon, ChevronDownIcon, TagIcon, UserCircleIcon, CheckCircleIcon, ClipboardIcon, ArrowUturnLeftIcon, BanknotesIcon } from './Icons';
 import { Modal } from './common/Modal';
 import { PrintableReceipt } from './common/PrintableReceipt';
 import { Pagination } from './common/Pagination';
@@ -315,31 +315,42 @@ const OpenShiftModal: React.FC<{ onOpenShift: (float: number) => void }> = ({ on
     );
 };
 
-const CloseShiftModal: React.FC<{ onCloseShift: (actual: number, notes: string) => void, onCancel: () => void }> = ({ onCloseShift, onCancel }) => {
+const CloseShiftModal: React.FC<{ onCloseShift: (actual: number, notes: string) => Promise<void>, onCancel: () => void }> = ({ onCloseShift, onCancel }) => {
     const { currentShift } = useSales();
     const { formatCurrency } = useSettings();
     const [actualCash, setActualCash] = useState('');
     const [notes, setNotes] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     if (!currentShift) return null;
 
-    const expectedCash = currentShift.startFloat + currentShift.cashSales - currentShift.cashRefunds;
+    const startFloat = currentShift.startFloat || 0;
+    const cashSales = currentShift.cashSales || 0;
+    const cashRefunds = currentShift.cashRefunds || 0;
+    
+    const expectedCash = startFloat + cashSales - cashRefunds;
     const difference = (parseFloat(actualCash) || 0) - expectedCash;
+
+    const handleSubmit = async () => {
+        setIsSubmitting(true);
+        await onCloseShift(parseFloat(actualCash) || 0, notes);
+        setIsSubmitting(false);
+    };
 
     return (
         <div className="space-y-6">
             <div className="space-y-2 bg-gray-100 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
                 <div className="flex justify-between text-sm">
                     <span className="text-gray-600 dark:text-gray-300">Opening Float</span>
-                    <span className="font-medium text-gray-900 dark:text-white">{formatCurrency(currentShift.startFloat)}</span>
+                    <span className="font-medium text-gray-900 dark:text-white">{formatCurrency(startFloat)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                     <span className="text-gray-600 dark:text-gray-300">Cash Sales</span>
-                    <span className="font-medium text-green-600 dark:text-green-400">{formatCurrency(currentShift.cashSales)}</span>
+                    <span className="font-medium text-green-600 dark:text-green-400">{formatCurrency(cashSales)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                     <span className="text-gray-600 dark:text-gray-300">Cash Refunds</span>
-                    <span className="font-medium text-red-600 dark:text-red-400">-{formatCurrency(currentShift.cashRefunds)}</span>
+                    <span className="font-medium text-red-600 dark:text-red-400">-{formatCurrency(cashRefunds)}</span>
                 </div>
                 <div className="border-t border-gray-300 dark:border-gray-600 pt-2 flex justify-between font-bold text-lg text-gray-900 dark:text-white">
                     <span>Expected Cash</span>
@@ -377,8 +388,10 @@ const CloseShiftModal: React.FC<{ onCloseShift: (actual: number, notes: string) 
             </div>
 
             <div className="flex gap-3 pt-2">
-                <button onClick={onCancel} className="flex-1 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-lg">Cancel</button>
-                <button onClick={() => onCloseShift(parseFloat(actualCash) || 0, notes)} className="flex-1 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700">End Shift</button>
+                <button onClick={onCancel} disabled={isSubmitting} className="flex-1 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-lg disabled:opacity-50">Cancel</button>
+                <button onClick={handleSubmit} disabled={isSubmitting} className="flex-1 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 disabled:opacity-50">
+                    {isSubmitting ? 'Closing...' : 'End Shift'}
+                </button>
             </div>
         </div>
     );
@@ -446,13 +459,14 @@ interface POSProps {
 
 const PaymentModalContent: React.FC<{
     total: number,
-    onCompleteSale: (payments: Payment[]) => void,
+    onCompleteSale: (payments: Payment[]) => Promise<void>,
     onClose: () => void,
 }> = ({ total, onCompleteSale, onClose }) => {
     const { isIntegerCurrency, formatCurrency } = useSettings();
     const { showToast } = useUIState();
     const [payments, setPayments] = useState<Payment[]>([]);
     const [currentAmount, setCurrentAmount] = useState('');
+    const [isProcessing, setIsProcessing] = useState(false);
 
     const isRefund = total < 0;
     const absTotal = Math.abs(total);
@@ -485,6 +499,12 @@ const PaymentModalContent: React.FC<{
         const newPayments = payments.filter((_, i) => i !== index);
         setPayments(newPayments);
     };
+
+    const handleComplete = async () => {
+        setIsProcessing(true);
+        await onCompleteSale(payments);
+        setIsProcessing(false);
+    }
 
     return (
         <div className="space-y-4 text-gray-900 dark:text-gray-100">
@@ -547,8 +567,10 @@ const PaymentModalContent: React.FC<{
             </div>
             
             <div className="flex justify-end gap-2 pt-4">
-                <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
-                <button type="button" onClick={() => onCompleteSale(payments)} disabled={!canComplete} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed">Complete {isRefund ? 'Refund' : 'Sale'}</button>
+                <button type="button" onClick={onClose} disabled={isProcessing} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 disabled:opacity-50">Cancel</button>
+                <button type="button" onClick={handleComplete} disabled={!canComplete || isProcessing} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                    {isProcessing ? 'Processing...' : `Complete ${isRefund ? 'Refund' : 'Sale'}`}
+                </button>
             </div>
         </div>
     );
@@ -570,7 +592,7 @@ export const POS: React.FC<POSProps> = () => {
   const [lastSale, setLastSale] = useState<Sale | null>(null);
   
   const [activeTab, setActiveTab] = useState<'Register' | 'Returns'>('Register');
-  const [selectedSaleForReturn, setSelectedSaleForReturn] = useState<Sale | null>(null);
+  const [selectedSaleForReturnId, setSelectedSaleForReturnId] = useState<string | null>(null);
   const [returnSearchTerm, setReturnSearchTerm] = useState<string>('');
   
   const [catalogPage, setCatalogPage] = useState(1);
@@ -599,6 +621,11 @@ export const POS: React.FC<POSProps> = () => {
 
   const canProcessReturns = currentUser.role === UserRole.Admin || cashierPermissions.canProcessReturns;
   
+  const selectedSaleForReturn = useMemo(() => {
+      if (!selectedSaleForReturnId) return null;
+      return sales.find(s => s.id === selectedSaleForReturnId) || null;
+  }, [sales, selectedSaleForReturnId]);
+
   const openPaymentModal = useCallback(() => {
     if (cart.length > 0) {
         setPaymentModalKey(Date.now());
@@ -773,10 +800,17 @@ export const POS: React.FC<POSProps> = () => {
   };
 
   const addReturnItemToCart = (originalSale: Sale, item: CartItem, returnQty: number) => {
+      const maxReturnable = item.quantity - (item.returnedQuantity || 0);
+      const returnItemId = `${item.id}_return_${originalSale.id}`;
+      const existingItem = cart.find(ci => ci.id === returnItemId);
+      const currentInCart = existingItem ? Math.abs(existingItem.quantity) : 0;
+      
+      if (currentInCart + returnQty > maxReturnable) {
+          showToast(`Cannot return more than ${maxReturnable} of this item.`, 'error');
+          return;
+      }
+
       setCart(prevCart => {
-          const returnItemId = `${item.id}_return_${originalSale.id}`;
-          const existingItem = prevCart.find(ci => ci.id === returnItemId);
-          
           if (existingItem) {
               return prevCart.map(ci => ci.id === returnItemId ? { ...ci, quantity: ci.quantity - returnQty } : ci);
           }
@@ -800,10 +834,30 @@ export const POS: React.FC<POSProps> = () => {
         if (cartItem.id === item.id) {
           const newQuantity = cartItem.quantity + change;
           
-          if (item.quantity > 0 && newQuantity <= 0) return cartItem;
-          if (item.quantity < 0 && newQuantity >= 0) return cartItem;
+          if (item.quantity > 0) {
+              if (newQuantity <= 0) return cartItem;
+              if (newQuantity > item.stock) return cartItem;
+          }
           
-          if (newQuantity > 0 && newQuantity > item.stock) return cartItem;
+          if (item.quantity < 0) {
+              if (newQuantity >= 0) return cartItem;
+              // Validate against max returnable quantity from original sale
+              if (item.originalSaleId) {
+                  const originalSale = sales.find(s => s.id === item.originalSaleId);
+                  if (originalSale) {
+                      const originalItem = originalSale.items.find(i => 
+                          i.productId === item.productId && 
+                          i.variantId === item.variantId
+                      );
+                      
+                      if (originalItem) {
+                          const maxReturnable = originalItem.quantity - (originalItem.returnedQuantity || 0);
+                          // newQuantity is negative (e.g. -2), so use Math.abs to compare
+                          if (Math.abs(newQuantity) > maxReturnable) return cartItem;
+                      }
+                  }
+              }
+          }
 
           return { ...cartItem, quantity: newQuantity };
         }
@@ -908,7 +962,7 @@ export const POS: React.FC<POSProps> = () => {
     };
   }, [cart, isTaxEnabled, taxRate, isDiscountEnabled, discountThreshold, discountRate, isIntegerCurrency, cartDiscount, cartTax]);
 
-  const handleCompleteSale = (payments: Payment[]) => {
+  const handleCompleteSale = async (payments: Payment[]) => {
     const safeNumber = (n: any) => {
         const num = Number(n);
         return isNaN(num) ? 0 : num;
@@ -947,7 +1001,7 @@ export const POS: React.FC<POSProps> = () => {
     };
     
     try {
-        const newSale = processSale(sale);
+        const newSale = await processSale(sale);
         
         setLastSale(newSale);
         setCart([]);
@@ -957,6 +1011,7 @@ export const POS: React.FC<POSProps> = () => {
         setIsPaymentModalOpen(false);
         setIsReceiptModalOpen(true);
         setActiveTab('Register');
+        setSelectedSaleForReturnId(null);
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred while processing the sale.';
         showToast(errorMessage, 'error');
@@ -1069,7 +1124,7 @@ export const POS: React.FC<POSProps> = () => {
              <h3 className="text-lg font-semibold p-4 border-b dark:border-gray-700 text-gray-800 dark:text-white">Select a Sale</h3>
              <div className="flex-grow overflow-y-auto">
                  {paginatedReturnSales.length > 0 ? paginatedReturnSales.map((sale: Sale) => (
-                   <div key={sale.id} onClick={() => setSelectedSaleForReturn(sale)} className="p-4 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors">
+                   <div key={sale.id} onClick={() => setSelectedSaleForReturnId(sale.id)} className="p-4 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors">
                      <div className="flex justify-between items-center">
                         <span className="font-semibold text-gray-900 dark:text-white truncate">
                             ID: <span className="font-mono text-blue-600 dark:text-blue-400">{sale.publicId || sale.id}</span>
@@ -1101,7 +1156,7 @@ export const POS: React.FC<POSProps> = () => {
             <div className="p-3 bg-blue-50 dark:bg-gray-700 rounded-lg border border-blue-100 dark:border-gray-600">
                 <div className="flex justify-between items-center">
                     <h3 className="font-semibold text-gray-800 dark:text-white truncate">Sale <span className="font-mono">{selectedSaleForReturn.publicId || selectedSaleForReturn.id}</span></h3>
-                    <button onClick={() => setSelectedSaleForReturn(null)} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">Back to Search</button>
+                    <button onClick={() => setSelectedSaleForReturnId(null)} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">Back to Search</button>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{formatDateTime(selectedSaleForReturn.date)}</p>
             </div>
@@ -1136,19 +1191,25 @@ export const POS: React.FC<POSProps> = () => {
                         <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{item.name}</td>
                         <td className="px-4 py-3 text-center text-gray-900 dark:text-white">{item.quantity}</td>
                         <td className="px-4 py-3 text-center text-orange-600 dark:text-orange-400">{item.returnedQuantity || 0}</td>
-                        <td className="px-4 py-3 text-center space-x-2">
-                            <button 
-                                onClick={() => addReturnItemToCart(selectedSaleForReturn, item, 1)}
-                                className="px-3 py-1 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/50 text-xs font-semibold"
-                            >
-                                Return 1
-                            </button>
-                            <button 
-                                onClick={() => addReturnItemToCart(selectedSaleForReturn, item, maxReturnable)}
-                                className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs font-semibold"
-                            >
-                                Return All ({maxReturnable})
-                            </button>
+                        <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                                <button 
+                                    onClick={() => addReturnItemToCart(selectedSaleForReturn, item, 1)}
+                                    className="p-2 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/50 text-xs font-semibold flex items-center gap-1 transition-colors"
+                                    title="Return 1 Item"
+                                >
+                                    <ArrowUturnLeftIcon className="h-4 w-4" />
+                                    <span>1</span>
+                                </button>
+                                <button 
+                                    onClick={() => addReturnItemToCart(selectedSaleForReturn, item, maxReturnable)}
+                                    className="p-2 bg-red-600 text-white rounded hover:bg-red-700 text-xs font-semibold flex items-center gap-1 transition-colors"
+                                    title={`Return All (${maxReturnable})`}
+                                >
+                                    <ArrowUturnLeftIcon className="h-4 w-4" />
+                                    <span>All</span>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 );
@@ -1160,8 +1221,8 @@ export const POS: React.FC<POSProps> = () => {
     );
   };
 
-  const handleCloseShift = (actual: number, notes: string) => {
-      const result = closeShift(actual, notes);
+  const handleCloseShift = async (actual: number, notes: string) => {
+      const result = await closeShift(actual, notes);
       if (result.success) {
           setIsCloseShiftModalOpen(false);
           showToast('Shift closed successfully.', 'success');
@@ -1172,6 +1233,28 @@ export const POS: React.FC<POSProps> = () => {
 
   const totalAmount = totals.total;
   const isRefund = totalAmount < 0;
+
+  // Determine Discount Label
+  let discountLabel = "No Disc";
+  if (cartDiscount) {
+      if (cartDiscount.type === 'percent') discountLabel = `${cartDiscount.value}%`;
+      else discountLabel = "Custom";
+  } else if (isDiscountEnabled) {
+      // Default auto discount applies potentially
+      // Show default rate
+      discountLabel = `${(discountRate * 100).toFixed(0)}%`; 
+  }
+
+  // Determine Tax Label
+  let taxLabel = "No Tax";
+  if (cartTax) {
+      if (cartTax.type === 'percent') taxLabel = `${cartTax.value}%`;
+      else taxLabel = "Custom";
+  } else if (isTaxEnabled) {
+      taxLabel = `${(taxRate * 100).toFixed(1)}%`;
+  }
+
+  const showSubtotal = totals.discount > 0 || totals.tax > 0;
 
   return (
     <div className="relative flex flex-col min-h-full bg-gray-100 dark:bg-gray-900">
@@ -1302,35 +1385,60 @@ export const POS: React.FC<POSProps> = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                            {cart.map(item => (
-                            <tr key={item.id} className={item.quantity < 0 ? "bg-red-50 dark:bg-red-900/10" : ""}>
-                                <td className="px-2 py-3 whitespace-nowrap">
-                                    <div className={`font-medium ${item.quantity < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
-                                        {item.name}
-                                    </div>
-                                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                                        {formatCurrency(item.retailPrice)}
-                                    </div>
-                                </td>
-                                <td className="px-2 py-3 text-center whitespace-nowrap">
-                                    <div className="flex items-center justify-center gap-1">
-                                        <button onClick={() => updateQuantity(item, item.quantity > 0 ? -1 : 1)} className="p-1 rounded-full bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-50 disabled:opacity-50 text-gray-600 dark:text-gray-200" disabled={item.quantity === 1 || item.quantity === -1}>
-                                            <MinusIcon />
-                                        </button>
-                                        <span className={`w-6 text-center font-semibold text-gray-900 dark:text-white ${item.quantity < 0 ? 'text-red-600 dark:text-red-400' : ''}`}>{Math.abs(item.quantity)}</span>
-                                        <button onClick={() => updateQuantity(item, item.quantity > 0 ? 1 : -1)} className="p-1 rounded-full bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-50 text-gray-600 dark:text-gray-200">
-                                            <PlusIcon />
-                                        </button>
-                                    </div>
-                                </td>
-                                <td className={`px-2 py-3 text-right font-semibold whitespace-nowrap ${item.quantity < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'}`}>
-                                    {formatCurrency(item.retailPrice * item.quantity)}
-                                </td>
-                                <td className="px-1 py-3 text-center">
-                                    <button onClick={() => removeFromCart(item.id)} className="text-gray-400 hover:text-red-500 p-1"><TrashIcon /></button>
-                                </td>
-                            </tr>
-                            ))}
+                            {cart.map(item => {
+                                const isReturn = item.quantity < 0;
+                                let isMaxReached = false;
+
+                                if (isReturn && item.originalSaleId) {
+                                    const originalSale = sales.find(s => s.id === item.originalSaleId);
+                                    if (originalSale) {
+                                        const originalItem = originalSale.items.find(i => 
+                                            i.productId === item.productId && i.variantId === item.variantId
+                                        );
+                                        if (originalItem) {
+                                            const maxReturnable = originalItem.quantity - (originalItem.returnedQuantity || 0);
+                                            // item.quantity is negative, so |item.quantity| is how many we are returning
+                                            if (Math.abs(item.quantity) >= maxReturnable) isMaxReached = true;
+                                        }
+                                    }
+                                } else if (!isReturn) {
+                                    if (item.quantity >= item.stock) isMaxReached = true;
+                                }
+
+                                return (
+                                <tr key={item.id} className={item.quantity < 0 ? "bg-red-50 dark:bg-red-900/10" : ""}>
+                                    <td className="px-2 py-3 whitespace-nowrap">
+                                        <div className={`font-medium ${item.quantity < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
+                                            {item.name}
+                                        </div>
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                            {formatCurrency(item.retailPrice)}
+                                        </div>
+                                    </td>
+                                    <td className="px-2 py-3 text-center whitespace-nowrap">
+                                        <div className="flex items-center justify-center gap-1">
+                                            <button onClick={() => updateQuantity(item, item.quantity > 0 ? -1 : 1)} className="p-1 rounded-full bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-50 disabled:opacity-50 text-gray-600 dark:text-gray-200" disabled={item.quantity === 1 || item.quantity === -1}>
+                                                <MinusIcon />
+                                            </button>
+                                            <span className={`w-6 text-center font-semibold text-gray-900 dark:text-white ${item.quantity < 0 ? 'text-red-600 dark:text-red-400' : ''}`}>{Math.abs(item.quantity)}</span>
+                                            <button 
+                                                onClick={() => updateQuantity(item, item.quantity > 0 ? 1 : -1)} 
+                                                className="p-1 rounded-full bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-50 text-gray-600 dark:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                disabled={isMaxReached}
+                                            >
+                                                <PlusIcon />
+                                            </button>
+                                        </div>
+                                    </td>
+                                    <td className={`px-2 py-3 text-right font-semibold whitespace-nowrap ${item.quantity < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                                        {formatCurrency(item.retailPrice * item.quantity)}
+                                    </td>
+                                    <td className="px-1 py-3 text-center">
+                                        <button onClick={() => removeFromCart(item.id)} className="text-gray-400 hover:text-red-500 p-1"><TrashIcon /></button>
+                                    </td>
+                                </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                     {cart.length === 0 && ( <div className="text-center py-4 text-gray-500 dark:text-gray-400"><p>Cart is empty</p></div> )}
@@ -1368,7 +1476,7 @@ export const POS: React.FC<POSProps> = () => {
                         className={`flex flex-col items-center justify-center p-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${cartDiscount ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300'}`}
                     >
                         <TagIcon className="h-4 w-4 mb-1" />
-                        <span className="text-[10px] font-bold uppercase">{cartDiscount ? (cartDiscount.type === 'percent' ? `${cartDiscount.value}%` : 'Disc') : 'Discount'}</span>
+                        <span className="text-[10px] font-bold uppercase">{discountLabel}</span>
                     </button>
                     <button 
                         onClick={() => setIsHoldOrderModalOpen(true)}
@@ -1383,26 +1491,30 @@ export const POS: React.FC<POSProps> = () => {
                         disabled={cart.length === 0}
                         className={`flex flex-col items-center justify-center p-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${cartTax ? (cartTax.type === 'fixed' && cartTax.value === 0 ? 'border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400' : 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400') : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300'}`}
                     >
-                        <span className="h-4 w-4 mb-1 font-bold text-sm">%</span>
-                        <span className="text-[10px] font-bold uppercase">{cartTax ? (cartTax.type === 'fixed' && cartTax.value === 0 ? 'No Tax' : 'Custom') : 'Tax'}</span>
+                        <BanknotesIcon className="h-4 w-4 mb-1" />
+                        <span className="text-[10px] font-bold uppercase">{taxLabel}</span>
                     </button>
                 </div>
 
                 <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400 mb-4">
-                    <div className="flex justify-between">
-                        <span>Subtotal</span>
-                        <span>{formatCurrency(totals.subtotal)}</span>
-                    </div>
+                    {showSubtotal && (
+                        <div className="flex justify-between">
+                            <span>Subtotal</span>
+                            <span>{formatCurrency(totals.subtotal)}</span>
+                        </div>
+                    )}
                     {(totals.discount > 0) && (
                         <div className="flex justify-between text-green-600 dark:text-green-400">
                             <span>Discount</span>
                             <span>-{formatCurrency(totals.discount)}</span>
                         </div>
                     )}
-                    <div className="flex justify-between">
-                        <span>Tax {cartTax ? '(Custom)' : (isTaxEnabled ? `(${taxRate * 100}%)` : '(0%)')}</span>
-                        <span>{formatCurrency(totals.tax)}</span>
-                    </div>
+                    {(totals.tax > 0) && (
+                        <div className="flex justify-between">
+                            <span>Tax {cartTax ? '(Custom)' : (isTaxEnabled ? `(${taxRate * 100}%)` : '(0%)')}</span>
+                            <span>{formatCurrency(totals.tax)}</span>
+                        </div>
+                    )}
                 </div>
                 
                 <div className="flex justify-between items-center text-2xl font-bold text-gray-900 dark:text-white mb-6">

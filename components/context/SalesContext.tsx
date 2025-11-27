@@ -5,6 +5,7 @@ import { Sale, PurchaseOrder, POItem, Product, CartItem, Shift, PaymentType, Hel
 import { useProducts } from './ProductContext';
 import { useUIState } from './UIStateContext';
 import { useAuth } from './AuthContext';
+import { useSettings } from './SettingsContext';
 import { generateUUIDv7, generateUniqueNanoID } from '../../utils/idGenerator';
 import { db } from '../../utils/db';
 
@@ -13,7 +14,7 @@ interface SalesContextType {
     purchaseOrders: PurchaseOrder[];
     heldOrders: HeldOrder[];
     shifts: Shift[];
-    processSale: (saleData: Omit<Sale, 'id' | 'date' | 'workspaceId'>) => Sale;
+    processSale: (saleData: Omit<Sale, 'id' | 'date' | 'workspaceId'>) => Promise<Sale>;
     deleteSale: (saleId: string) => Promise<{ success: boolean; message?: string }>;
     clearSales: (options?: { statuses?: (Sale['status'])[] }) => void;
     pruneData: (target: 'sales' | 'purchaseOrders', options: { days: number; statuses?: Sale['status'][] }) => { success: boolean; message: string };
@@ -23,7 +24,7 @@ interface SalesContextType {
     factoryReset: () => void;
     currentShift: Shift | null;
     openShift: (float: number) => void;
-    closeShift: (actualCash: number, notes: string) => { success: boolean, message?: string };
+    closeShift: (actualCash: number, notes: string) => Promise<{ success: boolean; message?: string }>;
     holdOrder: (order: Omit<HeldOrder, 'id' | 'date' | 'workspaceId'>) => void;
     deleteHeldOrder: (orderId: string) => void;
 }
@@ -38,12 +39,25 @@ export const useSales = () => {
 
 export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string }> = ({ children, workspaceId }) => {
     const { currentUser } = useAuth();
+    const { includeTaxInProfit } = useSettings();
     
     // Reactive Data from Dexie, filtered by workspaceId
-    const sales = useLiveQuery(() => db.sales.where('workspaceId').equals(workspaceId).reverse().sortBy('date'), [workspaceId]) || [];
-    const purchaseOrders = useLiveQuery(() => db.purchaseOrders.where('workspaceId').equals(workspaceId).reverse().sortBy('dateCreated'), [workspaceId]) || [];
+    const sales = useLiveQuery(async () => {
+        const list = await db.sales.where('workspaceId').equals(workspaceId).toArray();
+        return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [workspaceId]) || [];
+
+    const purchaseOrders = useLiveQuery(async () => {
+        const list = await db.purchaseOrders.where('workspaceId').equals(workspaceId).toArray();
+        return list.sort((a, b) => new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime());
+    }, [workspaceId]) || [];
+
+    const shifts = useLiveQuery(async () => {
+        const list = await db.shifts.where('workspaceId').equals(workspaceId).toArray();
+        return list.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+    }, [workspaceId]) || [];
+
     const heldOrders = useLiveQuery(() => db.heldOrders.where('workspaceId').equals(workspaceId).toArray(), [workspaceId]) || [];
-    const shifts = useLiveQuery(() => db.shifts.where('workspaceId').equals(workspaceId).reverse().sortBy('startTime'), [workspaceId]) || [];
     
     const { products, adjustStock, removeStockHistoryByReason } = useProducts();
     const { addNotification, notifications } = useUIState();
@@ -78,7 +92,7 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
 
     const currentShift = useMemo(() => shifts.find(s => s.status === 'Open') || null, [shifts]);
 
-    const processSale = (saleData: Omit<Sale, 'id' | 'date' | 'workspaceId'>): Sale => {
+    const processSale = async (saleData: Omit<Sale, 'id' | 'date' | 'workspaceId'>): Promise<Sale> => {
         let finalType: 'Sale' | 'Return' = saleData.total >= 0 ? 'Sale' : 'Return';
         const isReturn = finalType === 'Return';
         
@@ -92,8 +106,19 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
             originalSalePublicId = originalSale?.publicId;
         }
 
+        // Recalculate profit based on current setting to ensure consistency at moment of sale creation
+        const safeTotal = parseFloat(String(saleData.total)) || 0;
+        const safeTax = parseFloat(String(saleData.tax)) || 0;
+        const safeCogs = parseFloat(String(saleData.cogs)) || 0;
+        
+        // Profit = (Total - Tax) - COGS if includeTaxInProfit is false
+        // Profit = Total - COGS if includeTaxInProfit is true
+        const revenue = safeTotal - (includeTaxInProfit ? 0 : safeTax);
+        const profit = revenue - safeCogs;
+
         const newSale: Sale = {
             ...saleData,
+            profit, // Override the profit from POS calculation with the context-aware one
             type: finalType,
             id: internalId,
             publicId: publicId,
@@ -105,7 +130,7 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
         };
 
         // Process each item for stock adjustment
-        newSale.items.forEach(item => {
+        for (const item of newSale.items) {
             const product = products.find(p => p.id === item.productId);
             if (product) {
                 const currentStock = item.variantId 
@@ -113,10 +138,12 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
                     : product.stock;
                 
                 if (typeof currentStock !== 'undefined') {
+                    // await adjustStock? adjustStock is synchronous wrapper in ProductContext but async internally.
+                    // Fire and forget is usually okay for stock if it's atomic in DB, but here we invoke it.
                     adjustStock(item.productId, currentStock - item.quantity, `Sale #${newSale.publicId}`, item.variantId);
                 }
             }
-        });
+        }
 
         // Process updates to ORIGINAL sales if any items are returns linked to history
         const salesToUpdate = new Map<string, CartItem[]>();
@@ -130,59 +157,73 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
         });
 
         if (salesToUpdate.size > 0) {
-            // Execute updates sequentially to ensure consistency and catch errors
-            const updateOriginalSales = async () => {
-                for (const [rawSaleId, returnItems] of Array.from(salesToUpdate.entries())) {
-                    const saleId = String(rawSaleId); // Ensure primitive string
-                    try {
-                        const sale = await db.sales.get(saleId);
-                        // Ensure we only update sales in current workspace
-                        if (sale && sale.workspaceId === workspaceId) {
-                            const updatedItems = sale.items.map(origItem => {
-                                const matchingReturns = returnItems.filter(ri => 
-                                    ri.productId === origItem.productId && 
-                                    ri.variantId === origItem.variantId
-                                );
-                                if (matchingReturns.length > 0) {
-                                    const quantityReturnedNow = matchingReturns.reduce((sum, ri) => sum + Math.abs(ri.quantity), 0);
-                                    return { ...origItem, returnedQuantity: (origItem.returnedQuantity || 0) + quantityReturnedNow };
-                                }
-                                return origItem;
-                            });
-                            const allReturned = updatedItems.every(item => (item.returnedQuantity || 0) >= item.quantity);
-                            
-                            // Use put instead of update for robustness
-                            await db.sales.put({ 
-                                ...sale,
-                                items: updatedItems, 
-                                status: allReturned ? 'Refunded' : 'Partially Refunded',
-                                sync_status: 'pending',
-                                updated_at: new Date().toISOString()
-                            });
-                        }
-                    } catch (e) {
-                        console.error(`Failed to update original sale history for ${saleId}:`, e);
+            for (const [rawSaleId, returnItems] of Array.from(salesToUpdate.entries())) {
+                const saleId = String(rawSaleId);
+                try {
+                    const sale = await db.sales.get(saleId);
+                    if (sale && sale.workspaceId === workspaceId) {
+                        const updatedItems = sale.items.map(origItem => {
+                            const matchingReturns = returnItems.filter(ri => 
+                                ri.productId === origItem.productId && 
+                                ri.variantId === origItem.variantId
+                            );
+                            if (matchingReturns.length > 0) {
+                                const quantityReturnedNow = matchingReturns.reduce((sum, ri) => sum + Math.abs(ri.quantity), 0);
+                                return { ...origItem, returnedQuantity: (origItem.returnedQuantity || 0) + quantityReturnedNow };
+                            }
+                            return origItem;
+                        });
+                        const allReturned = updatedItems.every(item => (item.returnedQuantity || 0) >= item.quantity);
+                        
+                        await db.sales.put({ 
+                            ...sale,
+                            items: updatedItems, 
+                            status: allReturned ? 'Refunded' : 'Partially Refunded',
+                            sync_status: 'pending',
+                            updated_at: new Date().toISOString()
+                        });
                     }
+                } catch (e) {
+                    console.error(`Failed to update original sale history for ${saleId}:`, e);
                 }
-            };
-            updateOriginalSales();
-        }
-
-        if (currentShift) {
-            const cashPayment = newSale.payments.find(p => p.type === PaymentType.Cash);
-            if (cashPayment) {
-                const cashAmount = cashPayment.amount;
-                const s = currentShift;
-                db.shifts.update(s.id, {
-                    cashSales: cashAmount > 0 ? s.cashSales + cashAmount : s.cashSales,
-                    cashRefunds: cashAmount < 0 ? s.cashRefunds + Math.abs(cashAmount) : s.cashRefunds,
-                    sync_status: 'pending',
-                    updated_at: new Date().toISOString()
-                });
             }
         }
 
-        db.sales.add(newSale);
+        // Add sale to DB
+        await db.sales.add(newSale);
+
+        // Update shift
+        if (currentShift) {
+            const cashPayment = newSale.payments.find(p => p.type === PaymentType.Cash);
+            if (cashPayment && cashPayment.amount !== 0) {
+                const shiftId = currentShift.id;
+                const cashAmount = cashPayment.amount;
+
+                await (db as any).transaction('rw', db.shifts, async () => {
+                    const s = await db.shifts.get(shiftId);
+                    if (s) {
+                        const safeFloat = (val: any) => {
+                            const n = parseFloat(val);
+                            return isNaN(n) ? 0 : n;
+                        };
+
+                        const currentSales = safeFloat(s.cashSales);
+                        const currentRefunds = safeFloat(s.cashRefunds);
+                        
+                        // Use put with full object instead of update to ensure encryption middleware works correctly
+                        const updatedShift = {
+                            ...s,
+                            cashSales: cashAmount > 0 ? currentSales + cashAmount : currentSales,
+                            cashRefunds: cashAmount < 0 ? currentRefunds + Math.abs(cashAmount) : currentRefunds,
+                            sync_status: 'pending',
+                            updated_at: new Date().toISOString()
+                        };
+                        await db.shifts.put(updatedShift);
+                    }
+                }).catch((e: any) => console.error("Failed to update shift", e));
+            }
+        }
+
         return newSale;
     };
 
@@ -193,21 +234,15 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
         if(!saleToDelete) return { success: false, message: "Sale not found." };
         if (saleToDelete.workspaceId !== workspaceId) return { success: false, message: "Access denied." };
         
-        // Rule 1: When a sale record is deleted, delete its related return records and stock history.
-        // Also delete stock history of the related return records.
-        
-        // 1. Identify associated returns
         const associatedReturns = await db.sales.where('originalSaleId').equals(saleId).toArray();
         const associatedReturnIds = associatedReturns.map(r => r.id);
         
         await (db as any).transaction('rw', db.sales, db.deletedRecords, db.inventoryAdjustments, async () => {
-            // 2. Delete the main sale and associated returns
             await db.sales.delete(saleId);
             if (associatedReturnIds.length > 0) {
                 await db.sales.bulkDelete(associatedReturnIds);
             }
 
-            // Record Deletions
             const deletions = [saleId, ...associatedReturnIds].map(id => ({
                 id, 
                 table: 'sales', 
@@ -217,11 +252,9 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
             await db.deletedRecords.bulkAdd(deletions);
         });
 
-        // 3. Delete Stock History for MAIN sale
         const refId = saleToDelete.publicId || saleToDelete.id;
         removeStockHistoryByReason(`Sale #${refId}`); 
 
-        // 4. Delete Stock History for RELATED returns
         associatedReturns.forEach(ret => {
             const retRefId = ret.publicId || ret.id;
             removeStockHistoryByReason(`Sale #${retRefId}`);
@@ -249,11 +282,9 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
             removeStockHistoryByReason(`Sale #${refId}`);
         });
 
-        // Also delete returns associated with these sales
         const returnsToClear = sales.filter(s => s.type === 'Return' && s.originalSaleId && salesToClearIds.includes(s.originalSaleId));
         const returnsToClearIds = returnsToClear.map(s => s.id);
 
-        // Delete stock history for returns too
         returnsToClear.forEach(s => {
             const refId = s.publicId || s.id;
             removeStockHistoryByReason(`Sale #${refId}`);
@@ -336,7 +367,6 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
         if (po.workspaceId !== workspaceId) return { success: false, message: 'Access denied.' };
         
         await (db as any).transaction('rw', db.purchaseOrders, db.notifications, db.deletedRecords, async () => {
-            // Rule 3: When a PO is deleted, its related notifications will also be deleted.
             await db.notifications.where('relatedId').equals(poId).delete();
             await db.purchaseOrders.delete(poId);
             
@@ -376,7 +406,6 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
                 removeStockHistoryByReason(`Sale #${ref}`);
             });
             
-            // Also delete returns
             const returnsToRemove = sales.filter(s => s.type === 'Return' && s.originalSaleId && salesToClearIds.includes(s.originalSaleId));
             const returnsToRemoveIds = returnsToRemove.map(s => s.id);
             
@@ -405,11 +434,9 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
             const toDeleteIds = purchaseOrders.filter(po => new Date(po.dateCreated) < cutoffDate).map(po => po.id);
             
             (db as any).transaction('rw', db.purchaseOrders, db.notifications, db.deletedRecords, async () => {
-                // Also delete notifications for these POs
                 for(const id of toDeleteIds) {
                     await db.notifications.where('relatedId').equals(id).delete();
                 }
-                
                 await db.purchaseOrders.bulkDelete(toDeleteIds);
                 
                 const deletions = toDeleteIds.map(id => ({
@@ -434,7 +461,6 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
             await db.shifts.where('workspaceId').equals(workspaceId).delete();
             await db.heldOrders.where('workspaceId').equals(workspaceId).delete();
             await db.notifications.where('workspaceId').equals(workspaceId).delete();
-            // Note: Keeping deletedRecords as they are global sync markers
         });
     };
 
@@ -459,26 +485,49 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
         addNotification(`Shift started by ${newShift.openedByUserName} with float ${float}`, NotificationType.USER);
     };
 
-    const closeShift = (actualCash: number, notes: string) => {
+    const closeShift = async (actualCash: number, notes: string): Promise<{ success: boolean; message?: string }> => {
         if (!currentShift) return { success: false, message: 'No active shift.' };
         
-        const expectedCash = currentShift.startFloat + currentShift.cashSales - currentShift.cashRefunds;
-        const difference = actualCash - expectedCash;
+        try {
+            await (db as any).transaction('rw', db.shifts, async () => {
+                const s = await db.shifts.get(currentShift.id);
+                if (!s) throw new Error("Shift not found in DB");
+                
+                const safeFloat = (val: any) => {
+                    const n = parseFloat(val);
+                    return isNaN(n) ? 0 : n;
+                };
 
-        db.shifts.update(currentShift.id, {
-            closedByUserId: currentUser?.id,
-            closedByUserName: currentUser?.username,
-            endTime: new Date().toISOString(),
-            endFloat: expectedCash,
-            actualCash,
-            difference,
-            notes,
-            status: 'Closed',
-            sync_status: 'pending',
-            updated_at: new Date().toISOString()
-        });
-        addNotification(`Shift closed by ${currentUser?.username}. Difference: ${difference}`, NotificationType.USER);
-        return { success: true };
+                const safeStart = safeFloat(s.startFloat);
+                const safeSales = safeFloat(s.cashSales);
+                const safeRefunds = safeFloat(s.cashRefunds);
+                
+                const expectedCash = safeStart + safeSales - safeRefunds;
+                const difference = actualCash - expectedCash;
+
+                // Use put with full object instead of update to ensure encryption middleware works correctly
+                const updatedShift = {
+                    ...s,
+                    closedByUserId: currentUser?.id,
+                    closedByUserName: currentUser?.username,
+                    endTime: new Date().toISOString(),
+                    endFloat: expectedCash,
+                    actualCash,
+                    difference,
+                    notes,
+                    status: 'Closed',
+                    sync_status: 'pending',
+                    updated_at: new Date().toISOString()
+                };
+                await db.shifts.put(updatedShift);
+            });
+            
+            addNotification(`Shift closed by ${currentUser?.username}.`, NotificationType.USER);
+            return { success: true };
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Failed to close shift.' };
+        }
     };
 
     const holdOrder = (order: Omit<HeldOrder, 'id' | 'date' | 'workspaceId'>) => {
@@ -493,8 +542,6 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
     };
 
     const deleteHeldOrder = (orderId: string) => {
-        // Ensure we only delete if workspace matches? Dexie delete by key ignores checks unless we fetch first.
-        // For UI-triggered action, we assume user sees valid list.
         db.heldOrders.delete(orderId);
         db.deletedRecords.add({
             id: orderId,

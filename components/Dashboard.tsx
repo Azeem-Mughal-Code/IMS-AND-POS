@@ -54,7 +54,7 @@ export const Dashboard: React.FC = () => {
   const { products } = useProducts();
   const { sales } = useSales();
   const { notifications } = useUIState();
-  const { formatCurrency, formatDateTime } = useSettings();
+  const { formatCurrency, formatDateTime, includeTaxInProfit } = useSettings();
   const [timeRange, setTimeRange] = useState<TimeRange>('weekly');
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
@@ -104,15 +104,12 @@ export const Dashboard: React.FC = () => {
              }, 0);
         }
 
-        // Calculate Profit
-        let saleProfit = safeNum(sale.profit);
-        
-        // Recalculate profit if it seems inconsistent (e.g. NaN, or zero profit on non-zero sale)
-        // Formula: Profit = (Total - Tax) - COGS
-        if (isNaN(sale.profit) || (saleProfit === 0 && saleTotal !== 0)) {
-             const revenue = saleTotal - safeNum(sale.tax);
-             saleProfit = revenue - saleCogs;
-        }
+        // Calculate Profit with dynamic setting
+        // Profit = (Total - Tax) - COGS if includeTaxInProfit is false
+        // Profit = Total - COGS if includeTaxInProfit is true
+        const saleTax = safeNum(sale.tax);
+        const revenue = saleTotal - (includeTaxInProfit ? 0 : saleTax);
+        const saleProfit = revenue - saleCogs;
 
         return {
             totalSales: acc.totalSales + saleTotal,
@@ -124,7 +121,7 @@ export const Dashboard: React.FC = () => {
     const lowStockItems = products.filter(p => p.stock <= p.lowStockThreshold).length;
 
     return { ...result, lowStockItems };
-  }, [filteredSales, products]);
+  }, [filteredSales, products, includeTaxInProfit]);
 
   const { chartData, chartTitle } = useMemo(() => {
     const now = new Date();
@@ -145,14 +142,9 @@ export const Dashboard: React.FC = () => {
              }, 0);
         }
         
-        let saleProfit = safeNum(sale.profit);
-        
-        // Recalculate if inconsistent or NaN
-        if (isNaN(sale.profit) || (saleProfit === 0 && saleTotal !== 0)) {
-             const revenue = saleTotal - safeNum(sale.tax);
-             saleProfit = revenue - saleCogs;
-        }
-        return saleProfit;
+        const saleTax = safeNum(sale.tax);
+        const revenue = saleTotal - (includeTaxInProfit ? 0 : saleTax);
+        return revenue - saleCogs;
     };
 
     switch (timeRange) {
@@ -252,7 +244,7 @@ export const Dashboard: React.FC = () => {
         default:
             return { chartData: [], chartTitle: ''};
     }
-  }, [filteredSales, timeRange, formatDateTime]);
+  }, [filteredSales, timeRange, formatDateTime, includeTaxInProfit]);
   
   // Common Chart Props
   const commonAxisProps = {

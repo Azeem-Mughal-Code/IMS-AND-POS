@@ -231,15 +231,20 @@ export const UnifiedAuth: React.FC = () => {
                 </div>
             </div>
 
-            <button
-                onClick={enterGuestMode}
-                className="mt-8 flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 rounded-full shadow-md text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:shadow-lg transition-all duration-200 group"
-            >
-                <div className="p-1.5 bg-gray-100 dark:bg-gray-700 rounded-full group-hover:bg-blue-100 dark:group-hover:bg-blue-900/30 transition-colors">
-                    <UserIcon className="h-4 w-4" />
-                </div>
-                <span className="text-sm font-medium">Try Demo Mode</span>
-            </button>
+            <div className="mt-8 flex flex-col items-center">
+                <button
+                    onClick={enterGuestMode}
+                    className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 rounded-full shadow-md text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:shadow-lg transition-all duration-200 group"
+                >
+                    <div className="p-1.5 bg-gray-100 dark:bg-gray-700 rounded-full group-hover:bg-blue-100 dark:group-hover:bg-blue-900/30 transition-colors">
+                        <UserIcon className="h-4 w-4" />
+                    </div>
+                    <span className="text-sm font-medium">Try Demo Mode</span>
+                </button>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    Note: Data in demo mode is stored locally and will be lost upon logout.
+                </p>
+            </div>
 
             <Modal isOpen={isRecoveryModalOpen} onClose={handleRegistrationSuccess} title="Registration Successful!" size="lg">
                 <div className="space-y-6">

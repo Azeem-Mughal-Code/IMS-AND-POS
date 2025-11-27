@@ -10,8 +10,19 @@ interface PrintableReceiptProps {
 export const PrintableReceipt = forwardRef<HTMLDivElement, PrintableReceiptProps>(({ sale }, ref) => {
     const { workspaceName, formatCurrency, formatDateTime, storeAddress, storePhone, receiptFooter } = useSettings();
     
-    const totalPaid = sale.payments.reduce((sum, p) => sum + p.amount, 0);
-    const changeDue = totalPaid - sale.total;
+    // Helper to safely handle encrypted or invalid numbers to prevent NaN
+    const safeNum = (val: any) => {
+        const n = parseFloat(val);
+        return isNaN(n) ? 0 : n;
+    };
+
+    const totalPaid = sale.payments.reduce((sum, p) => sum + safeNum(p.amount), 0);
+    const saleTotal = safeNum(sale.total);
+    const changeDue = totalPaid - saleTotal;
+    const discountVal = safeNum(sale.discount);
+    const taxVal = safeNum(sale.tax);
+
+    const showSubtotal = discountVal > 0 || taxVal > 0;
 
     // Fallback to internal ID if publicId is missing (legacy data)
     const displayId = sale.publicId || sale.id;
@@ -65,19 +76,23 @@ export const PrintableReceipt = forwardRef<HTMLDivElement, PrintableReceiptProps
                 </div>
                 
                  <div className="space-y-1 font-medium border-t border-gray-200 dark:border-gray-600 pt-2 text-gray-900 dark:text-white">
-                    <div className="flex justify-between"><span>Subtotal:</span> <span>{formatCurrency(sale.subtotal)}</span></div>
-                    {sale.discount > 0 && (
-                        <div className="flex justify-between"><span>Discount:</span> <span>{sale.type === 'Sale' ? '-' : ''}{formatCurrency(sale.discount)}</span></div>
+                    {showSubtotal && (
+                        <div className="flex justify-between"><span>Subtotal:</span> <span>{formatCurrency(safeNum(sale.subtotal))}</span></div>
                     )}
-                    <div className="flex justify-between"><span>Tax:</span> <span>{formatCurrency(sale.tax)}</span></div>
-                    <div className="flex justify-between text-lg font-bold mt-2"><span>Total:</span> <span>{formatCurrency(sale.total)}</span></div>
+                    {discountVal > 0 && (
+                        <div className="flex justify-between"><span>Discount:</span> <span>{sale.type === 'Sale' ? '-' : ''}{formatCurrency(discountVal)}</span></div>
+                    )}
+                    {taxVal > 0 && (
+                        <div className="flex justify-between"><span>Tax:</span> <span>{formatCurrency(taxVal)}</span></div>
+                    )}
+                    <div className="flex justify-between text-lg font-bold mt-2"><span>Total:</span> <span>{formatCurrency(saleTotal)}</span></div>
                 </div>
                 <div className="border-t border-gray-200 dark:border-gray-600 pt-2">
                     <h4 className="font-semibold text-xs uppercase mb-1 text-gray-900 dark:text-gray-200">Payments</h4>
                     {sale.payments.map((p, i) => (
                         <div key={i} className="flex justify-between text-xs text-gray-800 dark:text-gray-300">
                             <span>{p.type}:</span>
-                            <span>{formatCurrency(p.amount)}</span>
+                            <span>{formatCurrency(safeNum(p.amount))}</span>
                         </div>
                     ))}
                      <div className="mt-2 pt-2 font-semibold">

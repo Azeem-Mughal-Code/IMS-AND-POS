@@ -10,17 +10,11 @@ import { Pagination } from '../common/Pagination';
 import { PlusIcon, SearchIcon, ChevronUpIcon, ChevronDownIcon, ReceiveIcon, TrashIcon, EyeIcon, PhotoIcon } from '../Icons';
 import { FilterMenu, FilterSelectItem } from '../common/FilterMenu';
 import { Dropdown } from '../common/Dropdown';
-import usePersistedState from '../../hooks/usePersistedState';
-import { INITIAL_SUPPLIERS } from '../../constants';
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from '../../utils/db';
 import { VariantSelectionModal } from '../common/ProductVariantSelector';
 
 declare var html2canvas: any;
-
-// Helper to get suppliers
-const useSuppliers = (workspaceId: string) => {
-    const [suppliers] = usePersistedState<Supplier[]>(`ims-${workspaceId}-suppliers`, INITIAL_SUPPLIERS);
-    return suppliers;
-};
 
 const POForm: React.FC<{
     onSubmit: (data: Omit<PurchaseOrder, 'id'>) => void;
@@ -28,7 +22,10 @@ const POForm: React.FC<{
 }> = ({ onSubmit, onCancel }) => {
     const { workspaceId, formatCurrency } = useSettings();
     const { showToast } = useUIState();
-    const suppliers = useSuppliers(workspaceId);
+    
+    // Use LiveQuery to fetch encrypted suppliers correctly
+    const suppliers = useLiveQuery<Supplier[]>(() => db.suppliers.where('workspaceId').equals(workspaceId).toArray(), [workspaceId]) || [];
+    
     const { products } = useProducts();
     
     const [supplierId, setSupplierId] = useState('');
@@ -442,7 +439,9 @@ export const PurchaseOrdersView: React.FC = () => {
     const { purchaseOrders, addPurchaseOrder, deletePurchaseOrder } = useSales();
     const { workspaceId, formatCurrency, formatDateTime, paginationConfig, workspaceName } = useSettings();
     const { poViewState, onPOViewUpdate, showToast } = useUIState();
-    const suppliers = useSuppliers(workspaceId);
+    
+    // LiveQuery for Suppliers
+    const suppliers = useLiveQuery<Supplier[]>(() => db.suppliers.where('workspaceId').equals(workspaceId).toArray(), [workspaceId]) || [];
 
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [receivingPO, setReceivingPO] = useState<PurchaseOrder | null>(null);

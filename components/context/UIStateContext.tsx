@@ -87,7 +87,11 @@ export const UIStateProvider: React.FC<{ children: ReactNode; workspaceId: strin
     const [toasts, setToasts] = useState<Toast[]>([]);
     
     // Reactive Dexie query, filtered by workspaceId
-    const notifications = useLiveQuery(() => db.notifications.where('workspaceId').equals(workspaceId).reverse().sortBy('timestamp'), [workspaceId]) || [];
+    // NOTE: Using toArray() + sort() to match pattern used for encrypted tables, ensuring consistency.
+    const notifications = useLiveQuery(async () => {
+        const list = await db.notifications.where('workspaceId').equals(workspaceId).toArray();
+        return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    }, [workspaceId]) || [];
 
     const [inventoryViewState, setInventoryViewState] = usePersistedState<InventoryViewState>(`${ls_prefix}-inventoryViewState`, initialInventoryViewState);
     const [reportsViewState, setReportsViewState] = usePersistedState<ReportsViewState>(`${ls_prefix}-reportsViewState`, {
