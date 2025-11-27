@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { UserRole, View } from '../../types';
 import { Dashboard } from '../Dashboard';
@@ -9,7 +10,7 @@ import { Settings } from '../Settings';
 import { Analysis } from '../Analysis';
 import { Customers } from '../Customers';
 import { Users } from '../Users';
-import { DashboardIcon, POSIcon, InventoryIcon, ProcurementIcon, ReportsIcon, SettingsIcon, AnalysisIcon, UserIcon, ChevronDownIcon, LogoutIcon, UserGroupIcon, DangerIcon, UsersIcon } from '../Icons';
+import { DashboardIcon, POSIcon, InventoryIcon, ProcurementIcon, ReportsIcon, SettingsIcon, AnalysisIcon, UserIcon, ChevronDownIcon, LogoutIcon, UserGroupIcon, DangerIcon, UsersIcon, DownloadIcon } from '../Icons';
 import { ToastContainer } from '../common/ToastContainer';
 import { Modal } from '../common/Modal';
 import { useAuth } from '../context/AuthContext';
@@ -36,6 +37,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     const [isAuthWarningModalOpen, setIsAuthWarningModalOpen] = useState(false);
     const [isShiftWarningOpen, setIsShiftWarningOpen] = useState(false);
     const [isOnline, setIsOnline] = useState(navigator.onLine);
+    const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
     const profileDropdownRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLElement>(null);
@@ -49,6 +51,21 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
         return () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
+    useEffect(() => {
+        const handleBeforeInstallPrompt = (e: Event) => {
+            // Prevent the mini-infobar from appearing on mobile
+            e.preventDefault();
+            // Stash the event so it can be triggered later.
+            setDeferredPrompt(e);
+        };
+
+        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+        return () => {
+            window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
         };
     }, []);
 
@@ -84,6 +101,18 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     const handleSwitchToAuth = async () => {
         setIsAuthWarningModalOpen(false);
         onSwitchWorkspace();
+    };
+
+    const handleInstallClick = async () => {
+        if (!deferredPrompt) return;
+        // Show the install prompt
+        deferredPrompt.prompt();
+        // Wait for the user to respond to the prompt
+        const { outcome } = await deferredPrompt.userChoice;
+        // We've used the prompt, and can't use it again, discard it
+        if (outcome === 'accepted') {
+            setDeferredPrompt(null);
+        }
     };
 
     const availableViews = useMemo(() => {
@@ -160,6 +189,12 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             {currentUser.role === UserRole.Admin && <NavItem view="users" icon={<UsersIcon />} label="Users" />}
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewReports) && <NavItem view="reports" icon={<ReportsIcon />} label="Reports" />}
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewAnalysis) && <NavItem view="analysis" icon={<AnalysisIcon />} label="Analysis" />}
+            {deferredPrompt && (
+                <button onClick={handleInstallClick} className="flex items-center space-x-3 p-3 rounded-lg w-full text-left transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700">
+                    <DownloadIcon />
+                    <span className="font-medium">Install App</span>
+                </button>
+            )}
             </nav>
             <div className="p-4 border-t border-gray-200 dark:border-gray-700" ref={profileDropdownRef}>
                {isGuest ? (
@@ -219,6 +254,12 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewReports) && <BottomNavItem view="reports" icon={<ReportsIcon />} label="Rpts" />}
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewAnalysis) && <BottomNavItem view="analysis" icon={<AnalysisIcon />} label="Analysis" />}
             <BottomNavItem view="settings" icon={<SettingsIcon />} label="Set" />
+            {deferredPrompt && (
+                <button onClick={handleInstallClick} className="flex flex-col items-center justify-center min-w-[4rem] flex-shrink-0 pt-2 pb-1 transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <DownloadIcon className="h-6 w-6" />
+                    <span className="text-xs font-medium whitespace-nowrap">Install</span>
+                </button>
+            )}
         </nav>
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
         
