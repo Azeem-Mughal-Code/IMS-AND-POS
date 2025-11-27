@@ -8,8 +8,8 @@ import { db } from '../../utils/db';
 
 interface CustomerContextType {
     customers: Customer[];
-    addCustomer: (customerData: Omit<Customer, 'id' | 'dateAdded'>) => { success: boolean; message?: string; customer?: Customer };
-    updateCustomer: (id: string, customerData: Partial<Omit<Customer, 'id' | 'dateAdded'>>) => { success: boolean; message?: string };
+    addCustomer: (customerData: Omit<Customer, 'id' | 'dateAdded' | 'workspaceId'>) => { success: boolean; message?: string; customer?: Customer };
+    updateCustomer: (id: string, customerData: Partial<Omit<Customer, 'id' | 'dateAdded' | 'workspaceId'>>) => { success: boolean; message?: string };
     deleteCustomer: (id: string) => { success: boolean; message?: string };
     getCustomerById: (id: string) => Customer | undefined;
     factoryReset: () => void;
@@ -25,20 +25,22 @@ export const useCustomers = () => {
 
 export const CustomerProvider: React.FC<{ children: ReactNode; workspaceId: string }> = ({ children, workspaceId }) => {
     
-    const customers = useLiveQuery(() => db.customers.toArray()) || [];
+    // Filter customers by workspaceId
+    const customers = useLiveQuery(() => db.customers.where('workspaceId').equals(workspaceId).toArray(), [workspaceId]) || [];
 
     // Seed data if empty
     useEffect(() => {
         const seed = async () => {
-            const count = await db.customers.count();
-            if (count === 0) {
-                await db.customers.bulkAdd(INITIAL_CUSTOMERS.map(c => ({...c, sync_status: 'pending'})));
+            if (!workspaceId) return;
+            const count = await db.customers.where('workspaceId').equals(workspaceId).count();
+            if (count === 0 && workspaceId === 'guest_workspace') {
+                await db.customers.bulkAdd(INITIAL_CUSTOMERS.map(c => ({...c, sync_status: 'pending', workspaceId})));
             }
         }
         seed();
-    }, []);
+    }, [workspaceId]);
 
-    const addCustomer = useCallback((customerData: Omit<Customer, 'id' | 'dateAdded'>) => {
+    const addCustomer = useCallback((customerData: Omit<Customer, 'id' | 'dateAdded' | 'workspaceId'>) => {
         if (customers.some(c => c.name.toLowerCase() === customerData.name.toLowerCase() && c.phone === customerData.phone)) {
             return { success: false, message: 'A customer with this name and phone number already exists.' };
         }
@@ -51,13 +53,14 @@ export const CustomerProvider: React.FC<{ children: ReactNode; workspaceId: stri
             id: internalId,
             publicId: publicId,
             dateAdded: new Date().toISOString(),
-            sync_status: 'pending'
+            sync_status: 'pending',
+            workspaceId
         };
         db.customers.add(newCustomer);
         return { success: true, customer: newCustomer };
-    }, [customers]);
+    }, [customers, workspaceId]);
 
-    const updateCustomer = useCallback((id: string, customerData: Partial<Omit<Customer, 'id' | 'dateAdded'>>) => {
+    const updateCustomer = useCallback((id: string, customerData: Partial<Omit<Customer, 'id' | 'dateAdded' | 'workspaceId'>>) => {
         db.customers.update(id, { ...customerData, sync_status: 'pending', updated_at: new Date().toISOString() });
         return { success: true };
     }, []);
@@ -81,11 +84,12 @@ export const CustomerProvider: React.FC<{ children: ReactNode; workspaceId: stri
 
     const factoryReset = useCallback(async () => {
         await (db as any).transaction('rw', db.customers, db.deletedRecords, async () => {
-            await db.customers.clear();
-            await db.deletedRecords.clear();
-            await db.customers.bulkAdd(INITIAL_CUSTOMERS.map(c => ({...c, sync_status: 'pending'})));
+            await db.customers.where('workspaceId').equals(workspaceId).delete();
+            if (workspaceId === 'guest_workspace') {
+                await db.customers.bulkAdd(INITIAL_CUSTOMERS.map(c => ({...c, sync_status: 'pending', workspaceId})));
+            }
         });
-    }, []);
+    }, [workspaceId]);
 
     const value = {
         customers,

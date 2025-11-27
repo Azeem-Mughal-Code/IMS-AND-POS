@@ -139,7 +139,7 @@ export const DataManagement: React.FC = () => {
             const header = rows[0].trim().split(',');
             const requiredHeaders = ['sku', 'name', 'retailPrice', 'costPrice', 'stock', 'lowStockThreshold'];
             if (!requiredHeaders.every(h => header.includes(h))) { showToast(`Invalid CSV header. Must include: ${requiredHeaders.join(', ')}`, 'error'); return; }
-            const newProducts: Omit<Product, 'id'>[] = [];
+            const newProducts: Omit<Product, 'id' | 'workspaceId'>[] = [];
             for (let i = 1; i < rows.length; i++) {
                 const values = rows[i].trim().split(',');
                 const productData: any = {};

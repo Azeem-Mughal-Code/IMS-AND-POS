@@ -4,6 +4,7 @@ import { User, UserRole, Workspace } from '../../types';
 import { db, getFromDB, setInDB } from '../../utils/db';
 import { generateSalt, deriveKeyFromPassword, generateDataKey, wrapKey, unwrapKey, exportKey, importKey } from '../../utils/crypto';
 import { generateUniqueNanoID, generateUUIDv7 } from '../../utils/idGenerator';
+import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, INITIAL_SUPPLIERS, DEFAULT_CATEGORIES } from '../../constants';
 
 interface AuthContextType {
     users: User[]; // Users of the CURRENT workspace
@@ -200,7 +201,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
             // 3. Create Admin User
             const newUser: User = {
-                id: `user_${Date.now()}`,
+                id: `user_${generateUUIDv7()}`,
                 username,
                 email,
                 password: pass,
@@ -210,9 +211,55 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 workspaceId
             };
 
-            // 4. Save
+            // 4. Save Workspace and User
             await db.workspaces.add(newWorkspace);
             await setInDB(`ims-${workspaceId}-users`, [newUser]);
+
+            // 5. Seed Initial Data
+            // We enable encryption momentarily to ensure data is encrypted with the new DEK
+            db.setEncryptionKey(dek);
+
+            // Generate Map for Category IDs to maintain relationships and ensure global uniqueness
+            const categoryMap = new Map<string, string>();
+            const categories = DEFAULT_CATEGORIES.map(c => {
+                const newId = `cat_${generateUUIDv7()}`;
+                categoryMap.set(c.id, newId);
+                return { ...c, id: newId, workspaceId, sync_status: 'pending' as const };
+            });
+
+            // Fix parentIds in categories
+            categories.forEach(c => {
+                if (c.parentId && categoryMap.has(c.parentId)) {
+                    c.parentId = categoryMap.get(c.parentId);
+                }
+            });
+
+            // Map Products to new IDs (including variants)
+            const products = INITIAL_PRODUCTS.map(p => ({
+                ...p,
+                id: `prod_${generateUUIDv7()}`,
+                categoryIds: p.categoryIds.map(cid => categoryMap.get(cid) || cid),
+                variants: p.variants?.map(v => ({ ...v, id: `var_${generateUUIDv7()}` })) || [],
+                workspaceId,
+                sync_status: 'pending' as const
+            }));
+
+            const customers = INITIAL_CUSTOMERS.map(c => ({ 
+                ...c, 
+                id: `cust_${generateUUIDv7()}`,
+                workspaceId, 
+                sync_status: 'pending' as const 
+            }));
+            
+            await db.products.bulkAdd(products);
+            await db.categories.bulkAdd(categories);
+            await db.customers.bulkAdd(customers);
+            
+            // Seed Suppliers in KeyVal (consistent with SupplierView implementation)
+            const suppliers = INITIAL_SUPPLIERS.map(s => ({ ...s, workspaceId }));
+            await setInDB(`ims-${workspaceId}-suppliers`, suppliers);
+
+            db.setEncryptionKey(null); // Lock DB after seeding
 
             return { success: true, recoveryKey, storeCode: alias };
         } catch (e) {
@@ -274,7 +321,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const encryptedDEK = await wrapKey(currentDEK, kek);
 
             const newUser: User = {
-                id: `user_${Date.now()}`,
+                id: `user_${generateUUIDv7()}`,
                 username,
                 email,
                 password: pass,

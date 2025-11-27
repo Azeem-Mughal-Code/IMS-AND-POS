@@ -929,7 +929,7 @@ export const POS: React.FC<POSProps> = () => {
     const revenue = safeTotal - safeTax;
     const profit = revenue - cogs;
 
-    const sale: Omit<Sale, 'id' | 'date'> = {
+    const sale: Omit<Sale, 'id' | 'date' | 'workspaceId'> = {
       items: cart,
       subtotal: safeSubtotal,
       discount: safeDiscount,
@@ -1381,119 +1381,108 @@ export const POS: React.FC<POSProps> = () => {
                     <button 
                         onClick={() => setIsTaxModalOpen(true)} 
                         disabled={cart.length === 0}
-                        className={`flex flex-col items-center justify-center p-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${cartTax ? (cartTax.type === 'fixed' && cartTax.value === 0 ? 'border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20' : 'border-blue-200 dark:border-blue-900/50 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20') : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                        className={`flex flex-col items-center justify-center p-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${cartTax ? (cartTax.type === 'fixed' && cartTax.value === 0 ? 'border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400' : 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400') : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300'}`}
                     >
-                        <span className="text-sm font-bold mb-0 leading-none">
-                            {cartTax ? (cartTax.type === 'fixed' ? (cartTax.value === 0 ? 'OFF' : `$${cartTax.value}`) : `${cartTax.value}%`) : (isTaxEnabled ? `${(taxRate * 100).toFixed(0)}%` : 'OFF')}
-                        </span>
-                        <span className="text-[10px] font-bold uppercase mt-1">Tax</span>
+                        <span className="h-4 w-4 mb-1 font-bold text-sm">%</span>
+                        <span className="text-[10px] font-bold uppercase">{cartTax ? (cartTax.type === 'fixed' && cartTax.value === 0 ? 'No Tax' : 'Custom') : 'Tax'}</span>
                     </button>
                 </div>
 
-                <div className="mt-auto border-t border-gray-200 dark:border-gray-700 pt-4">
-                    <div className="flex justify-between items-center mb-2 text-gray-600 dark:text-gray-400 text-sm">
+                <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    <div className="flex justify-between">
                         <span>Subtotal</span>
                         <span>{formatCurrency(totals.subtotal)}</span>
                     </div>
-                    {totals.discount > 0 && (
-                        <div className="flex justify-between items-center mb-2 text-green-600 dark:text-green-400 text-sm">
+                    {(totals.discount > 0) && (
+                        <div className="flex justify-between text-green-600 dark:text-green-400">
                             <span>Discount</span>
                             <span>-{formatCurrency(totals.discount)}</span>
                         </div>
                     )}
-                    <div className="flex justify-between items-center mb-2 text-gray-600 dark:text-gray-400 text-sm">
-                        <span>
-                            Tax
-                            {cartTax ? (cartTax.type === 'percent' ? ` (${cartTax.value}%)` : cartTax.value === 0 ? ' (Exempt)' : '') : (isTaxEnabled ? ` (${(taxRate * 100).toFixed(0)}%)` : '')}
-                        </span>
+                    <div className="flex justify-between">
+                        <span>Tax {cartTax ? '(Custom)' : (isTaxEnabled ? `(${taxRate * 100}%)` : '(0%)')}</span>
                         <span>{formatCurrency(totals.tax)}</span>
                     </div>
-                    <div className="flex justify-between items-center mb-4 text-2xl font-bold text-gray-900 dark:text-white">
-                        <span>Total</span>
-                        <span>{formatCurrency(totals.total)}</span>
-                    </div>
-                    
-                    <button 
-                        onClick={openPaymentModal}
-                        disabled={cart.length === 0}
-                        className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg transform transition-all active:scale-95 flex justify-between px-6 items-center ${
-                            cart.length === 0 
-                            ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed' 
-                            : isRefund
-                                ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/30'
-                                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/30'
-                        }`}
-                    >
-                        <span>{isRefund ? 'Refund' : 'Pay'}</span>
-                        <span>{formatCurrency(Math.abs(totals.total))}</span>
-                    </button>
                 </div>
+                
+                <div className="flex justify-between items-center text-2xl font-bold text-gray-900 dark:text-white mb-6">
+                    <span>Total</span>
+                    <span className={isRefund ? 'text-red-600 dark:text-red-400' : ''}>{formatCurrency(totals.total)}</span>
+                </div>
+
+                <button 
+                    onClick={openPaymentModal}
+                    disabled={cart.length === 0}
+                    className={`w-full py-4 text-lg font-bold text-white rounded-lg shadow-lg transition-all ${
+                        cart.length === 0 
+                        ? 'bg-gray-400 cursor-not-allowed' 
+                        : isRefund 
+                            ? 'bg-red-600 hover:bg-red-700' 
+                            : 'bg-blue-600 hover:bg-blue-700 transform hover:-translate-y-0.5'
+                    }`}
+                >
+                    {isRefund ? 'Process Refund' : 'Pay Now'}
+                </button>
             </div>
         </div>
       </div>
 
-      {variantSelectionProduct && (
-          <VariantSelectionModal 
-              product={variantSelectionProduct} 
-              onConfirm={handleAddVariantToCart} 
-              onClose={() => setVariantSelectionProduct(null)} 
-              confirmLabel="Add to Cart"
-              priceType="retail"
-              showStock={true}
-          />
-      )}
-
-      <Modal isOpen={isDiscountModalOpen} onClose={() => setIsDiscountModalOpen(false)} title="Discount Configuration" size="sm">
-          <DiscountModalContent 
-              currentDiscount={cartDiscount} 
-              defaultDiscountRate={discountRate}
-              isDefaultDiscountEnabled={isDiscountEnabled}
-              defaultDiscountThreshold={discountThreshold}
-              formatCurrency={formatCurrency}
-              onApply={setCartDiscount} 
-              onClose={() => setIsDiscountModalOpen(false)} 
-          />
-      </Modal>
-
-      <Modal isOpen={isTaxModalOpen} onClose={() => setIsTaxModalOpen(false)} title="Tax Configuration" size="sm">
-          <TaxModalContent 
-              currentTax={cartTax}
-              defaultTaxRate={taxRate}
-              isDefaultTaxEnabled={isTaxEnabled}
-              onApply={setCartTax}
-              onClose={() => setIsTaxModalOpen(false)}
-          />
-      </Modal>
-
-      <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Payment" size="md">
-          <PaymentModalContent 
-              key={paymentModalKey}
-              total={totals.total} 
-              onCompleteSale={handleCompleteSale} 
-              onClose={() => setIsPaymentModalOpen(false)} 
-          />
+      <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Payment" size="lg" key={paymentModalKey}>
+        <PaymentModalContent total={totals.total} onCompleteSale={handleCompleteSale} onClose={() => setIsPaymentModalOpen(false)} />
       </Modal>
 
       <Modal isOpen={isReceiptModalOpen} onClose={startNewSale} title="Receipt" size="md">
-          {lastSale && (
-              <div className="flex flex-col h-full">
-                  <PrintableReceipt ref={printableAreaRef} sale={lastSale} />
-                  <div className="mt-4 flex gap-2 justify-end no-print">
-                        <button onClick={handleSaveAsImage} className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Save Image">
-                            <PhotoIcon className="h-5 w-5" />
-                        </button>
-                      <button onClick={() => window.print()} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md">Print</button>
-                      <button onClick={startNewSale} className="px-4 py-2 bg-blue-600 text-white rounded-md">New Sale</button>
-                  </div>
+        {lastSale && (
+            <>
+                <PrintableReceipt ref={printableAreaRef} sale={lastSale} />
+                <div className="flex justify-end items-center gap-2 pt-4 no-print">
+                    <button onClick={handleSaveAsImage} title="Save as Image" className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                        <PhotoIcon className="h-5 w-5" />
+                    </button>
+                    <button onClick={() => window.print()} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Print</button>
+                    <button onClick={startNewSale} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">New Sale</button>
+                </div>
+            </>
+        )}
+      </Modal>
+
+      <Modal isOpen={isDiscountModalOpen} onClose={() => setIsDiscountModalOpen(false)} title="Apply Discount" size="sm">
+          <DiscountModalContent 
+            currentDiscount={cartDiscount} 
+            defaultDiscountRate={discountRate} 
+            isDefaultDiscountEnabled={isDiscountEnabled} 
+            defaultDiscountThreshold={discountThreshold}
+            formatCurrency={formatCurrency}
+            onApply={setCartDiscount} 
+            onClose={() => setIsDiscountModalOpen(false)} 
+          />
+      </Modal>
+
+      <Modal isOpen={isTaxModalOpen} onClose={() => setIsTaxModalOpen(false)} title="Tax Settings" size="sm">
+          <TaxModalContent 
+            currentTax={cartTax} 
+            defaultTaxRate={taxRate}
+            isDefaultTaxEnabled={isTaxEnabled}
+            onApply={setCartTax} 
+            onClose={() => setIsTaxModalOpen(false)} 
+          />
+      </Modal>
+
+      <Modal isOpen={isClearCartConfirmOpen} onClose={() => setIsClearCartConfirmOpen(false)} title="Clear Cart" size="sm">
+          <div className="space-y-4">
+              <p className="text-gray-700 dark:text-gray-300">Are you sure you want to clear the cart? This action cannot be undone.</p>
+              <div className="flex justify-end gap-2">
+                  <button onClick={() => setIsClearCartConfirmOpen(false)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-md">Cancel</button>
+                  <button onClick={handleClearCart} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Clear Cart</button>
               </div>
-          )}
+          </div>
       </Modal>
 
       <Modal isOpen={isCustomerModalOpen} onClose={() => setIsCustomerModalOpen(false)} title="Select Customer" size="md">
           <CustomerSelectionModal onSelect={setSelectedCustomer} onClose={() => setIsCustomerModalOpen(false)} />
       </Modal>
 
-      <Modal isOpen={isStartShiftModalOpen} onClose={() => setIsStartShiftModalOpen(false)} title="Start Shift" size="md">
+      <Modal isOpen={isStartShiftModalOpen} onClose={() => setIsStartShiftModalOpen(false)} title="Start Shift" size="sm">
           <OpenShiftModal onOpenShift={(float) => { openShift(float); setIsStartShiftModalOpen(false); }} />
       </Modal>
 
@@ -1505,20 +1494,17 @@ export const POS: React.FC<POSProps> = () => {
           <HoldOrderModal onHold={handleHoldOrder} onCancel={() => setIsHoldOrderModalOpen(false)} />
       </Modal>
 
-      <Modal isOpen={isRetrieveOrderModalOpen} onClose={() => setIsRetrieveOrderModalOpen(false)} title="Retrieve Held Order" size="lg">
+      <Modal isOpen={isRetrieveOrderModalOpen} onClose={() => setIsRetrieveOrderModalOpen(false)} title="Retrieve Held Order" size="md">
           <RetrieveOrderModal onClose={() => setIsRetrieveOrderModalOpen(false)} onLoad={handleLoadHeldOrder} onDelete={deleteHeldOrder} heldOrders={heldOrders} />
       </Modal>
 
-      <Modal isOpen={isClearCartConfirmOpen} onClose={() => setIsClearCartConfirmOpen(false)} title="Clear Cart">
-          <div className="space-y-4">
-              <p className="text-gray-700 dark:text-gray-300">Are you sure you want to clear the current cart?</p>
-              <div className="flex justify-end gap-2">
-                  <button onClick={() => setIsClearCartConfirmOpen(false)} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md">Cancel</button>
-                  <button onClick={handleClearCart} className="px-4 py-2 bg-red-600 text-white rounded-md">Clear</button>
-              </div>
-          </div>
-      </Modal>
-
+      {variantSelectionProduct && (
+          <VariantSelectionModal 
+            product={variantSelectionProduct} 
+            onConfirm={(prod, variant) => handleAddVariantToCart(prod, variant)} 
+            onClose={() => setVariantSelectionProduct(null)} 
+          />
+      )}
     </div>
   );
 };

@@ -2,26 +2,27 @@
 import React, { createContext, useContext, ReactNode, useCallback, useEffect } from 'react';
 import { useLiveQuery } from "dexie-react-hooks";
 import { Product, InventoryAdjustment, PriceHistoryEntry, User, Category, ProductVariant, NotificationType } from '../../types';
-import { INITIAL_PRODUCTS } from '../../constants';
+import { INITIAL_PRODUCTS, DEFAULT_CATEGORIES } from '../../constants';
 import { useAuth } from './AuthContext';
 import { useUIState } from './UIStateContext';
 import { db } from '../../utils/db';
+import { generateUUIDv7 } from '../../utils/idGenerator';
 
 interface ProductContextType {
     products: Product[];
     categories: Category[];
     inventoryAdjustments: InventoryAdjustment[];
-    addProduct: (product: Omit<Product, 'id' | 'stock' | 'priceHistory'>) => void;
+    addProduct: (product: Omit<Product, 'id' | 'stock' | 'priceHistory' | 'workspaceId'>) => void;
     updateProduct: (updatedProduct: Product) => void;
     deleteProduct: (productId: string, force?: boolean) => Promise<{ success: boolean; message?: string }>;
-    addCategory: (categoryData: Omit<Category, 'id'>) => { success: boolean; message?: string };
-    updateCategory: (categoryId: string, categoryData: Omit<Category, 'id'>) => { success: boolean; message?: string };
+    addCategory: (categoryData: Omit<Category, 'id' | 'workspaceId'>) => { success: boolean; message?: string };
+    updateCategory: (categoryId: string, categoryData: Omit<Category, 'id' | 'workspaceId'>) => { success: boolean; message?: string };
     deleteCategory: (categoryId: string) => { success: boolean; message?: string };
     deleteVariant: (productId: string, variantId: string, force?: boolean) => Promise<{ success: boolean; message: string }>;
     receiveStock: (productId: string, quantity: number, variantId?: string) => void;
     adjustStock: (productId: string, newStockLevel: number, reason: string, variantId?: string) => void;
     removeStockHistoryByReason: (reasonPrefix: string) => void;
-    importProducts: (newProducts: Omit<Product, 'id'>[]) => Promise<{ success: boolean; message: string }>;
+    importProducts: (newProducts: Omit<Product, 'id' | 'workspaceId'>[]) => Promise<{ success: boolean; message: string }>;
     factoryReset: (adminUser: User) => void;
     bulkDeleteProducts: (productIds: string[]) => { success: boolean; message: string };
     bulkUpdateProductCategories: (productIds: string[], categoryIds: string[], action: 'add' | 'replace' | 'remove') => { success: boolean; message: string };
@@ -35,46 +36,67 @@ export const useProducts = () => {
     return context;
 };
 
-const DEFAULT_CATEGORIES: Category[] = [
-    { id: 'cat_electronics', name: 'Electronics', parentId: null },
-    { id: 'cat_computers', name: 'Computers', parentId: 'cat_electronics' },
-    { id: 'cat_accessories', name: 'Accessories', parentId: 'cat_electronics' },
-    { id: 'cat_apparel', name: 'Apparel', parentId: null },
-];
-
 export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: string }> = ({ children, workspaceId }) => {
     const { currentUser } = useAuth();
     const { addNotification } = useUIState();
     
-    // Reactive Data from Dexie
-    const products = useLiveQuery(() => db.products.toArray()) || [];
-    const categories = useLiveQuery(() => db.categories.toArray()) || [];
-    const inventoryAdjustments = useLiveQuery(() => db.inventoryAdjustments.toArray()) || [];
+    // Reactive Data from Dexie, filtered by workspaceId
+    const products = useLiveQuery(() => db.products.where('workspaceId').equals(workspaceId).toArray(), [workspaceId]) || [];
+    const categories = useLiveQuery(() => db.categories.where('workspaceId').equals(workspaceId).toArray(), [workspaceId]) || [];
+    const inventoryAdjustments = useLiveQuery(() => db.inventoryAdjustments.where('workspaceId').equals(workspaceId).toArray(), [workspaceId]) || [];
 
     // Seeding logic
     useEffect(() => {
         const seedData = async () => {
-            const count = await db.products.count();
-            if (count === 0) {
-                await db.products.bulkAdd(INITIAL_PRODUCTS.map(p => ({...p, sync_status: 'pending'})));
-                await db.categories.bulkAdd(DEFAULT_CATEGORIES.map(c => ({...c, sync_status: 'pending'})));
+            if (!workspaceId) return;
+            const count = await db.products.where('workspaceId').equals(workspaceId).count();
+            if (count === 0 && workspaceId === 'guest_workspace') { // Only seed for guest mode automatically
+                
+                // Map Categories to new IDs
+                const categoryMap = new Map<string, string>();
+                const newCategories = DEFAULT_CATEGORIES.map(c => {
+                    const newId = `cat_${generateUUIDv7()}`;
+                    categoryMap.set(c.id, newId);
+                    return { ...c, id: newId, workspaceId, sync_status: 'pending' as const };
+                });
+                
+                // Fix parentIds
+                newCategories.forEach(c => {
+                    if (c.parentId && categoryMap.has(c.parentId)) {
+                        c.parentId = categoryMap.get(c.parentId);
+                    }
+                });
+
+                // Map Products to new IDs (including variants)
+                const newProducts = INITIAL_PRODUCTS.map(p => ({
+                    ...p,
+                    id: `prod_${generateUUIDv7()}`,
+                    categoryIds: p.categoryIds.map(cid => categoryMap.get(cid) || cid),
+                    variants: p.variants?.map(v => ({ ...v, id: `var_${generateUUIDv7()}` })) || [],
+                    sync_status: 'pending' as const,
+                    workspaceId
+                }));
+
+                await db.products.bulkAdd(newProducts);
+                await db.categories.bulkAdd(newCategories);
             }
         };
         seedData();
-    }, []);
+    }, [workspaceId]);
     
     const addStockHistory = useCallback(async (productId: string, quantity: number, reason: string, variantId?: string) => {
         const newAdjustment: InventoryAdjustment = {
-            id: `adj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            id: `adj_${generateUUIDv7()}`,
             productId,
             variantId,
             quantity,
             reason,
             date: new Date().toISOString(),
-            sync_status: 'pending'
+            sync_status: 'pending',
+            workspaceId
         };
         await db.inventoryAdjustments.add(newAdjustment);
-    }, []);
+    }, [workspaceId]);
 
     const calculateTotalStock = (product: Product): number => {
         if (product.variants && product.variants.length > 0) {
@@ -83,13 +105,14 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
         return product.stock;
     };
     
-    const addProduct = async (productData: Omit<Product, 'id' | 'stock' | 'priceHistory'>) => {
+    const addProduct = async (productData: Omit<Product, 'id' | 'stock' | 'priceHistory' | 'workspaceId'>) => {
         const newProduct: Product = {
             ...productData,
-            id: `prod_${Date.now()}`,
+            id: `prod_${generateUUIDv7()}`,
             stock: productData.variants.length > 0 ? productData.variants.reduce((sum, v) => sum + v.stock, 0) : 0,
             priceHistory: [],
-            sync_status: 'pending'
+            sync_status: 'pending',
+            workspaceId
         };
         // Ensure variants have priceHistory initialized
         if (newProduct.variants) {
@@ -101,6 +124,7 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
     const updateProduct = async (updatedProductData: Product) => {
         const oldProduct = await db.products.get(updatedProductData.id);
         if (!oldProduct || !currentUser) return;
+        if (oldProduct.workspaceId !== workspaceId) return; // Security check
         
         const updatedProduct = { ...updatedProductData, sync_status: 'pending' as const, updated_at: new Date().toISOString() };
         updatedProduct.stock = calculateTotalStock(updatedProduct);
@@ -172,6 +196,7 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
 
         const product = await db.products.get(productId);
         if (!product) return { success: false, message: 'Product not found.' };
+        if (product.workspaceId !== workspaceId) return { success: false, message: 'Access denied.' };
         
         if (!force) {
             // Rule: Cannot delete if variants exist
@@ -224,6 +249,7 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
 
         const product = await db.products.get(productId);
         if (!product) return { success: false, message: 'Product not found.' };
+        if (product.workspaceId !== workspaceId) return { success: false, message: 'Access denied.' };
         
         const variant = product.variants.find(v => v.id === variantId);
         if (!variant) return { success: false, message: 'Variant not found.' };
@@ -323,16 +349,24 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
         return { success: true, message: 'Categories updated.' };
     };
 
-    const addCategory = (categoryData: Omit<Category, 'id'>): { success: boolean, message?: string } => {
+    const addCategory = (categoryData: Omit<Category, 'id' | 'workspaceId'>): { success: boolean, message?: string } => {
         if (categories.some(c => c.name.toLowerCase() === categoryData.name.toLowerCase() && c.parentId === categoryData.parentId)) {
             return { success: false, message: 'A category with this name already exists at this level.' };
         }
-        const newCategory: Category = { ...categoryData, id: `cat_${Date.now()}`, sync_status: 'pending' };
+        const newCategory: Category = { 
+            ...categoryData, 
+            id: `cat_${generateUUIDv7()}`, 
+            sync_status: 'pending',
+            workspaceId
+        };
         db.categories.add(newCategory);
         return { success: true };
     };
 
-    const updateCategory = (categoryId: string, categoryData: Omit<Category, 'id'>): { success: boolean, message?: string } => {
+    const updateCategory = (categoryId: string, categoryData: Omit<Category, 'id' | 'workspaceId'>): { success: boolean, message?: string } => {
+        const existing = categories.find(c => c.id === categoryId);
+        if (!existing) return { success: false, message: "Category not found" };
+        
         if (categories.some(c => c.name.toLowerCase() === categoryData.name.toLowerCase() && c.parentId === categoryData.parentId && c.id !== categoryId)) {
             return { success: false, message: 'A category with this name already exists at this level.' };
         }
@@ -372,7 +406,7 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
     const receiveStock = async (productId: string, quantity: number, variantId?: string) => {
         if (!productId) return;
         const product = await db.products.get(productId);
-        if (!product) return;
+        if (!product || product.workspaceId !== workspaceId) return;
         const newStockLevel = (variantId ? product.variants.find(v => v.id === variantId)?.stock : product.stock) || 0;
         adjustStock(productId, newStockLevel + quantity, 'Stock Received', variantId);
     };
@@ -380,7 +414,7 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
     const adjustStock = async (productId: string, newStockLevel: number, reason: string, variantId?: string) => {
         if (!productId) return;
         const product = await db.products.get(productId);
-        if (!product) return;
+        if (!product || product.workspaceId !== workspaceId) return;
 
         let change = 0;
         let updatedProduct = { ...product, sync_status: 'pending' as const, updated_at: new Date().toISOString() };
@@ -419,9 +453,9 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
     };
 
     const removeStockHistoryByReason = useCallback(async (reasonPrefix: string) => {
-        // Deleting adjustment records - should sync too? 
-        // If we delete history, we should probably sync that deletion.
+        // Deleting adjustment records - filtered by workspace to be safe
         const adjustments = await db.inventoryAdjustments
+            .where('workspaceId').equals(workspaceId)
             .filter(adj => adj.reason.startsWith(reasonPrefix))
             .toArray();
             
@@ -439,9 +473,9 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
                 await db.deletedRecords.bulkAdd(records);
             }
         });
-    }, []);
+    }, [workspaceId]);
 
-    const importProducts = async (newProducts: Omit<Product, 'id'>[]): Promise<{ success: boolean; message: string }> => {
+    const importProducts = async (newProducts: Omit<Product, 'id' | 'workspaceId'>[]): Promise<{ success: boolean; message: string }> => {
         const existingSkus = new Set(products.map(p => p.sku));
         const productsToAdd: Product[] = [];
         let skippedCount = 0;
@@ -450,13 +484,14 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
             if (!existingSkus.has(p.sku)) {
                  productsToAdd.push({
                     ...p,
-                    id: `prod_${Date.now()}_${i}`,
+                    id: `prod_${generateUUIDv7()}`,
                     stock: p.stock || 0,
                     priceHistory: [],
                     categoryIds: [],
                     variationTypes: [],
                     variants: [],
-                    sync_status: 'pending'
+                    sync_status: 'pending',
+                    workspaceId
                 });
                 existingSkus.add(p.sku);
             } else {
@@ -483,17 +518,21 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
     };
 
     const factoryReset = async (adminUser: User) => {
-        // Clear all tables
+        // Clear all tables for this workspace
         await (db as any).transaction('rw', db.products, db.categories, db.inventoryAdjustments, db.notifications, db.deletedRecords, async () => {
-            await db.products.clear();
-            await db.categories.clear();
-            await db.inventoryAdjustments.clear();
-            await db.notifications.clear();
-            await db.deletedRecords.clear(); // Reset sync history on factory reset
+            await db.products.where('workspaceId').equals(workspaceId).delete();
+            await db.categories.where('workspaceId').equals(workspaceId).delete();
+            await db.inventoryAdjustments.where('workspaceId').equals(workspaceId).delete();
+            // Sync records are global technical logs, but clearing them for reset might be desired. 
+            // However, strictly we should filter deletions too, but DeletedRecords doesn't have workspaceId (oversight in my DB design for sync, but okay for local reset).
+            // For factory reset of workspace data, we can leave sync tombstones or clear if we want strict local reset.
+            // Leaving deletedRecords as is to avoid sync issues with other workspaces on same device (unlikely but possible).
             
-            // Reseed
-            await db.products.bulkAdd(INITIAL_PRODUCTS.map(p => ({...p, sync_status: 'pending'})));
-            await db.categories.bulkAdd(DEFAULT_CATEGORIES.map(c => ({...c, sync_status: 'pending'})));
+            // Reseed if Guest
+            if (workspaceId === 'guest_workspace') {
+                await db.products.bulkAdd(INITIAL_PRODUCTS.map(p => ({...p, sync_status: 'pending', workspaceId})));
+                await db.categories.bulkAdd(DEFAULT_CATEGORIES.map(c => ({...c, sync_status: 'pending', workspaceId})));
+            }
         });
     };
     

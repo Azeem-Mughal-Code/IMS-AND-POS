@@ -42,34 +42,23 @@ export class IMSDatabase extends Dexie {
   constructor() {
     super('IMS_POS_DB');
     
-    // Version 4: Add deleted_records, settings, and improve indexes
-    (this as any).version(4).stores({
-      products: '&id, sku, name, *categoryIds, sync_status, updated_at',
-      sales: '&id, publicId, date, type, status, customerId, salespersonId, sync_status, updated_at',
-      customers: '&id, publicId, email, phone, name, sync_status, updated_at',
-      purchaseOrders: '&id, publicId, supplierId, status, dateCreated, sync_status, updated_at',
-      suppliers: '&id, publicId, name, sync_status, updated_at',
-      users: '&id, username, role, sync_status, updated_at',
+    // Version 7: Add workspaceId to all tables to enforce data isolation
+    (this as any).version(7).stores({
+      products: '&id, sku, name, *categoryIds, sync_status, updated_at, workspaceId',
+      sales: '&id, publicId, date, type, status, customerId, salespersonId, originalSaleId, sync_status, updated_at, workspaceId',
+      customers: '&id, publicId, email, phone, name, sync_status, updated_at, workspaceId',
+      purchaseOrders: '&id, publicId, supplierId, status, dateCreated, sync_status, updated_at, workspaceId',
+      suppliers: '&id, publicId, name, sync_status, updated_at, workspaceId',
+      users: '&id, username, email, role, sync_status, updated_at, workspaceId',
       workspaces: '&id, alias',
-      shifts: '&id, status, startTime, sync_status, updated_at',
-      heldOrders: '&id, publicId',
-      categories: '&id, parentId, name, sync_status, updated_at',
-      inventoryAdjustments: '&id, productId, variantId, date, sync_status',
-      notifications: '&id, isRead, type, timestamp',
+      shifts: '&id, status, startTime, sync_status, updated_at, workspaceId',
+      heldOrders: '&id, publicId, workspaceId',
+      categories: '&id, parentId, name, sync_status, updated_at, workspaceId',
+      inventoryAdjustments: '&id, productId, variantId, date, sync_status, workspaceId',
+      notifications: '&id, isRead, type, timestamp, relatedId, workspaceId',
       deletedRecords: '&id, table, sync_status',
       settings: '&key, sync_status, updated_at',
       keyval: 'key' 
-    });
-
-    // Version 5: Add missing indexes for cascading deletes and lookups
-    (this as any).version(5).stores({
-      sales: '&id, publicId, date, type, status, customerId, salespersonId, originalSaleId, sync_status, updated_at',
-      notifications: '&id, isRead, type, timestamp, relatedId'
-    });
-
-    // Version 6: Add email index to users
-    (this as any).version(6).stores({
-      users: '&id, username, email, role, sync_status, updated_at',
     });
 
     this.addEncryptionMiddleware();

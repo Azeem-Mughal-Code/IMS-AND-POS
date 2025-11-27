@@ -1,5 +1,12 @@
 
-import { Product, Currency, Customer, Supplier } from './types';
+import { Product, Currency, Customer, Supplier, Category } from './types';
+
+export const DEFAULT_CATEGORIES: Category[] = [
+    { id: 'cat_electronics', name: 'Electronics', parentId: null, workspaceId: '' },
+    { id: 'cat_computers', name: 'Computers', parentId: 'cat_electronics', workspaceId: '' },
+    { id: 'cat_accessories', name: 'Accessories', parentId: 'cat_electronics', workspaceId: '' },
+    { id: 'cat_apparel', name: 'Apparel', parentId: null, workspaceId: '' },
+];
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
@@ -14,6 +21,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     categoryIds: ['cat_electronics', 'cat_computers'],
     variationTypes: [],
     variants: [],
+    workspaceId: '',
   },
   {
     id: 'prod_2',
@@ -27,6 +35,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     categoryIds: ['cat_electronics', 'cat_accessories'],
     variationTypes: [],
     variants: [],
+    workspaceId: '',
   },
   {
     id: 'prod_3',
@@ -40,6 +49,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     categoryIds: ['cat_electronics', 'cat_accessories'],
     variationTypes: [],
     variants: [],
+    workspaceId: '',
   },
   {
     id: 'prod_4',
@@ -53,6 +63,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     categoryIds: ['cat_electronics', 'cat_accessories'],
     variationTypes: [],
     variants: [],
+    workspaceId: '',
   },
   {
     id: 'prod_5',
@@ -66,6 +77,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     categoryIds: ['cat_electronics', 'cat_accessories'],
     variationTypes: [],
     variants: [],
+    workspaceId: '',
   },
   {
     id: 'prod_6',
@@ -79,6 +91,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     categoryIds: ['cat_electronics', 'cat_accessories'],
     variationTypes: [],
     variants: [],
+    workspaceId: '',
   },
   {
     id: 'prod_7',
@@ -110,6 +123,7 @@ export const INITIAL_PRODUCTS: Product[] = [
       { id: 'var_5', options: { Color: 'Black', Size: 'M' }, skuSuffix: 'BK-M', retailPrice: 24.99, costPrice: 10.00, stock: 28, priceHistory: [] },
       { id: 'var_6', options: { Color: 'Black', Size: 'L' }, skuSuffix: 'BK-L', retailPrice: 24.99, costPrice: 10.00, stock: 12, priceHistory: [] },
     ],
+    workspaceId: '',
   },
 ];
 
@@ -127,13 +141,13 @@ export const DEFAULT_CURRENCIES: Currency[] = [
 ];
 
 export const INITIAL_CUSTOMERS: Customer[] = [
-    { id: 'cust_1', publicId: 'CUS-9X2K1M', name: 'John Doe', email: 'john@example.com', phone: '555-0101', address: '123 Main St', dateAdded: new Date().toISOString() },
-    { id: 'cust_2', publicId: 'CUS-B4L8P2', name: 'Jane Smith', email: 'jane@example.com', phone: '555-0102', address: '456 Oak Ave', dateAdded: new Date().toISOString() },
-    { id: 'cust_3', publicId: 'CUS-H7N3R9', name: 'Bob Johnson', email: 'bob@example.com', phone: '555-0103', address: '789 Pine Ln', dateAdded: new Date().toISOString() },
+    { id: 'cust_1', publicId: 'CUS-9X2K1M', name: 'John Doe', email: 'john@example.com', phone: '555-0101', address: '123 Main St', dateAdded: new Date().toISOString(), workspaceId: '' },
+    { id: 'cust_2', publicId: 'CUS-B4L8P2', name: 'Jane Smith', email: 'jane@example.com', phone: '555-0102', address: '456 Oak Ave', dateAdded: new Date().toISOString(), workspaceId: '' },
+    { id: 'cust_3', publicId: 'CUS-H7N3R9', name: 'Bob Johnson', email: 'bob@example.com', phone: '555-0103', address: '789 Pine Ln', dateAdded: new Date().toISOString(), workspaceId: '' },
 ];
 
 export const INITIAL_SUPPLIERS: Supplier[] = [
-    { id: 'sup_1', publicId: 'SUP-K2M5T8', name: 'Global Tech Distributors', contactPerson: 'Alice Walker', email: 'alice@globaltech.com', phone: '555-1111', address: '101 Tech Blvd' },
-    { id: 'sup_2', publicId: 'SUP-R9Q4W1', name: 'Office Essentials Co.', contactPerson: 'Mark Davis', email: 'mark@officeessentials.com', phone: '555-2222', address: '202 Paper St' },
-    { id: 'sup_3', publicId: 'SUP-X6Z3J7', name: 'Premium Apparel Wholesalers', contactPerson: 'Sarah Lee', email: 'sarah@premiumapparel.com', phone: '555-3333', address: '303 Fabric Rd' },
+    { id: 'sup_1', publicId: 'SUP-K2M5T8', name: 'Global Tech Distributors', contactPerson: 'Alice Walker', email: 'alice@globaltech.com', phone: '555-1111', address: '101 Tech Blvd', workspaceId: '' },
+    { id: 'sup_2', publicId: 'SUP-R9Q4W1', name: 'Office Essentials Co.', contactPerson: 'Mark Davis', email: 'mark@officeessentials.com', phone: '555-2222', address: '202 Paper St', workspaceId: '' },
+    { id: 'sup_3', publicId: 'SUP-X6Z3J7', name: 'Premium Apparel Wholesalers', contactPerson: 'Sarah Lee', email: 'sarah@premiumapparel.com', phone: '555-3333', address: '303 Fabric Rd', workspaceId: '' },
 ];

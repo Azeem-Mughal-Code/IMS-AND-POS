@@ -4,6 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { View, Toast, Notification, NotificationType, InventoryViewState, ReportsViewState, UsersViewState, AnalysisViewState, POViewState, PruneTarget, CategoriesViewState, CustomerViewState, SuppliersViewState } from '../../types';
 import usePersistedState from '../../hooks/usePersistedState';
 import { db } from '../../utils/db';
+import { generateUUIDv7 } from '../../utils/idGenerator';
 
 // Define initial states for each view's state
 const initialInventoryViewState: InventoryViewState = {
@@ -85,8 +86,8 @@ export const UIStateProvider: React.FC<{ children: ReactNode; workspaceId: strin
     const [activeView, setActiveView] = usePersistedState<View>(`${ls_prefix}-activeView`, 'dashboard');
     const [toasts, setToasts] = useState<Toast[]>([]);
     
-    // Replaced usePersistedState with Dexie useLiveQuery for notifications
-    const notifications = useLiveQuery(() => db.notifications.orderBy('timestamp').reverse().toArray()) || [];
+    // Reactive Dexie query, filtered by workspaceId
+    const notifications = useLiveQuery(() => db.notifications.where('workspaceId').equals(workspaceId).reverse().sortBy('timestamp'), [workspaceId]) || [];
 
     const [inventoryViewState, setInventoryViewState] = usePersistedState<InventoryViewState>(`${ls_prefix}-inventoryViewState`, initialInventoryViewState);
     const [reportsViewState, setReportsViewState] = usePersistedState<ReportsViewState>(`${ls_prefix}-reportsViewState`, {
@@ -103,19 +104,20 @@ export const UIStateProvider: React.FC<{ children: ReactNode; workspaceId: strin
     const [zoomLevel, setZoomLevel] = usePersistedState<number>(`${ls_prefix}-zoomLevel`, 0.85);
 
     const showToast = (message: string, type: 'success' | 'error') => {
-        const id = `toast_${Date.now()}`;
+        const id = `toast_${generateUUIDv7()}`;
         setToasts(prev => [...prev, { id, message, type }]);
     };
     const dismissToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id));
 
     const addNotification = (message: string, type: NotificationType, relatedId?: string) => {
         const newNotification: Notification = { 
-            id: `notif_${Date.now()}_${Math.random().toString(36).substr(2,5)}`, 
+            id: `notif_${generateUUIDv7()}`, 
             timestamp: new Date().toISOString(), 
             type, 
             message, 
             isRead: false, 
-            relatedId 
+            relatedId,
+            workspaceId
         };
         db.notifications.add(newNotification);
     };
@@ -125,11 +127,11 @@ export const UIStateProvider: React.FC<{ children: ReactNode; workspaceId: strin
     };
     
     const markAllNotificationsAsRead = () => {
-        db.notifications.toCollection().modify({ isRead: true });
+        db.notifications.where('workspaceId').equals(workspaceId).modify({ isRead: true });
     };
     
     const clearNotifications = () => {
-        db.notifications.clear();
+        db.notifications.where('workspaceId').equals(workspaceId).delete();
     };
 
     const onInventoryViewUpdate = (update: Partial<InventoryViewState>) => setInventoryViewState(prev => ({ ...prev, ...update }));
@@ -149,17 +151,15 @@ export const UIStateProvider: React.FC<{ children: ReactNode; workspaceId: strin
         const cutoffIso = cutoffDate.toISOString();
         
         if(target === 'notifications') {
-            db.notifications.where('timestamp').below(cutoffIso).delete();
+            db.notifications.where('workspaceId').equals(workspaceId).filter(n => n.timestamp < cutoffIso).delete();
             return { success: true, message: `Pruning notifications older than ${options.days} days.`}
         }
-        // Stock history pruning would be handled in ProductContext if it were persisted there.
-        // Since it's passed from SalesContext, we'll assume this is for notifications only for now.
         return { success: false, message: 'Pruning for this data type is not implemented.' };
     };
 
     const factoryReset = () => {
         setActiveView('dashboard');
-        db.notifications.clear();
+        db.notifications.where('workspaceId').equals(workspaceId).delete();
         setInventoryViewState(initialInventoryViewState);
         setReportsViewState({ sales: initialReportsSalesViewState, products: initialReportsProductsViewState, inventoryValuation: initialReportsInventoryValuationViewState });
         setUsersViewState(initialUsersViewState);

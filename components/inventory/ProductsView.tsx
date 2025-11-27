@@ -8,6 +8,7 @@ import { Modal } from '../common/Modal';
 import { Pagination } from '../common/Pagination';
 import { SearchIcon, PlusIcon, PencilIcon, TrashIcon, AdjustIcon, HistoryIcon, ChevronUpIcon, ChevronDownIcon, ReceiveIcon, TagIcon, DangerIcon } from '../Icons';
 import { FilterMenu, FilterSelectItem } from '../common/FilterMenu';
+import { generateUUIDv7 } from '../../utils/idGenerator';
 
 const VariationManager: React.FC<{
     baseProduct: Omit<Product, 'id' | 'stock' | 'priceHistory'>;
@@ -19,7 +20,7 @@ const VariationManager: React.FC<{
 
     const addVariationType = () => {
         const newType: ProductVariationType = {
-            id: `vt_${Date.now()}`,
+            id: `vt_${generateUUIDv7()}`,
             name: '',
             options: [],
         };
@@ -37,7 +38,7 @@ const VariationManager: React.FC<{
     const handleOptionsChange = (typeId: string, optionsStr: string) => {
         const options: ProductVariationOption[] = optionsStr.split(',')
             .map(s => s.trim())
-            .map((name, index) => ({ id: `opt_${name.toLowerCase()}_${Date.now()}_${index}`, name }));
+            .map((name) => ({ id: `opt_${generateUUIDv7()}`, name }));
         
         onVariationTypesChange(variationTypes.map(vt => vt.id === typeId ? { ...vt, options } : vt));
     };
@@ -63,7 +64,7 @@ const VariationManager: React.FC<{
         
         const newVariantCombinations = cartesian(...optionArrays);
 
-        const newVariants = newVariantCombinations.map((combo, index) => {
+        const newVariants = newVariantCombinations.map((combo) => {
             const options: Record<string, string> = {};
             combo.forEach((c: { typeName: string; optionName: string }) => options[c.typeName] = c.optionName);
             
@@ -74,7 +75,7 @@ const VariationManager: React.FC<{
             });
             
             return {
-                id: existingVariant?.id || `var_${Date.now()}_${index}`,
+                id: existingVariant?.id || `var_${generateUUIDv7()}`,
                 options,
                 skuSuffix: existingVariant?.skuSuffix || Object.values(options).map(o => o.replace(/\s+/g, '-')).join('-').toUpperCase(),
                 retailPrice: existingVariant?.retailPrice ?? baseProduct.retailPrice,

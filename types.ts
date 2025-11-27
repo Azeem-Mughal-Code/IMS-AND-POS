@@ -13,6 +13,7 @@ export interface BaseEntity {
   updated_at?: string;
   deleted?: boolean;
   sync_status?: SyncStatus;
+  workspaceId: string;
 }
 
 export interface User extends BaseEntity {
@@ -137,7 +138,7 @@ export interface Sale extends BaseEntity {
   customerName?: string; // NEW: Denormalized customer name
 }
 
-export interface HeldOrder {
+export interface HeldOrder extends BaseEntity {
   id: string;
   publicId?: string; // NanoID
   date: string;
@@ -335,7 +336,7 @@ export enum NotificationType {
     PO = 'PO',
 }
 
-export interface Notification {
+export interface Notification extends BaseEntity {
   id: string;
   timestamp: string;
   type: NotificationType;

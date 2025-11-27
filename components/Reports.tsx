@@ -172,7 +172,7 @@ export const Reports: React.FC = () => {
     const total = taxableAmount + tax;
     const cogs = itemsToRefund.reduce((sum, item) => sum + item.costPrice * Math.abs(item.quantity), 0);
 
-    const refundTransaction: Omit<Sale, 'id' | 'date'> = {
+    const refundTransaction: Omit<Sale, 'id' | 'date' | 'workspaceId'> = {
         items: itemsToRefund, // Items now have negative quantities and originalSaleId
         subtotal: -subtotal,
         discount: discount,
