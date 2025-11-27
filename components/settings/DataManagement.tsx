@@ -9,6 +9,7 @@ import { useProducts } from '../context/ProductContext';
 import { useSales } from '../context/SalesContext';
 import { useSettings } from '../context/SettingsContext';
 import { useUIState } from '../context/UIStateContext';
+import { db } from '../../utils/db'; // Direct DB access for full backup
 
 const StatusCheckbox: React.FC<{
     label: string;
@@ -27,14 +28,14 @@ const StatusCheckbox: React.FC<{
 );
 
 export const DataManagement: React.FC = () => {
-    const { currentUser, getDecryptedKey, recoverAccount, users } = useAuth();
+    const { currentUser, getDecryptedKey, recoverAccount } = useAuth();
     const { products, importProducts, factoryReset: productReset } = useProducts();
-    const { sales, purchaseOrders, clearSales, factoryReset: salesReset, pruneData: pruneSalesData } = useSales();
+    const { sales, clearSales, factoryReset: salesReset, pruneData: pruneSalesData } = useSales();
     const { 
-        workspaceId, workspaceName, theme, itemsPerPage, currency, currencies, currencyDisplay, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled,
-        discountRate, discountThreshold, cashierPermissions, restoreBackup, timezoneOffsetMinutes
+        workspaceName, itemsPerPage, currency, currencies, currencyDisplay, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled,
+        discountRate, discountThreshold, cashierPermissions, restoreBackup: restoreSettings, timezoneOffsetMinutes, storeAddress, storePhone, receiptFooter
     } = useSettings();
-    const { notifications, factoryReset: uiReset, pruneData: pruneUiData, showToast } = useUIState();
+    const { factoryReset: uiReset, pruneData: pruneUiData, showToast } = useUIState();
     
     const [isImportExportOpen, setIsImportExportOpen] = useState(false);
     const [isBackupRestoreOpen, setIsBackupRestoreOpen] = useState(false);
@@ -78,13 +79,10 @@ export const DataManagement: React.FC = () => {
     };
     const handleClearSelectAll = (checked: boolean) => setClearSaleStatuses(checked ? saleStatuses : []);
     const allClearStatusesSelected = clearSaleStatuses.length === saleStatuses.length;
-    const noClearStatusesSelected = clearSaleStatuses.length === 0;
 
     const handlePruneStatusChange = (status: NonNullable<Sale['status']>, checked: boolean) => {
         setPruneStatuses(prev => checked ? [...prev, status] : prev.filter(s => s !== status));
     };
-    const handlePruneSelectAll = (checked: boolean) => setPruneStatuses(checked ? saleStatuses : []);
-    const allPruneStatusesSelected = pruneStatuses.length === saleStatuses.length;
     
     const factoryReset = () => {
         productReset(currentUser);
@@ -154,22 +152,91 @@ export const DataManagement: React.FC = () => {
         reader.readAsText(importFile);
     };
 
-    const handleCreateBackup = () => {
-        const backupData = { workspaceName, products, sales, inventoryAdjustments: [], purchaseOrders, notifications, itemsPerPage, currency, currencies, currencyDisplay, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, cashierPermissions, theme, users, timezoneOffsetMinutes };
-        const date = new Date().toISOString().split('T')[0];
-        downloadFile(JSON.stringify(backupData, null, 2), `ims-backup-${workspaceName}-${date}.json`, 'application/json');
+    const handleCreateBackup = async () => {
+        try {
+            // Gather ALL data from Dexie tables directly for a complete snapshot
+            const allTables: Record<string, any[]> = {};
+            const tableNames = ['products', 'sales', 'customers', 'purchaseOrders', 'suppliers', 'users', 'shifts', 'heldOrders', 'categories', 'inventoryAdjustments', 'notifications'];
+            
+            for (const tableName of tableNames) {
+                allTables[tableName] = await (db as any).table(tableName).toArray();
+            }
+
+            const backupData = { 
+                metadata: {
+                    version: "1.0",
+                    timestamp: new Date().toISOString(),
+                    workspaceName
+                },
+                settings: {
+                    itemsPerPage, currency, currencies, currencyDisplay, isIntegerCurrency, 
+                    isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, 
+                    cashierPermissions, theme: 'system', timezoneOffsetMinutes, storeAddress, storePhone, receiptFooter
+                },
+                tables: allTables
+            };
+            
+            const date = new Date().toISOString().split('T')[0];
+            downloadFile(JSON.stringify(backupData, null, 2), `ims-db-full-backup-${date}.json`, 'application/json');
+            showToast('Full database backup created successfully.', 'success');
+        } catch (error) {
+            console.error("Backup failed", error);
+            showToast('Failed to create backup.', 'error');
+        }
     };
 
     const handleRestoreBackup = async () => {
         if (!backupFile) { showToast('Please select a backup file.', 'error'); return; }
         if (restorePassword !== currentUser.password) { showToast('Incorrect admin password.', 'error'); return; }
+        
         try {
             const fileContent = await backupFile.text();
             const backupData = JSON.parse(fileContent);
-            const result = restoreBackup(backupData);
-            showToast(result.message, result.success ? 'success' : 'error');
-            if (result.success) { setTimeout(() => window.location.reload(), 2000); }
-        } catch (error) { showToast('Failed to read or parse backup file. Is it a valid JSON backup?', 'error'); }
+            
+            // 1. Restore Settings (State)
+            if (backupData.settings) {
+                restoreSettings(backupData.settings);
+            }
+
+            // 2. Restore DB Tables (Dexie)
+            if (backupData.tables) {
+                await (db as any).transaction('rw', (db as any).tables, async () => {
+                    // Clear existing tables to prevent conflicts/duplicates during restore
+                    const tablesToRestore = Object.keys(backupData.tables);
+                    
+                    for (const tableName of tablesToRestore) {
+                        if ((db as any)[tableName]) { // Check if table exists in schema
+                            await (db as any).table(tableName).clear();
+                            const data = backupData.tables[tableName];
+                            if (data && data.length > 0) {
+                                // Strip sync_status if importing to force new sync later? 
+                                // For now, import exactly as is.
+                                await (db as any).table(tableName).bulkAdd(data);
+                            }
+                        }
+                    }
+                });
+            } else if (!backupData.tables && (backupData.products || backupData.sales)) {
+                // Legacy backup format support
+                await (db as any).transaction('rw', db.products, db.sales, db.inventoryAdjustments, db.notifications, async () => {
+                     if (backupData.products) {
+                         await db.products.clear();
+                         await db.products.bulkAdd(backupData.products);
+                     }
+                     if (backupData.sales) {
+                         await db.sales.clear();
+                         await db.sales.bulkAdd(backupData.sales);
+                     }
+                     // ... legacy logic implies partial restore
+                });
+            }
+
+            showToast('Database restored successfully. Reloading...', 'success');
+            setTimeout(() => window.location.reload(), 2000);
+        } catch (error) { 
+            console.error("Restore failed", error);
+            showToast('Failed to restore database. Is the file valid?', 'error'); 
+        }
     };
 
     const handleViewRecoveryKey = async () => {
@@ -270,8 +337,8 @@ export const DataManagement: React.FC = () => {
                             <ShieldCheckIcon className="h-6 w-6 text-green-600 dark:text-green-400" />
                         </div>
                         <div>
-                            <h3 className="font-semibold text-lg text-gray-800 dark:text-gray-100">Backup & Restore</h3>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">Create backups or restore your entire business.</p>
+                            <h3 className="font-semibold text-lg text-gray-800 dark:text-gray-100">Database Backup & Restore</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Full DB dump (JSON) to backup entire business.</p>
                         </div>
                     </div>
                 </button>
@@ -304,7 +371,7 @@ export const DataManagement: React.FC = () => {
             </div>
 
             {/* Import/Export Modal */}
-            <Modal isOpen={isImportExportOpen} onClose={() => setIsImportExportOpen(false)} title="Import / Export Data" size="md">
+            <Modal isOpen={isImportExportOpen} onClose={() => setIsImportExportOpen(false)} title="Import / Export Data (CSV)" size="md">
                 <div className="border-b border-gray-200 dark:border-gray-700">
                     <nav className="-mb-px flex space-x-4" aria-label="Tabs">
                         <button onClick={() => setActiveImpExpTab('export')} className={`${activeImpExpTab === 'export' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Export</button>
@@ -313,9 +380,9 @@ export const DataManagement: React.FC = () => {
                 </div>
                 {activeImpExpTab === 'export' ? (
                     <div className="py-6 space-y-4">
-                        <p className="text-sm text-gray-600 dark:text-gray-300">Download your business data as CSV files.</p>
-                        <button onClick={() => handleExport('products')} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"><ExportIcon /> Export Products</button>
-                        <button onClick={() => handleExport('sales')} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"><ExportIcon /> Export Sales</button>
+                        <p className="text-sm text-gray-600 dark:text-gray-300">Download specific data as CSV files for spreadsheets.</p>
+                        <button onClick={() => handleExport('products')} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"><ExportIcon /> Export Products (CSV)</button>
+                        <button onClick={() => handleExport('sales')} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"><ExportIcon /> Export Sales (CSV)</button>
                     </div>
                 ) : (
                     <div className="py-6 space-y-4">
@@ -330,20 +397,20 @@ export const DataManagement: React.FC = () => {
             </Modal>
 
             {/* Backup/Restore Modal */}
-            <Modal isOpen={isBackupRestoreOpen} onClose={() => setIsBackupRestoreOpen(false)} title="Backup & Restore" size="md">
+            <Modal isOpen={isBackupRestoreOpen} onClose={() => setIsBackupRestoreOpen(false)} title="Full Database Backup & Restore" size="md">
                 <div className="py-6 space-y-6">
                     <div>
-                        <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Create Full Backup</h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">Download a JSON file of your entire database.</p>
-                        <button onClick={handleCreateBackup} className="mt-2 w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"><ExportIcon /> Create Backup</button>
+                        <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Create Full DB Backup</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">Download a complete JSON dump of your entire database (Products, Sales, Users, Settings, etc).</p>
+                        <button onClick={handleCreateBackup} className="mt-2 w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"><ExportIcon /> Download Database File</button>
                     </div>
                     <div className="border-t pt-6 dark:border-gray-700">
-                        <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Restore from Backup</h3>
-                        <p className="text-sm text-red-600 dark:text-red-400 mt-1">Restoring will overwrite all current data.</p>
+                        <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Restore from DB File</h3>
+                        <p className="text-sm text-red-600 dark:text-red-400 mt-1"><strong>Warning:</strong> This will completely wipe your current database and replace it with the backup content.</p>
                         <div className="mt-4 space-y-4">
                             <input type="file" accept=".json" ref={backupFileInputRef} onChange={e => { if (e.target.files) setBackupFile(e.target.files[0]); }} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-800" />
                             <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Admin Password</label><input type="password" value={restorePassword} onChange={e => setRestorePassword(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700" /></div>
-                            <div className="flex justify-end pt-2"><button onClick={handleRestoreBackup} disabled={!backupFile || !restorePassword} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400">Restore Data</button></div>
+                            <div className="flex justify-end pt-2"><button onClick={handleRestoreBackup} disabled={!backupFile || !restorePassword} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400">Restore Database</button></div>
                         </div>
                     </div>
                 </div>

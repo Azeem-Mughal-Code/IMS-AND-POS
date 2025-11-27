@@ -130,9 +130,19 @@ export class IMSDatabase extends Dexie {
                             return downlevelTable.mutate({ ...req, values });
                         },
                         get: async (req: any) => {
-                            const res = await downlevelTable.get(req);
-                            if (!this.encryptionKey || !res) return res;
-                            return this.decryptItem(tableName, res);
+                            // DBCore get request has a 'key' property.
+                            // If the key is missing or invalid, return undefined immediately to prevent IDB error.
+                            if (req.key === undefined || req.key === null) return undefined;
+
+                            try {
+                                const res = await downlevelTable.get(req);
+                                if (!this.encryptionKey || !res) return res;
+                                return this.decryptItem(tableName, res);
+                            } catch (error) {
+                                // Catch "DataError: Failed to execute 'get' on 'IDBObjectStore': The parameter is not a valid key."
+                                console.warn(`DB Middleware: Failed to get key for table ${tableName}`, error);
+                                return undefined;
+                            }
                         },
                         query: async (req: any) => {
                             const res = await downlevelTable.query(req);

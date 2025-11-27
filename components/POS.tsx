@@ -909,21 +909,36 @@ export const POS: React.FC<POSProps> = () => {
   }, [cart, isTaxEnabled, taxRate, isDiscountEnabled, discountThreshold, discountRate, isIntegerCurrency, cartDiscount, cartTax]);
 
   const handleCompleteSale = (payments: Payment[]) => {
-    const cogs = cart.reduce((sum, item) => sum + (Number(item.costPrice) || 0) * item.quantity, 0);
+    const safeNumber = (n: any) => {
+        const num = Number(n);
+        return isNaN(num) ? 0 : num;
+    };
+
+    const cogs = cart.reduce((sum, item) => sum + safeNumber(item.costPrice) * item.quantity, 0);
     
     const distinctOriginalIds = [...new Set(cart.map(i => i.originalSaleId).filter((id): id is string => !!id))];
     const originalSaleId = distinctOriginalIds.length === 1 ? distinctOriginalIds[0] : undefined;
 
+    const safeTotal = safeNumber(totals.total);
+    const safeTax = safeNumber(totals.tax);
+    const safeSubtotal = safeNumber(totals.subtotal);
+    const safeDiscount = safeNumber(totals.discount);
+    
+    // Profit = (Total - Tax) - COGS
+    // Revenue = Total - Tax
+    const revenue = safeTotal - safeTax;
+    const profit = revenue - cogs;
+
     const sale: Omit<Sale, 'id' | 'date'> = {
       items: cart,
-      subtotal: totals.subtotal,
-      discount: totals.discount,
-      tax: totals.tax,
-      total: totals.total,
+      subtotal: safeSubtotal,
+      discount: safeDiscount,
+      tax: safeTax,
+      total: safeTotal,
       cogs: cogs,
-      profit: totals.total - cogs,
+      profit: safeNumber(profit), // Ensure profit is a number and exclude tax from it
       payments,
-      type: totals.total >= 0 ? 'Sale' : 'Return',
+      type: safeTotal >= 0 ? 'Sale' : 'Return',
       salespersonId: currentUser.id,
       salespersonName: currentUser.username,
       customerId: selectedCustomer?.id,

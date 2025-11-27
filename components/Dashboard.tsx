@@ -88,12 +88,8 @@ export const Dashboard: React.FC = () => {
   const stats = useMemo(() => {
     // Helper to safely parse numbers, handling undefined/null/NaN
     const safeNum = (n: any) => {
-        if (typeof n === 'number') return isNaN(n) ? 0 : n;
-        if (typeof n === 'string') {
-            const val = parseFloat(n);
-            return isNaN(val) ? 0 : val;
-        }
-        return 0;
+        const num = parseFloat(n);
+        return isNaN(num) ? 0 : num;
     };
 
     const result = filteredSales.reduce((acc, sale) => {
@@ -111,10 +107,11 @@ export const Dashboard: React.FC = () => {
         // Calculate Profit
         let saleProfit = safeNum(sale.profit);
         
-        // Recalculate profit if it seems inconsistent (e.g. equals total but we found valid cogs)
-        // or if it was missing/zero when it shouldn't be.
-        if ((saleProfit === 0 || saleProfit === saleTotal) && saleCogs !== 0) {
-             saleProfit = saleTotal - saleCogs;
+        // Recalculate profit if it seems inconsistent (e.g. NaN, or zero profit on non-zero sale)
+        // Formula: Profit = (Total - Tax) - COGS
+        if (isNaN(sale.profit) || (saleProfit === 0 && saleTotal !== 0)) {
+             const revenue = saleTotal - safeNum(sale.tax);
+             saleProfit = revenue - saleCogs;
         }
 
         return {
@@ -136,12 +133,8 @@ export const Dashboard: React.FC = () => {
     // Helper to calculate adjusted profit ensuring consistency with stats
     const getAdjustedProfit = (sale: any) => {
         const safeNum = (n: any) => {
-            if (typeof n === 'number') return isNaN(n) ? 0 : n;
-            if (typeof n === 'string') {
-                const val = parseFloat(n);
-                return isNaN(val) ? 0 : val;
-            }
-            return 0;
+            const num = parseFloat(n);
+            return isNaN(num) ? 0 : num;
         };
         const saleTotal = safeNum(sale.total);
         let saleCogs = safeNum(sale.cogs);
@@ -151,10 +144,13 @@ export const Dashboard: React.FC = () => {
                  return itemSum + (safeNum(item.costPrice) * safeNum(item.quantity));
              }, 0);
         }
+        
         let saleProfit = safeNum(sale.profit);
-        // If profit matches total (implies 0 cost) or is 0, but we have calculated cost, use calculated profit
-        if ((saleProfit === 0 || Math.abs(saleProfit - saleTotal) < 0.01) && Math.abs(saleCogs) > 0.01) {
-             saleProfit = saleTotal - saleCogs;
+        
+        // Recalculate if inconsistent or NaN
+        if (isNaN(sale.profit) || (saleProfit === 0 && saleTotal !== 0)) {
+             const revenue = saleTotal - safeNum(sale.tax);
+             saleProfit = revenue - saleCogs;
         }
         return saleProfit;
     };

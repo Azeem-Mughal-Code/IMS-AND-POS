@@ -56,8 +56,6 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
         const seedData = async () => {
             const count = await db.products.count();
             if (count === 0) {
-                // Check if we have legacy data in keyval to migrate?
-                // For now, we stick to seeding defaults if empty
                 await db.products.bulkAdd(INITIAL_PRODUCTS.map(p => ({...p, sync_status: 'pending'})));
                 await db.categories.bulkAdd(DEFAULT_CATEGORIES.map(c => ({...c, sync_status: 'pending'})));
             }
@@ -170,6 +168,8 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
     };
 
     const deleteProduct = async (productId: string, force: boolean = false): Promise<{ success: boolean; message?: string }> => {
+        if (!productId) return { success: false, message: 'Invalid Product ID.' };
+
         const product = await db.products.get(productId);
         if (!product) return { success: false, message: 'Product not found.' };
         
@@ -189,12 +189,11 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
         
         try {
             // Use transaction to ensure atomic deletion (notifications, adjustments, and product)
-            await (db as any).transaction('rw', db.products, db.inventoryAdjustments, db.notifications, async () => {
+            await (db as any).transaction('rw', db.products, db.inventoryAdjustments, db.notifications, db.deletedRecords, async () => {
                 // 1. Delete Stock History (Adjustments table has productId for both base items and variants)
                 await db.inventoryAdjustments.where('productId').equals(productId).delete();
                 
                 // 2. Delete Notifications
-                // Gather all related IDs (Product ID + all Variant IDs)
                 const relatedIds = [productId];
                 if (product.variants && product.variants.length > 0) {
                     relatedIds.push(...product.variants.map(v => v.id));
@@ -203,6 +202,14 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
                 
                 // 3. Delete Product
                 await db.products.delete(productId);
+
+                // 4. Record Deletion for Sync
+                await db.deletedRecords.add({
+                    id: productId,
+                    table: 'products',
+                    deletedAt: new Date().toISOString(),
+                    sync_status: 'pending'
+                });
             });
             
             return { success: true, message: 'Product and related records deleted successfully.' };
@@ -213,6 +220,8 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
     };
 
     const deleteVariant = async (productId: string, variantId: string, force: boolean = false): Promise<{ success: boolean; message: string }> => {
+        if (!productId || !variantId) return { success: false, message: 'Invalid ID.' };
+
         const product = await db.products.get(productId);
         if (!product) return { success: false, message: 'Product not found.' };
         
@@ -237,9 +246,6 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
                 // 3. Remove variant from product
                 const newVariants = product.variants.filter(v => v.id !== variantId);
                 
-                // We call update inside the transaction manually instead of using updateProduct to stay in transaction scope if possible,
-                // but updateProduct logic is complex (history), so we should rely on db.products.put here directly for simplicity in transaction
-                // However, we need to make sure total stock is updated.
                 const updatedProduct = { 
                     ...product, 
                     variants: newVariants, 
@@ -272,10 +278,19 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
                 }
             });
 
-            (db as any).transaction('rw', db.products, db.inventoryAdjustments, db.notifications, async () => {
+            (db as any).transaction('rw', db.products, db.inventoryAdjustments, db.notifications, db.deletedRecords, async () => {
                 await db.inventoryAdjustments.where('productId').anyOf(ids).delete();
                 await db.notifications.where('relatedId').anyOf(allRelatedIds).delete();
                 await db.products.bulkDelete(ids);
+                
+                // Record deletions
+                const records = ids.map(id => ({
+                    id,
+                    table: 'products',
+                    deletedAt: new Date().toISOString(),
+                    sync_status: 'pending'
+                }));
+                await db.deletedRecords.bulkAdd(records);
             });
         }
         
@@ -342,10 +357,20 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
         });
 
         db.categories.delete(categoryId);
+        
+        // Record deletion
+        db.deletedRecords.add({
+            id: categoryId,
+            table: 'categories',
+            deletedAt: new Date().toISOString(),
+            sync_status: 'pending'
+        });
+        
         return { success: true };
     };
     
     const receiveStock = async (productId: string, quantity: number, variantId?: string) => {
+        if (!productId) return;
         const product = await db.products.get(productId);
         if (!product) return;
         const newStockLevel = (variantId ? product.variants.find(v => v.id === variantId)?.stock : product.stock) || 0;
@@ -353,6 +378,7 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
     };
 
     const adjustStock = async (productId: string, newStockLevel: number, reason: string, variantId?: string) => {
+        if (!productId) return;
         const product = await db.products.get(productId);
         if (!product) return;
 
@@ -393,11 +419,26 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
     };
 
     const removeStockHistoryByReason = useCallback(async (reasonPrefix: string) => {
-        // Dexie doesn't support 'startsWith' easily in where clause without a plugin or full scan for string, but we can filter collection
-        // Since reason isn't indexed, we use filter
-        db.inventoryAdjustments
+        // Deleting adjustment records - should sync too? 
+        // If we delete history, we should probably sync that deletion.
+        const adjustments = await db.inventoryAdjustments
             .filter(adj => adj.reason.startsWith(reasonPrefix))
-            .delete();
+            .toArray();
+            
+        const ids = adjustments.map(a => a.id);
+        
+        await (db as any).transaction('rw', db.inventoryAdjustments, db.deletedRecords, async () => {
+            await db.inventoryAdjustments.bulkDelete(ids);
+            if (ids.length > 0) {
+                const records = ids.map(id => ({
+                    id,
+                    table: 'inventoryAdjustments',
+                    deletedAt: new Date().toISOString(),
+                    sync_status: 'pending'
+                }));
+                await db.deletedRecords.bulkAdd(records);
+            }
+        });
     }, []);
 
     const importProducts = async (newProducts: Omit<Product, 'id'>[]): Promise<{ success: boolean; message: string }> => {
@@ -443,11 +484,12 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
 
     const factoryReset = async (adminUser: User) => {
         // Clear all tables
-        await (db as any).transaction('rw', db.products, db.categories, db.inventoryAdjustments, db.notifications, async () => {
+        await (db as any).transaction('rw', db.products, db.categories, db.inventoryAdjustments, db.notifications, db.deletedRecords, async () => {
             await db.products.clear();
             await db.categories.clear();
             await db.inventoryAdjustments.clear();
             await db.notifications.clear();
+            await db.deletedRecords.clear(); // Reset sync history on factory reset
             
             // Reseed
             await db.products.bulkAdd(INITIAL_PRODUCTS.map(p => ({...p, sync_status: 'pending'})));

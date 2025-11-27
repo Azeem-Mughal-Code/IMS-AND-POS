@@ -129,29 +129,41 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
         });
 
         if (salesToUpdate.size > 0) {
-            salesToUpdate.forEach(async (returnItems, saleId) => {
-                const sale = await db.sales.get(saleId);
-                if (sale) {
-                    const updatedItems = sale.items.map(origItem => {
-                        const matchingReturns = returnItems.filter(ri => 
-                            ri.productId === origItem.productId && 
-                            ri.variantId === origItem.variantId
-                        );
-                        if (matchingReturns.length > 0) {
-                            const quantityReturnedNow = matchingReturns.reduce((sum, ri) => sum + Math.abs(ri.quantity), 0);
-                            return { ...origItem, returnedQuantity: (origItem.returnedQuantity || 0) + quantityReturnedNow };
+            // Execute updates sequentially to ensure consistency and catch errors
+            const updateOriginalSales = async () => {
+                for (const [rawSaleId, returnItems] of Array.from(salesToUpdate.entries())) {
+                    const saleId = String(rawSaleId); // Ensure primitive string
+                    try {
+                        const sale = await db.sales.get(saleId);
+                        if (sale) {
+                            const updatedItems = sale.items.map(origItem => {
+                                const matchingReturns = returnItems.filter(ri => 
+                                    ri.productId === origItem.productId && 
+                                    ri.variantId === origItem.variantId
+                                );
+                                if (matchingReturns.length > 0) {
+                                    const quantityReturnedNow = matchingReturns.reduce((sum, ri) => sum + Math.abs(ri.quantity), 0);
+                                    return { ...origItem, returnedQuantity: (origItem.returnedQuantity || 0) + quantityReturnedNow };
+                                }
+                                return origItem;
+                            });
+                            const allReturned = updatedItems.every(item => (item.returnedQuantity || 0) >= item.quantity);
+                            
+                            // Use put instead of update for robustness
+                            await db.sales.put({ 
+                                ...sale,
+                                items: updatedItems, 
+                                status: allReturned ? 'Refunded' : 'Partially Refunded',
+                                sync_status: 'pending',
+                                updated_at: new Date().toISOString()
+                            });
                         }
-                        return origItem;
-                    });
-                    const allReturned = updatedItems.every(item => (item.returnedQuantity || 0) >= item.quantity);
-                    await db.sales.update(saleId, { 
-                        items: updatedItems, 
-                        status: allReturned ? 'Refunded' : 'Partially Refunded',
-                        sync_status: 'pending',
-                        updated_at: new Date().toISOString()
-                    });
+                    } catch (e) {
+                        console.error(`Failed to update original sale history for ${saleId}:`, e);
+                    }
                 }
-            });
+            };
+            updateOriginalSales();
         }
 
         if (currentShift) {
@@ -173,6 +185,8 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
     };
 
     const deleteSale = async (saleId: string) => {
+        if (!saleId) return { success: false, message: "Invalid Sale ID." };
+        
         const saleToDelete = await db.sales.get(saleId);
         if(!saleToDelete) return { success: false, message: "Sale not found." };
         
@@ -183,11 +197,22 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
         const associatedReturns = await db.sales.where('originalSaleId').equals(saleId).toArray();
         const associatedReturnIds = associatedReturns.map(r => r.id);
         
-        // 2. Delete the main sale and associated returns
-        await db.sales.delete(saleId);
-        if (associatedReturnIds.length > 0) {
-            await db.sales.bulkDelete(associatedReturnIds);
-        }
+        await (db as any).transaction('rw', db.sales, db.deletedRecords, db.inventoryAdjustments, async () => {
+            // 2. Delete the main sale and associated returns
+            await db.sales.delete(saleId);
+            if (associatedReturnIds.length > 0) {
+                await db.sales.bulkDelete(associatedReturnIds);
+            }
+
+            // Record Deletions
+            const deletions = [saleId, ...associatedReturnIds].map(id => ({
+                id, 
+                table: 'sales', 
+                deletedAt: new Date().toISOString(), 
+                sync_status: 'pending'
+            }));
+            await db.deletedRecords.bulkAdd(deletions);
+        });
 
         // 3. Delete Stock History for MAIN sale
         const refId = saleToDelete.publicId || saleToDelete.id;
@@ -231,7 +256,19 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
             removeStockHistoryByReason(`Sale #${refId}`);
         });
 
-        db.sales.bulkDelete([...salesToClearIds, ...returnsToClearIds]);
+        const allIds = [...salesToClearIds, ...returnsToClearIds];
+        
+        (db as any).transaction('rw', db.sales, db.deletedRecords, async () => {
+            await db.sales.bulkDelete(allIds);
+            
+            const deletions = allIds.map(id => ({
+                id, 
+                table: 'sales', 
+                deletedAt: new Date().toISOString(), 
+                sync_status: 'pending'
+            }));
+            await db.deletedRecords.bulkAdd(deletions);
+        });
     };
     
     const addPurchaseOrder = (poData: Omit<PurchaseOrder, 'id'>): PurchaseOrder => {
@@ -293,9 +330,18 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
         const po = await db.purchaseOrders.get(poId);
         if(!po) return { success: false, message: 'Purchase Order not found.'};
         
-        // Rule 3: When a PO is deleted, its related notifications will also be deleted.
-        await db.notifications.where('relatedId').equals(poId).delete();
-        await db.purchaseOrders.delete(poId);
+        await (db as any).transaction('rw', db.purchaseOrders, db.notifications, db.deletedRecords, async () => {
+            // Rule 3: When a PO is deleted, its related notifications will also be deleted.
+            await db.notifications.where('relatedId').equals(poId).delete();
+            await db.purchaseOrders.delete(poId);
+            
+            await db.deletedRecords.add({
+                id: poId,
+                table: 'purchaseOrders',
+                deletedAt: new Date().toISOString(),
+                sync_status: 'pending'
+            });
+        });
         
         return { success: true, message: 'Purchase Order deleted.'};
     };
@@ -336,17 +382,40 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
 
             const allIds = [...salesToClearIds, ...returnsToRemoveIds];
             
-            db.sales.bulkDelete(allIds);
+            (db as any).transaction('rw', db.sales, db.deletedRecords, async () => {
+                await db.sales.bulkDelete(allIds);
+                const deletions = allIds.map(id => ({
+                    id, 
+                    table: 'sales', 
+                    deletedAt: new Date().toISOString(), 
+                    sync_status: 'pending'
+                }));
+                await db.deletedRecords.bulkAdd(deletions);
+            });
+
             return { success: true, message: `Pruned ${allIds.length} records.`};
         }
 
         if (target === 'purchaseOrders') {
             const toDeleteIds = purchaseOrders.filter(po => new Date(po.dateCreated) < cutoffDate).map(po => po.id);
-            // Also delete notifications for these POs
-            toDeleteIds.forEach(id => {
-                db.notifications.where('relatedId').equals(id).delete();
+            
+            (db as any).transaction('rw', db.purchaseOrders, db.notifications, db.deletedRecords, async () => {
+                // Also delete notifications for these POs
+                for(const id of toDeleteIds) {
+                    await db.notifications.where('relatedId').equals(id).delete();
+                }
+                
+                await db.purchaseOrders.bulkDelete(toDeleteIds);
+                
+                const deletions = toDeleteIds.map(id => ({
+                    id, 
+                    table: 'purchaseOrders', 
+                    deletedAt: new Date().toISOString(), 
+                    sync_status: 'pending'
+                }));
+                await db.deletedRecords.bulkAdd(deletions);
             });
-            db.purchaseOrders.bulkDelete(toDeleteIds);
+
             return { success: true, message: `Pruned ${toDeleteIds.length} purchase orders.`};
         }
         
@@ -354,12 +423,13 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
     };
 
     const factoryReset = () => {
-        (db as any).transaction('rw', db.sales, db.purchaseOrders, db.shifts, db.heldOrders, db.notifications, async () => {
+        (db as any).transaction('rw', db.sales, db.purchaseOrders, db.shifts, db.heldOrders, db.notifications, db.deletedRecords, async () => {
             await db.sales.clear();
             await db.purchaseOrders.clear();
             await db.shifts.clear();
             await db.heldOrders.clear();
             await db.notifications.clear();
+            await db.deletedRecords.clear();
         });
     };
 
@@ -417,6 +487,12 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
 
     const deleteHeldOrder = (orderId: string) => {
         db.heldOrders.delete(orderId);
+        db.deletedRecords.add({
+            id: orderId,
+            table: 'heldOrders',
+            deletedAt: new Date().toISOString(),
+            sync_status: 'pending'
+        });
     };
 
     const value = {

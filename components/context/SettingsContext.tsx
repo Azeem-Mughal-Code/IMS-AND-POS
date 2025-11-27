@@ -1,8 +1,8 @@
-
-import React, { createContext, useContext, ReactNode, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, ReactNode, useCallback, useMemo, useEffect } from 'react';
 import { CashierPermissions, Currency, PaginationConfig, PaginationTarget } from '../../types';
 import usePersistedState from '../../hooks/usePersistedState';
 import { DEFAULT_CURRENCIES } from '../../constants';
+import { syncService } from '../../services/SyncService';
 
 interface SettingsContextType {
     workspaceId: string;
@@ -44,6 +44,10 @@ interface SettingsContextType {
     setStorePhone: (phone: string) => void;
     receiptFooter: string;
     setReceiptFooter: (footer: string) => void;
+    syncApiUrl: string;
+    setSyncApiUrl: (url: string) => void;
+    syncApiKey: string;
+    setSyncApiKey: (key: string) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | null>(null);
@@ -107,6 +111,39 @@ export const SettingsProvider: React.FC<{ children: ReactNode; workspaceId: stri
     const [storeAddress, setStoreAddress] = usePersistedState<string>(`${ls_prefix}-storeAddress`, '');
     const [storePhone, setStorePhone] = usePersistedState<string>(`${ls_prefix}-storePhone`, '');
     const [receiptFooter, setReceiptFooter] = usePersistedState<string>(`${ls_prefix}-receiptFooter`, 'Thank you for shopping with us!');
+    
+    // Sync Settings
+    const [syncApiUrl, setSyncApiUrl] = usePersistedState<string>(`${ls_prefix}-syncApiUrl`, '');
+    const [syncApiKey, setSyncApiKey] = usePersistedState<string>(`${ls_prefix}-syncApiKey`, '');
+
+    // Configure sync service whenever settings change
+    useEffect(() => {
+        syncService.configure(workspaceId, syncApiUrl, syncApiKey);
+    }, [workspaceId, syncApiUrl, syncApiKey]);
+
+    // Auto-Sync Logic
+    useEffect(() => {
+        if (!syncApiUrl || !syncApiKey) return;
+
+        const handleOnline = () => {
+            console.log("Network online - Triggering Sync");
+            syncService.sync();
+        };
+
+        window.addEventListener('online', handleOnline);
+        
+        // Periodic sync every 5 minutes if online
+        const intervalId = setInterval(() => {
+            if (navigator.onLine) {
+                syncService.sync();
+            }
+        }, 5 * 60 * 1000);
+
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            clearInterval(intervalId);
+        };
+    }, [syncApiUrl, syncApiKey]);
 
     const activeCurrency = useMemo(() => currencies.find(c => c.code === currency) || currencies[0] || { code: 'USD', symbol: '$', name: '' }, [currency, currencies]);
 
@@ -203,6 +240,8 @@ export const SettingsProvider: React.FC<{ children: ReactNode; workspaceId: stri
             if (data.storeAddress) setStoreAddress(data.storeAddress);
             if (data.storePhone) setStorePhone(data.storePhone);
             if (data.receiptFooter) setReceiptFooter(data.receiptFooter);
+            if (data.syncApiUrl) setSyncApiUrl(data.syncApiUrl);
+            if (data.syncApiKey) setSyncApiKey(data.syncApiKey);
             return { success: true, message: 'Settings restored. The application will now reload.' };
         } catch (e) {
             return { success: false, message: 'Failed to restore settings from backup.' };
@@ -229,6 +268,8 @@ export const SettingsProvider: React.FC<{ children: ReactNode; workspaceId: stri
         storeAddress, setStoreAddress,
         storePhone, setStorePhone,
         receiptFooter, setReceiptFooter,
+        syncApiUrl, setSyncApiUrl,
+        syncApiKey, setSyncApiKey
     };
 
     return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

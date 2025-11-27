@@ -63,7 +63,15 @@ export const CustomerProvider: React.FC<{ children: ReactNode; workspaceId: stri
     }, []);
 
     const deleteCustomer = useCallback((id: string) => {
-        db.customers.delete(id);
+        (db as any).transaction('rw', db.customers, db.deletedRecords, async () => {
+            await db.customers.delete(id);
+            await db.deletedRecords.add({
+                id: id,
+                table: 'customers',
+                deletedAt: new Date().toISOString(),
+                sync_status: 'pending'
+            });
+        });
         return { success: true };
     }, []);
 
@@ -72,8 +80,11 @@ export const CustomerProvider: React.FC<{ children: ReactNode; workspaceId: stri
     }, [customers]);
 
     const factoryReset = useCallback(async () => {
-        await db.customers.clear();
-        await db.customers.bulkAdd(INITIAL_CUSTOMERS.map(c => ({...c, sync_status: 'pending'})));
+        await (db as any).transaction('rw', db.customers, db.deletedRecords, async () => {
+            await db.customers.clear();
+            await db.deletedRecords.clear();
+            await db.customers.bulkAdd(INITIAL_CUSTOMERS.map(c => ({...c, sync_status: 'pending'})));
+        });
     }, []);
 
     const value = {

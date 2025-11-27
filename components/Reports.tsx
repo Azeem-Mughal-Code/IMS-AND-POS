@@ -392,16 +392,20 @@ export const Reports: React.FC = () => {
   };
   
   const getAdjustedProfit = (sale: Sale) => {
-      // Check if profit equals total (implies COGS is 0 or missing), but items have cost
-      // We compare with a small epsilon to handle floating point issues
-      const isSuspicious = Math.abs(sale.profit - sale.total) < 0.01 && Math.abs(sale.total) > 0.01;
+      const safeNumber = (n: any) => {
+          const num = Number(n);
+          return isNaN(num) ? 0 : num;
+      };
+
+      // Check if profit is NaN or zero while total is significant (suspicious)
+      const isSuspicious = isNaN(sale.profit) || ((Math.abs(sale.profit) < 0.01) && Math.abs(sale.total) > 0.01);
       
       if (isSuspicious) {
-          const calculatedCogs = sale.items.reduce((sum, item) => sum + (Number(item.costPrice) || 0) * item.quantity, 0);
-          // Only override if calculated COGS suggests a non-zero cost
-          if (Math.abs(calculatedCogs) > 0.01) {
-              return sale.total - calculatedCogs;
-          }
+          const calculatedCogs = sale.items.reduce((sum, item) => sum + (safeNumber(item.costPrice) || 0) * item.quantity, 0);
+          
+          // Recalculate: (Total - Tax) - COGS
+          const revenue = safeNumber(sale.total) - safeNumber(sale.tax);
+          return revenue - calculatedCogs;
       }
       return sale.profit;
   };

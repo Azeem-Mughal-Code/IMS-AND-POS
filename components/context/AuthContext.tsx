@@ -126,12 +126,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const loginByEmail = useCallback(async (email: string, pass: string): Promise<{ success: boolean, message?: string }> => {
         try {
             // 1. Find User by Email
-            // Note: We need to scan workspaces to find the user because our users are stored per workspace in keyval `ims-{id}-users` for legacy/sync reasons,
-            // BUT we indexed `users` table in Dexie v6. However, users are currently stored in key-value blobs in this architecture.
-            // We must pivot to using the Dexie table index properly or scan efficiently.
-            // CURRENT ARCHITECTURE LIMITATION: 'users' are stored as arrays in keyval store.
-            // We need to scan workspaces to find the email. This is fine for local-first with few workspaces.
-            
             const allWorkspaces = await db.workspaces.toArray();
             let foundUser: User | null = null;
             let foundWorkspace: Workspace | null = null;
@@ -360,6 +354,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const newUsers = users.filter(u => u.id !== userId);
         setUsers(newUsers);
         setInDB(`ims-${currentWorkspace.id}-users`, newUsers);
+        
+        // Record deletion
+        db.deletedRecords.add({
+            id: userId,
+            table: 'users',
+            deletedAt: new Date().toISOString(),
+            sync_status: 'pending'
+        });
+        
         return { success: true };
     }, [users, currentWorkspace, currentUser]);
 

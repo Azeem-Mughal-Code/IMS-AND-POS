@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { UserRole, View } from '../../types';
 import { Dashboard } from '../Dashboard';
@@ -18,6 +17,15 @@ import { useUIState } from '../context/UIStateContext';
 import { useSettings } from '../context/SettingsContext';
 import { useSales } from '../context/SalesContext';
 
+const OfflineIndicator = () => (
+    <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs font-bold animate-pulse">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238m7.824 2.167a1 1 0 111.414 1.414m-1.414-1.414L3 3m8.293 8.293l1.414 1.414" />
+        </svg>
+        <span className="hidden sm:inline">Offline</span>
+    </div>
+);
+
 export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitchWorkspace }) => {
     const { currentUser } = useAuth();
     const { workspaceId, workspaceName, cashierPermissions } = useSettings();
@@ -27,10 +35,23 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
     const [isAuthWarningModalOpen, setIsAuthWarningModalOpen] = useState(false);
     const [isShiftWarningOpen, setIsShiftWarningOpen] = useState(false);
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
+
     const profileDropdownRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLElement>(null);
     const isGuest = workspaceId === 'guest_workspace';
     
+    useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
@@ -126,8 +147,9 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     return (
         <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
         <aside className="w-64 bg-white dark:bg-gray-800 shadow-lg flex-col hidden md:flex">
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-            <h1 className="text-xl font-bold text-blue-600 dark:text-blue-400 truncate">{workspaceName}</h1>
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                <h1 className="text-xl font-bold text-blue-600 dark:text-blue-400 truncate flex-grow">{workspaceName}</h1>
+                {!isOnline && <OfflineIndicator />}
             </div>
             <nav className="flex-grow p-4 space-y-2 overflow-y-auto">
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewDashboard) && <NavItem view="dashboard" icon={<DashboardIcon />} label="Dashboard" />}
@@ -178,7 +200,14 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
                 )}
             </div>
         </aside>
-        <main ref={mainContentRef} className="flex-1 overflow-y-auto pb-16 md:pb-0">{renderView()}</main>
+        <main ref={mainContentRef} className="flex-1 overflow-y-auto pb-16 md:pb-0">
+            {/* Mobile Header */}
+            <div className="md:hidden flex items-center justify-between p-4 bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-20">
+                <h1 className="text-lg font-bold text-blue-600 dark:text-blue-400 truncate">{workspaceName}</h1>
+                {!isOnline && <OfflineIndicator />}
+            </div>
+            {renderView()}
+        </main>
 
         <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-start overflow-x-auto shadow-lg z-40 no-scrollbar">
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewDashboard) && <BottomNavItem view="dashboard" icon={<DashboardIcon />} label="Dash" />}

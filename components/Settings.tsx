@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { UserRole, PaginationTarget } from '../types';
 import { Modal } from './common/Modal';
-import { LogoutIcon, TagIcon, UserCircleIcon, PencilIcon, CheckCircleIcon, XMarkIcon, ClipboardIcon, BuildingStoreIcon } from './Icons';
+import { LogoutIcon, TagIcon, UserCircleIcon, PencilIcon, CheckCircleIcon, XMarkIcon, ClipboardIcon, BuildingStoreIcon, ReceiveIcon } from './Icons';
 import { AccordionSection } from './common/AccordionSection';
 import { ToggleSwitch } from './common/ToggleSwitch';
 import { Dropdown } from './common/Dropdown';
@@ -15,6 +15,7 @@ import { useAuth } from './context/AuthContext';
 import { useSettings } from './context/SettingsContext';
 import { TimezoneSelector } from './settings/TimezoneSelector';
 import { useUIState } from './context/UIStateContext';
+import { syncService } from '../services/SyncService';
 
 export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitchWorkspace }) => {
     const { currentUser, updateUser, currentWorkspace, updateBusinessDetails } = useAuth();
@@ -24,7 +25,8 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
         isDiscountEnabled, setIsDiscountEnabled, discountRate, setDiscountRate, discountThreshold, setDiscountThreshold,
         cashierPermissions,
         storeAddress, setStoreAddress, storePhone, setStorePhone, receiptFooter, setReceiptFooter,
-        paginationConfig, setPaginationLimit
+        paginationConfig, setPaginationLimit,
+        syncApiUrl, setSyncApiUrl, syncApiKey, setSyncApiKey
     } = useSettings();
     const { showToast } = useUIState();
 
@@ -45,6 +47,9 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
     const [editStoreCode, setEditStoreCode] = useState('');
     const [businessEditError, setBusinessEditError] = useState('');
     const [copiedCode, setCopiedCode] = useState(false);
+    
+    // Sync State
+    const [isSyncing, setIsSyncing] = useState(false);
 
     const workspace = currentWorkspace;
 
@@ -137,6 +142,13 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
         if (!isNaN(limit) && limit >= 0) {
             setPaginationLimit(target, limit);
         }
+    };
+    
+    const handleManualSync = async () => {
+        setIsSyncing(true);
+        const result = await syncService.sync();
+        setIsSyncing(false);
+        showToast(result.message || (result.success ? 'Sync complete' : 'Sync failed'), result.success ? 'success' : 'error');
     };
 
     const paginationLabels: Record<PaginationTarget, string> = {
@@ -441,6 +453,49 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    </div>
+                </AccordionSection>
+            )}
+
+            {canEditBehavior && (
+                <AccordionSection
+                    title="Sync Settings"
+                    subtitle="Configure synchronization with central server."
+                    sectionId="sync"
+                    expandedSection={expandedSection}
+                    setExpandedSection={setExpandedSection}
+                >
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Server API URL</label>
+                            <input 
+                                type="text" 
+                                value={syncApiUrl} 
+                                onChange={(e) => setSyncApiUrl(e.target.value)}
+                                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="https://api.myshop.com"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">API Key</label>
+                            <input 
+                                type="password" 
+                                value={syncApiKey} 
+                                onChange={(e) => setSyncApiKey(e.target.value)}
+                                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Secret Key"
+                            />
+                        </div>
+                        <div className="pt-2">
+                            <button 
+                                onClick={handleManualSync} 
+                                disabled={isSyncing || !syncApiUrl}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                            >
+                                <ReceiveIcon className={`h-5 w-5 ${isSyncing ? 'animate-spin' : ''}`} />
+                                {isSyncing ? 'Syncing...' : 'Sync Now'}
+                            </button>
                         </div>
                     </div>
                 </AccordionSection>
