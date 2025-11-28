@@ -5,8 +5,8 @@ import { UserIcon, SearchIcon, ShieldCheckIcon, CheckCircleIcon, ClipboardIcon, 
 import { Modal } from '../common/Modal';
 
 export const UnifiedAuth: React.FC = () => {
-    const { login, loginByEmail, registerBusiness, enterGuestMode } = useAuth();
-    const [mode, setMode] = useState<'login' | 'register'>('login');
+    const { login, loginByEmail, registerBusiness, enterGuestMode, resetPassword } = useAuth();
+    const [mode, setMode] = useState<'login' | 'register' | 'recovery'>('login');
     
     // Login State
     const [loginIdentifier, setLoginIdentifier] = useState(''); // Can be storeCode or email
@@ -19,7 +19,14 @@ export const UnifiedAuth: React.FC = () => {
     const [regEmail, setRegEmail] = useState('');
     const [regPassword, setRegPassword] = useState('');
     
+    // Recovery State
+    const [recStoreCode, setRecStoreCode] = useState('');
+    const [recEmail, setRecEmail] = useState('');
+    const [recKey, setRecKey] = useState('');
+    const [recNewPassword, setRecNewPassword] = useState('');
+
     const [error, setError] = useState('');
+    const [successMessage, setSuccessMessage] = useState('');
     const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState(false);
     const [recoveryKey, setRecoveryKey] = useState('');
     const [registeredStoreCode, setRegisteredStoreCode] = useState('');
@@ -33,6 +40,7 @@ export const UnifiedAuth: React.FC = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setSuccessMessage('');
 
         if (mode === 'login') {
             if (isLoginEmail) {
@@ -48,7 +56,7 @@ export const UnifiedAuth: React.FC = () => {
                     setError(result.message || 'Login failed.');
                 }
             }
-        } else {
+        } else if (mode === 'register') {
             if (regPassword.length < 4) {
                 setError("Password must be at least 4 characters.");
                 return;
@@ -63,6 +71,23 @@ export const UnifiedAuth: React.FC = () => {
                 }
             } else {
                 setError(result.message || 'Registration failed.');
+            }
+        } else if (mode === 'recovery') {
+            if (recNewPassword.length < 4) {
+                setError("New Password must be at least 4 characters.");
+                return;
+            }
+            const result = await resetPassword(recStoreCode, recEmail, recKey, recNewPassword);
+            if (result.success) {
+                setSuccessMessage("Password reset successfully! Redirecting to login...");
+                setTimeout(() => {
+                    setMode('login');
+                    setSuccessMessage('');
+                    // Optional: pre-fill login fields?
+                    setLoginIdentifier(recEmail); // Since we just used email, might be handy
+                }, 2000);
+            } else {
+                setError(result.message || 'Recovery failed.');
             }
         }
     };
@@ -101,7 +126,7 @@ export const UnifiedAuth: React.FC = () => {
             <div className="w-full max-w-md bg-white dark:bg-gray-800 shadow-2xl rounded-2xl overflow-hidden">
                 <div className="flex border-b border-gray-100 dark:border-gray-700">
                     <button 
-                        onClick={() => { setMode('login'); setError(''); }}
+                        onClick={() => { setMode('login'); setError(''); setSuccessMessage(''); }}
                         className={`flex-1 py-4 text-sm font-semibold transition-all ${
                             mode === 'login' 
                             ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 bg-blue-50/50 dark:bg-blue-900/10' 
@@ -111,20 +136,20 @@ export const UnifiedAuth: React.FC = () => {
                         Login
                     </button>
                     <button 
-                        onClick={() => { setMode('register'); setError(''); }}
+                        onClick={() => { setMode('register'); setError(''); setSuccessMessage(''); }}
                         className={`flex-1 py-4 text-sm font-semibold transition-all ${
                             mode === 'register' 
                             ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 bg-blue-50/50 dark:bg-blue-900/10' 
                             : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
                         }`}
                     >
-                        Register Business
+                        Register
                     </button>
                 </div>
 
                 <div className="p-8">
                     <form onSubmit={handleSubmit} className="space-y-5">
-                        {mode === 'login' ? (
+                        {mode === 'login' && (
                             <>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Store Code or Email</label>
@@ -143,7 +168,6 @@ export const UnifiedAuth: React.FC = () => {
                                     </div>
                                 </div>
                                 
-                                {/* Conditionally show Username only if not logging in via Email */}
                                 {!isLoginEmail && (
                                     <div className="animate-fadeIn">
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Username</label>
@@ -168,9 +192,20 @@ export const UnifiedAuth: React.FC = () => {
                                         className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                                         placeholder="••••••••"
                                     />
+                                    <div className="text-right mt-1">
+                                        <button 
+                                            type="button"
+                                            onClick={() => { setMode('recovery'); setError(''); setSuccessMessage(''); }}
+                                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                        >
+                                            Forgot Password?
+                                        </button>
+                                    </div>
                                 </div>
                             </>
-                        ) : (
+                        )}
+
+                        {mode === 'register' && (
                             <>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Business Name</label>
@@ -219,32 +254,95 @@ export const UnifiedAuth: React.FC = () => {
                             </>
                         )}
 
+                        {mode === 'recovery' && (
+                            <div className="space-y-4">
+                                <div className="text-sm text-gray-600 dark:text-gray-300 mb-4 bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded border border-yellow-200 dark:border-yellow-800">
+                                    <p className="font-semibold text-yellow-800 dark:text-yellow-200">Account Recovery</p>
+                                    <p>Enter your store code, email, and the <strong>Recovery Key</strong> you saved during registration.</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Store Code</label>
+                                    <input 
+                                        type="text" 
+                                        value={recStoreCode} 
+                                        onChange={e => setRecStoreCode(e.target.value)} 
+                                        required 
+                                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 uppercase"
+                                        placeholder="WS-XXXXXX"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                                    <input 
+                                        type="email" 
+                                        value={recEmail} 
+                                        onChange={e => setRecEmail(e.target.value)} 
+                                        required 
+                                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                                        placeholder="admin@example.com"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Recovery Key</label>
+                                    <textarea 
+                                        value={recKey} 
+                                        onChange={e => setRecKey(e.target.value)} 
+                                        required 
+                                        rows={3}
+                                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-xs"
+                                        placeholder="Paste your long base64 recovery key string here..."
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">New Password</label>
+                                    <input 
+                                        type="password" 
+                                        value={recNewPassword} 
+                                        onChange={e => setRecNewPassword(e.target.value)} 
+                                        required 
+                                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                                        placeholder="New Password"
+                                    />
+                                </div>
+                                <button 
+                                    type="button"
+                                    onClick={() => { setMode('login'); setError(''); }}
+                                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline w-full text-center mt-2"
+                                >
+                                    Back to Login
+                                </button>
+                            </div>
+                        )}
+
                         {error && <p className="text-red-500 text-sm text-center bg-red-50 dark:bg-red-900/20 p-2 rounded-md">{error}</p>}
+                        {successMessage && <p className="text-green-500 text-sm text-center bg-green-50 dark:bg-green-900/20 p-2 rounded-md">{successMessage}</p>}
                         
                         <button 
                             type="submit" 
                             className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200"
                         >
-                            {mode === 'login' ? 'Log In' : 'Create Business'}
+                            {mode === 'login' ? 'Log In' : mode === 'register' ? 'Create Business' : 'Reset Password'}
                         </button>
                     </form>
                 </div>
             </div>
 
-            <div className="mt-8 flex flex-col items-center">
-                <button
-                    onClick={enterGuestMode}
-                    className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 rounded-full shadow-md text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:shadow-lg transition-all duration-200 group"
-                >
-                    <div className="p-1.5 bg-gray-100 dark:bg-gray-700 rounded-full group-hover:bg-blue-100 dark:group-hover:bg-blue-900/30 transition-colors">
-                        <UserIcon className="h-4 w-4" />
-                    </div>
-                    <span className="text-sm font-medium">Try Demo Mode</span>
-                </button>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                    Note: Data in demo mode is stored locally and will be lost upon logout.
-                </p>
-            </div>
+            {mode === 'login' && (
+                <div className="mt-8 flex flex-col items-center">
+                    <button
+                        onClick={enterGuestMode}
+                        className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 rounded-full shadow-md text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:shadow-lg transition-all duration-200 group"
+                    >
+                        <div className="p-1.5 bg-gray-100 dark:bg-gray-700 rounded-full group-hover:bg-blue-100 dark:group-hover:bg-blue-900/30 transition-colors">
+                            <UserIcon className="h-4 w-4" />
+                        </div>
+                        <span className="text-sm font-medium">Try Demo Mode</span>
+                    </button>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                        Note: Data in demo mode is stored locally and will be lost upon logout.
+                    </p>
+                </div>
+            )}
 
             <Modal isOpen={isRecoveryModalOpen} onClose={handleRegistrationSuccess} title="Registration Successful!" size="lg">
                 <div className="space-y-6">

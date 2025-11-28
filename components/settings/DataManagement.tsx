@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo } from 'react';
 import { Modal } from '../common/Modal';
 import { ExportIcon, ImportIcon, DangerIcon, ShieldCheckIcon, CheckCircleIcon, ClipboardIcon, EyeIcon } from '../Icons';
@@ -10,6 +9,7 @@ import { useSales } from '../context/SalesContext';
 import { useSettings } from '../context/SettingsContext';
 import { useUIState } from '../context/UIStateContext';
 import { db } from '../../utils/db'; // Direct DB access for full backup
+import { hashPassword } from '../../utils/crypto';
 
 const StatusCheckbox: React.FC<{
     label: string;
@@ -32,7 +32,7 @@ export const DataManagement: React.FC = () => {
     const { products, importProducts, factoryReset: productReset } = useProducts();
     const { sales, clearSales, factoryReset: salesReset, pruneData: pruneSalesData } = useSales();
     const { 
-        workspaceName, itemsPerPage, currency, currencies, currencyDisplay, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled,
+        workspaceId, workspaceName, itemsPerPage, currency, currencies, currencyDisplay, isIntegerCurrency, isTaxEnabled, taxRate, isDiscountEnabled,
         discountRate, discountThreshold, cashierPermissions, restoreBackup: restoreSettings, timezoneOffsetMinutes, storeAddress, storePhone, receiptFooter
     } = useSettings();
     const { factoryReset: uiReset, pruneData: pruneUiData, showToast } = useUIState();
@@ -80,10 +80,6 @@ export const DataManagement: React.FC = () => {
     const handleClearSelectAll = (checked: boolean) => setClearSaleStatuses(checked ? saleStatuses : []);
     const allClearStatusesSelected = clearSaleStatuses.length === saleStatuses.length;
 
-    const handlePruneStatusChange = (status: NonNullable<Sale['status']>, checked: boolean) => {
-        setPruneStatuses(prev => checked ? [...prev, status] : prev.filter(s => s !== status));
-    };
-    
     const factoryReset = () => {
         productReset(currentUser);
         salesReset();
@@ -154,19 +150,21 @@ export const DataManagement: React.FC = () => {
 
     const handleCreateBackup = async () => {
         try {
-            // Gather ALL data from Dexie tables directly for a complete snapshot
+            // Gather data from Dexie tables, explicitly filtering by workspaceId
             const allTables: Record<string, any[]> = {};
             const tableNames = ['products', 'sales', 'customers', 'purchaseOrders', 'suppliers', 'users', 'shifts', 'heldOrders', 'categories', 'inventoryAdjustments', 'notifications'];
             
             for (const tableName of tableNames) {
-                allTables[tableName] = await (db as any).table(tableName).toArray();
+                // IMPORTANT: Filter by workspaceId to only backup the current business's data
+                allTables[tableName] = await (db as any).table(tableName).where('workspaceId').equals(workspaceId).toArray();
             }
 
             const backupData = { 
                 metadata: {
-                    version: "1.0",
+                    version: "2.0", // Bumped version for workspace support
                     timestamp: new Date().toISOString(),
-                    workspaceName
+                    workspaceName,
+                    workspaceId
                 },
                 settings: {
                     itemsPerPage, currency, currencies, currencyDisplay, isIntegerCurrency, 
@@ -177,8 +175,8 @@ export const DataManagement: React.FC = () => {
             };
             
             const date = new Date().toISOString().split('T')[0];
-            downloadFile(JSON.stringify(backupData, null, 2), `ims-db-full-backup-${date}.json`, 'application/json');
-            showToast('Full database backup created successfully.', 'success');
+            downloadFile(JSON.stringify(backupData, null, 2), `ims-${workspaceName.replace(/\s+/g, '-')}-backup-${date}.json`, 'application/json');
+            showToast('Workspace backup created successfully.', 'success');
         } catch (error) {
             console.error("Backup failed", error);
             showToast('Failed to create backup.', 'error');
@@ -201,33 +199,28 @@ export const DataManagement: React.FC = () => {
             // 2. Restore DB Tables (Dexie)
             if (backupData.tables) {
                 await (db as any).transaction('rw', (db as any).tables, async () => {
-                    // Clear existing tables to prevent conflicts/duplicates during restore
                     const tablesToRestore = Object.keys(backupData.tables);
                     
                     for (const tableName of tablesToRestore) {
                         if ((db as any)[tableName]) { // Check if table exists in schema
-                            await (db as any).table(tableName).clear();
-                            const data = backupData.tables[tableName];
+                            // CRITICAL: Delete ONLY current workspace data
+                            await (db as any).table(tableName).where('workspaceId').equals(workspaceId).delete();
+                            
+                            let data = backupData.tables[tableName];
                             if (data && data.length > 0) {
-                                // Strip sync_status if importing to force new sync later? 
-                                // For now, import exactly as is.
+                                // Re-map data to current workspaceId to ensure visibility
+                                // This allows restoring data from an old workspace instance into a new one
+                                data = data.map((item: any) => ({
+                                    ...item,
+                                    workspaceId: workspaceId,
+                                    // Reset sync status to ensure this data is pushed if sync is enabled
+                                    sync_status: 'pending' 
+                                }));
+                                
                                 await (db as any).table(tableName).bulkAdd(data);
                             }
                         }
                     }
-                });
-            } else if (!backupData.tables && (backupData.products || backupData.sales)) {
-                // Legacy backup format support
-                await (db as any).transaction('rw', db.products, db.sales, db.inventoryAdjustments, db.notifications, async () => {
-                     if (backupData.products) {
-                         await db.products.clear();
-                         await db.products.bulkAdd(backupData.products);
-                     }
-                     if (backupData.sales) {
-                         await db.sales.clear();
-                         await db.sales.bulkAdd(backupData.sales);
-                     }
-                     // ... legacy logic implies partial restore
                 });
             }
 
@@ -261,10 +254,13 @@ export const DataManagement: React.FC = () => {
     const handleRepairKey = async () => {
         if (!repairKeyInput) { showToast('Key required.', 'error'); return; }
         if (!securityPassword) { showToast('Password required to verify ownership.', 'error'); return; }
-        if (securityPassword !== currentUser.password) { showToast('Incorrect password.', 'error'); return; }
+        
+        // HASH the input password to compare with the stored HASHED password
+        const inputHash = await hashPassword(securityPassword);
+        if (inputHash !== currentUser.password) { showToast('Incorrect password.', 'error'); return; }
 
-        // Attempt to repair/re-wrap the key
-        const result = await recoverAccount(currentUser.username, repairKeyInput, currentUser.password);
+        // Attempt to repair/re-wrap the key using the PLAIN TEXT password
+        const result = await recoverAccount(currentUser.username, repairKeyInput, securityPassword);
         if (result.success) {
             showToast('Security key repaired successfully.', 'success');
             closeSecurityModal();
@@ -290,6 +286,20 @@ export const DataManagement: React.FC = () => {
         }
     }, [dangerAction]);
     
+    // Explicit close function for the main menu
+    const closeDangerZoneMenu = () => {
+        setIsDangerZoneOpen(false);
+    };
+
+    // Explicit close function for action confirmations
+    const closeActionConfirmation = () => {
+        setDangerAction(null);
+        setConfirmationText('');
+        setConfirmationPassword('');
+        setDangerError('');
+        setClearSaleStatuses([]);
+    };
+
     const handleDangerAction = () => {
         setDangerError('');
         if (confirmationText.toUpperCase() !== dangerDetails.confirmWord) { setDangerError('Confirmation text does not match.'); return; }
@@ -302,16 +312,16 @@ export const DataManagement: React.FC = () => {
         if (dangerAction === 'factoryReset') { 
             factoryReset();
             showToast('Factory reset completed successfully.', 'success');
+            setIsDangerZoneOpen(false); // Close main menu on full reset
         }
         if (dangerAction === 'pruneData') {
             const result = pruneData(pruneTarget, { days: pruneDays, statuses: pruneTarget === 'sales' ? pruneStatuses : undefined });
             showToast(result.message, result.success ? 'success' : 'error');
         }
 
-        closeDangerModal();
+        closeActionConfirmation();
     };
 
-    const closeDangerModal = () => { setDangerAction(null); setConfirmationText(''); setConfirmationPassword(''); setDangerError(''); setClearSaleStatuses([]); };
     const isDangerConfirmValid = useMemo(() => dangerAction ? confirmationText.toUpperCase() === dangerDetails.confirmWord : false, [dangerAction, confirmationText, dangerDetails]);
     
     const buttonStyle = "w-full text-left p-6 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/80 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800";
@@ -338,7 +348,7 @@ export const DataManagement: React.FC = () => {
                         </div>
                         <div>
                             <h3 className="font-semibold text-lg text-gray-800 dark:text-gray-100">Database Backup & Restore</h3>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">Full DB dump (JSON) to backup entire business.</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Full Workspace dump (JSON) for backup.</p>
                         </div>
                     </div>
                 </button>
@@ -374,15 +384,15 @@ export const DataManagement: React.FC = () => {
             <Modal isOpen={isImportExportOpen} onClose={() => setIsImportExportOpen(false)} title="Import / Export Data (CSV)" size="md">
                 <div className="border-b border-gray-200 dark:border-gray-700">
                     <nav className="-mb-px flex space-x-4" aria-label="Tabs">
-                        <button onClick={() => setActiveImpExpTab('export')} className={`${activeImpExpTab === 'export' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Export</button>
-                        <button onClick={() => setActiveImpExpTab('import')} className={`${activeImpExpTab === 'import' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Import</button>
+                        <button onClick={() => setActiveImpExpTab('export')} className={`${activeImpExpTab === 'export' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm text-gray-900 dark:text-gray-200`}>Export</button>
+                        <button onClick={() => setActiveImpExpTab('import')} className={`${activeImpExpTab === 'import' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm text-gray-900 dark:text-gray-200`}>Import</button>
                     </nav>
                 </div>
                 {activeImpExpTab === 'export' ? (
                     <div className="py-6 space-y-4">
                         <p className="text-sm text-gray-600 dark:text-gray-300">Download specific data as CSV files for spreadsheets.</p>
-                        <button onClick={() => handleExport('products')} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"><ExportIcon /> Export Products (CSV)</button>
-                        <button onClick={() => handleExport('sales')} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"><ExportIcon /> Export Sales (CSV)</button>
+                        <button onClick={() => handleExport('products')} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-200 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"><ExportIcon /> Export Products (CSV)</button>
+                        <button onClick={() => handleExport('sales')} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-200 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"><ExportIcon /> Export Sales (CSV)</button>
                     </div>
                 ) : (
                     <div className="py-6 space-y-4">
@@ -397,20 +407,20 @@ export const DataManagement: React.FC = () => {
             </Modal>
 
             {/* Backup/Restore Modal */}
-            <Modal isOpen={isBackupRestoreOpen} onClose={() => setIsBackupRestoreOpen(false)} title="Full Database Backup & Restore" size="md">
+            <Modal isOpen={isBackupRestoreOpen} onClose={() => setIsBackupRestoreOpen(false)} title="Workspace Backup & Restore" size="md">
                 <div className="py-6 space-y-6">
                     <div>
-                        <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Create Full DB Backup</h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">Download a complete JSON dump of your entire database (Products, Sales, Users, Settings, etc).</p>
-                        <button onClick={handleCreateBackup} className="mt-2 w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"><ExportIcon /> Download Database File</button>
+                        <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Create Workspace Backup</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">Download a JSON dump of <strong>{workspaceName}</strong> data (Products, Sales, Users, Settings).</p>
+                        <button onClick={handleCreateBackup} className="mt-2 w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-200 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"><ExportIcon /> Download Backup File</button>
                     </div>
                     <div className="border-t pt-6 dark:border-gray-700">
-                        <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Restore from DB File</h3>
-                        <p className="text-sm text-red-600 dark:text-red-400 mt-1"><strong>Warning:</strong> This will completely wipe your current database and replace it with the backup content.</p>
+                        <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Restore from Backup</h3>
+                        <p className="text-sm text-red-600 dark:text-red-400 mt-1"><strong>Warning:</strong> This will wipe current data for <strong>{workspaceName}</strong> and replace it with the backup content.</p>
                         <div className="mt-4 space-y-4">
                             <input type="file" accept=".json" ref={backupFileInputRef} onChange={e => { if (e.target.files) setBackupFile(e.target.files[0]); }} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-800" />
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Admin Password</label><input type="password" value={restorePassword} onChange={e => setRestorePassword(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700" /></div>
-                            <div className="flex justify-end pt-2"><button onClick={handleRestoreBackup} disabled={!backupFile || !restorePassword} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400">Restore Database</button></div>
+                            <div><label className="block text-sm font-medium text-gray-700 dark:text-white">Admin Password</label><input type="password" value={restorePassword} onChange={e => setRestorePassword(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" /></div>
+                            <div className="flex justify-end pt-2"><button onClick={handleRestoreBackup} disabled={!backupFile || !restorePassword} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400">Restore Data</button></div>
                         </div>
                     </div>
                 </div>
@@ -436,9 +446,9 @@ export const DataManagement: React.FC = () => {
                         {!revealedKey ? (
                             <>
                                 <p className="text-sm text-gray-600 dark:text-gray-300">Please enter your current password to view the recovery key.</p>
-                                <input type="password" value={securityPassword} onChange={e => setSecurityPassword(e.target.value)} className="w-full p-2 border rounded-md bg-white dark:bg-gray-700 dark:border-gray-600" placeholder="Password" />
+                                <input type="password" value={securityPassword} onChange={e => setSecurityPassword(e.target.value)} className="w-full p-2 border rounded-md bg-white dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white" placeholder="Password" />
                                 <div className="flex justify-end gap-2">
-                                    <button onClick={closeSecurityModal} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
+                                    <button onClick={closeSecurityModal} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md text-gray-900 dark:text-white">Cancel</button>
                                     <button onClick={handleViewRecoveryKey} className="px-4 py-2 bg-blue-600 text-white rounded-md">Reveal</button>
                                 </div>
                             </>
@@ -446,7 +456,7 @@ export const DataManagement: React.FC = () => {
                             <>
                                 <p className="text-sm font-bold text-red-600 dark:text-red-400">Do not share this key.</p>
                                 <div className="relative">
-                                    <textarea readOnly value={revealedKey} className="w-full h-24 p-3 rounded-md bg-gray-100 dark:bg-gray-700 font-mono text-xs break-all" />
+                                    <textarea readOnly value={revealedKey} className="w-full h-24 p-3 rounded-md bg-gray-100 dark:bg-gray-700 font-mono text-xs break-all text-gray-900 dark:text-gray-200" />
                                     <button onClick={handleCopyKey} className="absolute top-2 right-2 p-1 bg-white dark:bg-gray-600 rounded shadow-sm">
                                         {copiedKey ? <CheckCircleIcon className="w-4 h-4 text-green-500" /> : <ClipboardIcon className="w-4 h-4 text-gray-500" />}
                                     </button>
@@ -461,23 +471,23 @@ export const DataManagement: React.FC = () => {
                     <div className="space-y-4">
                         <p className="text-sm text-gray-600 dark:text-gray-300">Enter your saved Recovery Key to restore access to the database for this user.</p>
                         <div>
-                            <label className="block text-sm font-medium mb-1">Recovery Key</label>
-                            <textarea value={repairKeyInput} onChange={e => setRepairKeyInput(e.target.value)} className="w-full h-24 p-2 border rounded-md bg-white dark:bg-gray-700 dark:border-gray-600 font-mono text-xs" placeholder="Paste key here..." />
+                            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Recovery Key</label>
+                            <textarea value={repairKeyInput} onChange={e => setRepairKeyInput(e.target.value)} className="w-full h-24 p-2 border rounded-md bg-white dark:bg-gray-700 dark:border-gray-600 font-mono text-xs text-gray-900 dark:text-white" placeholder="Paste key here..." />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium mb-1">Confirm Current Password</label>
-                            <input type="password" value={securityPassword} onChange={e => setSecurityPassword(e.target.value)} className="w-full p-2 border rounded-md bg-white dark:bg-gray-700 dark:border-gray-600" />
+                            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Confirm Current Password</label>
+                            <input type="password" value={securityPassword} onChange={e => setSecurityPassword(e.target.value)} className="w-full p-2 border rounded-md bg-white dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white" />
                         </div>
                         <div className="flex justify-end gap-2">
-                            <button onClick={closeSecurityModal} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
+                            <button onClick={closeSecurityModal} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md text-gray-900 dark:text-white">Cancel</button>
                             <button onClick={handleRepairKey} className="px-4 py-2 bg-orange-600 text-white rounded-md">Repair</button>
                         </div>
                     </div>
                 )}
             </Modal>
 
-            {/* Danger Zone Modal */}
-            <Modal isOpen={isDangerZoneOpen} onClose={closeDangerModal} title="Danger Zone" size="lg">
+            {/* Danger Zone Menu Modal */}
+            <Modal isOpen={isDangerZoneOpen} onClose={closeDangerZoneMenu} title="Danger Zone" size="lg">
                 <div className="py-6 space-y-6">
                     <div className="p-4 border border-red-200 dark:border-red-900/50 rounded-lg">
                         <h3 className="font-semibold text-red-700 dark:text-red-300">Prune Old Data</h3>
@@ -491,7 +501,7 @@ export const DataManagement: React.FC = () => {
                     </div>
                     <div className="p-4 border border-red-200 dark:border-red-900/50 rounded-lg">
                         <h3 className="font-semibold text-red-700 dark:text-red-300">Factory Reset</h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Delete all products, sales, and cashier accounts.</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Delete all products, sales, and cashier accounts for this workspace.</p>
                         <button onClick={() => setDangerAction('factoryReset')} className="mt-2 text-sm font-medium px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-md">Factory Reset...</button>
                     </div>
                 </div>
@@ -499,7 +509,7 @@ export const DataManagement: React.FC = () => {
             
             {/* Specific Danger Action Confirmation Modal (Reused Logic) */}
             {dangerAction && (
-                <Modal isOpen={!!dangerAction} onClose={closeDangerModal} title={dangerDetails.title}>
+                <Modal isOpen={!!dangerAction} onClose={closeActionConfirmation} title={dangerDetails.title}>
                     <div className="space-y-4">
                         {dangerAction === 'pruneData' && <div>{/* Prune UI */}
                             <p className="text-sm text-gray-600 dark:text-gray-400">Prune data older than specified days.</p>
@@ -516,14 +526,14 @@ export const DataManagement: React.FC = () => {
                             </div>
                         </div>}
                         
-                        <p className="text-sm text-gray-600 dark:text-gray-400">Type <strong className="font-mono">{dangerDetails.confirmWord}</strong> to confirm.</p>
-                        <input type="text" value={confirmationText} onChange={e => setConfirmationText(e.target.value)} className="w-full p-2 border rounded-md dark:bg-gray-700" />
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Type <strong className="font-mono bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1">{dangerDetails.confirmWord}</strong> to confirm.</p>
+                        <input type="text" value={confirmationText} onChange={e => setConfirmationText(e.target.value)} className="w-full p-2 border rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
                         <p className="text-sm text-gray-600 dark:text-gray-400">Admin Password</p>
-                        <input type="password" value={confirmationPassword} onChange={e => setConfirmationPassword(e.target.value)} className="w-full p-2 border rounded-md dark:bg-gray-700" />
+                        <input type="password" value={confirmationPassword} onChange={e => setConfirmationPassword(e.target.value)} className="w-full p-2 border rounded-md bg-white dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white" />
                         {dangerError && <p className="text-red-500 text-sm">{dangerError}</p>}
                     </div>
                     <div className="flex justify-end gap-2 pt-4">
-                        <button onClick={closeDangerModal} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
+                        <button onClick={closeActionConfirmation} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md">Cancel</button>
                         <button onClick={handleDangerAction} disabled={!isDangerConfirmValid} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50">Proceed</button>
                     </div>
                 </Modal>

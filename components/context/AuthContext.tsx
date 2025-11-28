@@ -20,6 +20,7 @@ interface AuthContextType {
     updateUser: (userId: string, newUsername: string, newPassword?: string, newEmail?: string) => Promise<{ success: boolean, message?: string, recoveryKey?: string }>;
     deleteUser: (userId: string) => { success: boolean; message?: string };
     recoverAccount: (username: string, recoveryKey: string, newPassword: string) => Promise<{ success: boolean; message?: string }>;
+    resetPassword: (storeCode: string, email: string, recoveryKey: string, newPass: string) => Promise<{ success: boolean, message?: string }>;
     getDecryptedKey: (password: string) => Promise<string | null>;
     
     // Special Guest Mode
@@ -105,6 +106,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
         restoreSession();
     }, []);
+
+    // Helper: Check if email is already used in any workspace
+    const isEmailTakenGlobally = async (email: string, excludeUserId?: string): Promise<boolean> => {
+        const normalizedEmail = email.trim().toLowerCase();
+        if (!normalizedEmail) return false;
+        
+        const allWorkspaces = await db.workspaces.toArray();
+        for (const ws of allWorkspaces) {
+            const users = await getFromDB<User[]>(`ims-${ws.id}-users`) || [];
+            // Check if any user in this workspace has the same email
+            const exists = users.some(u => {
+                if (excludeUserId && u.id === excludeUserId) return false;
+                return u.email?.toLowerCase() === normalizedEmail;
+            });
+            if (exists) return true;
+        }
+        return false;
+    };
 
     const login = useCallback(async (storeCode: string, username: string, pass: string): Promise<{ success: boolean, message?: string }> => {
         try {
@@ -219,6 +238,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const registerBusiness = useCallback(async (businessName: string, username: string, email: string, pass: string): Promise<{ success: boolean, message?: string, recoveryKey?: string, storeCode?: string }> => {
         try {
+            // Check global uniqueness for email
+            if (await isEmailTakenGlobally(email)) {
+                return { success: false, message: 'This email is already registered with another business.' };
+            }
+
             // 1. Create Workspace
             const workspaceId = generateUUIDv7();
             const existingAliases = await db.workspaces.toArray().then(ws => ws.map(w => w.alias));
@@ -358,8 +382,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
             return { success: false, message: 'Username taken.' };
         }
-        if (email && users.some(u => u.email?.toLowerCase() === email.toLowerCase())) {
-            return { success: false, message: 'Email already in use in this workspace.' };
+        if (email) {
+            if (users.some(u => u.email?.toLowerCase() === email.toLowerCase())) {
+                return { success: false, message: 'Email already in use in this workspace.' };
+            }
+            if (await isEmailTakenGlobally(email)) {
+                return { success: false, message: 'Email is already in use by another user.' };
+            }
         }
 
         try {
@@ -407,8 +436,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (users.some(u => u.id !== userId && u.username.toLowerCase() === newUsername.toLowerCase())) {
             return { success: false, message: 'Username taken.' };
         }
-        if (newEmail && users.some(u => u.id !== userId && u.email?.toLowerCase() === newEmail.toLowerCase())) {
-            return { success: false, message: 'Email already in use.' };
+        if (newEmail) {
+            if (users.some(u => u.id !== userId && u.email?.toLowerCase() === newEmail.toLowerCase())) {
+                return { success: false, message: 'Email already in use in this workspace.' };
+            }
+            // If email changed, check global uniqueness
+            if (newEmail.toLowerCase() !== user.email?.toLowerCase()) {
+                if (await isEmailTakenGlobally(newEmail, userId)) {
+                    return { success: false, message: 'Email is already in use by another user.' };
+                }
+            }
         }
 
         let updatedUser = { ...user, username: newUsername, email: newEmail };
@@ -503,6 +540,43 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     }, [users, currentWorkspace, currentUser]);
 
+    const resetPassword = useCallback(async (storeCode: string, email: string, recoveryKey: string, newPass: string) => {
+        // 1. Find Workspace
+        const workspace = await db.workspaces.where('alias').equals(storeCode.toUpperCase().trim()).first();
+        if (!workspace) return { success: false, message: 'Store Code not found.' };
+
+        // 2. Find User
+        const usersKey = `ims-${workspace.id}-users`;
+        const wsUsers = await getFromDB<User[]>(usersKey) || [];
+        const userIndex = wsUsers.findIndex(u => u.email?.toLowerCase() === email.toLowerCase().trim());
+        
+        if (userIndex === -1) return { success: false, message: 'No user found with this email in the specified store.' };
+        
+        const user = wsUsers[userIndex];
+        
+        // 3. Crypto Magic: Unwrap/Rewrap using the recovery key (which IS the DEK in base64)
+        try {
+            // Import the raw DEK from recovery key string
+            const dek = await importKey(recoveryKey);
+            
+            // Generate new credentials
+            const salt = generateSalt();
+            const kek = await deriveKeyFromPassword(newPass, salt);
+            const encryptedDEK = await wrapKey(dek, kek); // Re-wrap DEK with new KEK (derived from newPass)
+            const hashedPassword = await hashPassword(newPass);
+
+            const updatedUser = { ...user, password: hashedPassword, salt, encryptedDEK };
+            
+            wsUsers[userIndex] = updatedUser;
+            await setInDB(usersKey, wsUsers);
+            
+            return { success: true };
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Invalid Recovery Key or Crypto Error.' };
+        }
+    }, []);
+
     const getDecryptedKey = useCallback(async (password: string): Promise<string | null> => {
         if (!currentUser || !currentUser.encryptedDEK || !currentUser.salt) return null;
         try {
@@ -543,7 +617,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const value = {
         users, currentUser, currentWorkspace,
         login, loginByEmail, registerBusiness, logout, enterGuestMode,
-        addUser, updateUser, deleteUser, recoverAccount, getDecryptedKey,
+        addUser, updateUser, deleteUser, recoverAccount, resetPassword, getDecryptedKey,
         updateStoreCode, updateBusinessDetails
     };
 

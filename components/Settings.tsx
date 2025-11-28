@@ -100,6 +100,7 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
             
             if (result.success) {
                 setProfileSuccess("Profile updated successfully!");
+                showToast("Profile updated successfully!", "success");
                 setTimeout(() => {
                     setIsEditProfileModalOpen(false);
                 }, 1500)
