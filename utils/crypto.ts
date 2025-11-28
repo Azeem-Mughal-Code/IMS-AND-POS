@@ -139,9 +139,24 @@ export const decryptData = async (encryptedStr: string, key: CryptoKey): Promise
   }
 };
 
-export const hashPassword = async (password: string): Promise<string> => {
-  const msgBuffer = new TextEncoder().encode(password);
-  const hashBuffer = await window.crypto.subtle.digest('SHA-256', msgBuffer);
+export const hashPassword = async (password: string, salt: string = ''): Promise<string> => {
+  const enc = new TextEncoder();
+  const passwordBuffer = enc.encode(password);
+  let dataToHash = passwordBuffer;
+
+  if (salt) {
+    try {
+        const saltBuffer = Uint8Array.from(atob(salt), c => c.charCodeAt(0));
+        const combined = new Uint8Array(saltBuffer.length + passwordBuffer.length);
+        combined.set(saltBuffer);
+        combined.set(passwordBuffer, saltBuffer.length);
+        dataToHash = combined;
+    } catch (e) {
+        console.warn("Invalid salt provided to hashPassword, proceeding with unsalted hash");
+    }
+  }
+
+  const hashBuffer = await window.crypto.subtle.digest('SHA-256', dataToHash);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };

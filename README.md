@@ -14,6 +14,90 @@ A comprehensive, local-first **Inventory Management and Point of Sale (POS)** sy
 
 ---
 
+## 🔐 Access & Authentication
+
+This system uses a **Zero-Knowledge** authentication model. Unlike traditional web apps, we do not store your password on a server to unlock your data. Your password *is* the key to your data.
+
+### 1. Business Registration
+When you create a business, the system performs the following cryptographic operations locally in your browser:
+1.  Generates a unique **Store Code** (e.g., `WS-A1B2C3`).
+2.  Generates a random **Data Encryption Key (DEK)** (AES-GCM 256-bit).
+3.  Derives a **Key Encryption Key (KEK)** from your password using **PBKDF2**.
+4.  Encrypts (wraps) the DEK using the KEK and stores the wrapped key.
+5.  Exports the raw DEK as a **Recovery Key**.
+
+**Important:** You MUST save your **Store Code** and **Recovery Key**. If you forget your password, the Recovery Key is the *only* way to restore access to your encrypted data.
+
+### 2. Login
+To log in, you need:
+*   **Store Code** (or Email, if unique)
+*   **Username**
+*   **Password**
+
+The system attempts to decrypt your Data Key using the password provided. If successful, the database unlocks.
+
+### 3. Forgot Password / Account Recovery
+Because we cannot see your password, we cannot send you a "reset link".
+1.  Go to the Login screen.
+2.  Click **"Forgot Password?"**.
+3.  Enter your Email and the **Recovery Key** you saved during registration.
+4.  Enter a new password.
+5.  The system uses the Recovery Key to decrypt the database and re-encrypts the master key with your *new* password.
+
+### 4. Demo Mode
+*   **Purpose:** To explore the application features without setting up an account.
+*   **Data:** Pre-seeded with sample products, suppliers, and customers.
+*   **Persistence:** Data is stored in a temporary "Guest Workspace" in your browser. **All data is permanently wiped upon logout.**
+*   **Security:** Encryption is disabled or uses ephemeral keys in Demo Mode.
+
+---
+
+## 🛡️ Encryption & Security
+
+We utilize the **Web Crypto API** to ensure military-grade security for your sensitive business data directly in the browser.
+
+### Encryption Standards
+*   **Algorithm:** AES-GCM (Advanced Encryption Standard - Galois/Counter Mode) with 256-bit keys.
+*   **Key Derivation:** PBKDF2 (Password-Based Key Derivation Function 2) with high iteration counts and random salts to prevent rainbow table attacks.
+*   **Encrypted Fields:**
+    *   **Products:** Cost Price (hides margins from cashiers).
+    *   **Sales:** Profit, COGS, Total, Subtotal, Tax, Discount.
+    *   **Customers:** Phone, Email, Address, Notes (PII protection).
+    *   **Suppliers:** Contact details.
+    *   **Shifts:** Cash counts and discrepancies.
+
+### Durability & Safety
+*   **Data Isolation:** Each workspace has a unique ID (`workspaceId`) and unique encryption keys. Data from one business cannot be read by another, even if they share the same browser.
+*   **Zero-Knowledge:** Since the encryption key is derived from your password client-side, even if the database file were stolen, the sensitive fields would remain unreadable ciphertext without the password or recovery key.
+
+---
+
+## 🔧 Troubleshooting
+
+### 1. "Decryption Failed" or Garbled Text
+If you see random characters (e.g., `__ENC__:...`) instead of prices or names:
+*   **Cause:** The encryption key in memory does not match the key used to encrypt the data. This often happens if a password reset was performed incorrectly or browser storage was partially cleared.
+*   **Fix:**
+    1.  Go to **Settings > Encryption & Recovery**.
+    2.  Click **Emergency Key Repair**.
+    3.  Enter your **Recovery Key** and your **Current Password**.
+    4.  This forces the system to re-wrap the data key, restoring access.
+
+### 2. Application Sluggishness
+If the app feels slow after months of use:
+*   **Cause:** Accumulation of thousands of transaction records in IndexedDB.
+*   **Fix:**
+    1.  Go to **Settings > Data Management**.
+    2.  Open the **Danger Zone**.
+    3.  Select **Prune Old Data**.
+    4.  Choose a target (e.g., "Sales") and a timeframe (e.g., "Older than 90 days"). This deletes old records to free up memory.
+
+### 3. Data Not Saving
+*   **Check:** Ensure you are not in **Demo Mode**. Demo mode does not persist data after you close the session.
+*   **Check:** Ensure your browser has disk space available. IndexedDB allows large storage, but the OS may restrict it if the disk is full.
+
+---
+
 ## 🔄 Software Development Life Cycle (SDLC)
 
 This project follows an **Agile and Iterative** development model.
@@ -122,165 +206,83 @@ classDiagram
     Sale "0..*" -- "1" User
 ```
 
-### 3. Entity Relationship (Simplified)
-Data structure overview.
-
-```mermaid
-erDiagram
-    WORKSPACE ||--|{ USER : contains
-    WORKSPACE ||--|{ PRODUCT : contains
-    WORKSPACE ||--|{ SALE : contains
-    
-    PRODUCT ||--o{ VARIANT : has
-    PRODUCT ||--o{ INVENTORY_ADJUSTMENT : logs
-    
-    SALE ||--|{ SALE_ITEM : includes
-    SALE }|--|| CUSTOMER : "sold to"
-    SALE }|--|| USER : "sold by"
-    
-    SUPPLIER ||--o{ PURCHASE_ORDER : "supplies"
-    PURCHASE_ORDER ||--|{ PO_ITEM : contains
-```
-
-### 4. POS Process Flow (Activity Diagram)
-The lifecycle of a transaction.
-
-```mermaid
-graph LR
-    A[Start] --> B{Shift Open?}
-    B -- No --> C[Open Shift]
-    C --> D[POS Interface]
-    B -- Yes --> D
-    D --> E[Add Items to Cart]
-    E --> F[Select Customer]
-    F --> G[Apply Discount/Tax]
-    G --> H[Process Payment]
-    H --> I[Update Stock]
-    I --> J[Generate Receipt]
-    J --> K[End]
-```
-
 ---
 
 ## 📖 Application Walkthrough
 
 ### 1. Dashboard
 The command center for business intelligence.
-*   **KPI Cards:**
-    *   **Total Sales:** Gross revenue for the selected timeframe.
-    *   **Total Profit:** Net profit (Revenue - COGS). Configurable to include/exclude tax.
-    *   **Total COGS:** Cost of Goods Sold.
-    *   **Low Stock Items:** Real-time counter of items below their configured threshold.
-*   **Visualizations:**
-    *   **Sales & Profit Chart:** A responsive Line/Bar chart visualizing performance trends.
-    *   **Time Filters:** Buttons to toggle views between Today, Weekly, Monthly, Yearly, and All Time.
-*   **Header Actions:**
-    *   **Notifications Bell:** Displays alerts for stock outs, low stock, and overdue purchase orders.
+*   **KPI Cards:** Total Sales, Total Profit (Configurable), COGS, Low Stock Items.
+*   **Visualizations:** Sales & Profit Chart (Line/Bar).
+*   **Time Filters:** Today, Weekly, Monthly, Yearly, All Time.
 
 ### 2. Point of Sale (POS)
 The primary interface for cashiers.
-*   **Shift Control:**
-    *   **Modal (Start):** Prompts for opening float.
-    *   **Modal (End):** Reconciles expected cash vs. actual cash and logs variance.
-*   **Left Panel (Catalog & Returns):**
-    *   **Tabs:**
-        *   **Catalog:** Grid view of products. Searchable by Name/SKU. Filterable by Category.
-        *   **Returns:** Search past receipts. Allows granular selection of items to return from a specific invoice.
-    *   **Pagination:** Controls for navigating large product lists.
-*   **Right Panel (Cart):**
-    *   **Customer Select:** Dropdown to attach a customer to the sale.
-    *   **Cart Items:** List of selected products. quantity adjusters (+/-), and remove button.
-    *   **Action Grid:**
-        *   **Clear:** Wipes the cart.
-        *   **Discount:** Modal to apply Fixed or Percentage discounts.
-        *   **Hold:** Saves cart to "Held Orders" for later retrieval.
-        *   **Tax:** Toggle tax or apply custom tax rates per order.
-    *   **Totals Section:** Displays Subtotal, Discount, Tax, and Grand Total.
-    *   **Pay Button:** Triggers the Payment Modal.
+*   **Shift Control:** Start/End shift with float reconciliation.
+*   **Catalog & Returns:** Searchable product grid and receipt lookup for returns.
+*   **Cart Features:** Customer association, Discounts (Fixed/%), Tax toggles, Held Orders.
 
 ### 3. Inventory Management
-Manage stock, pricing, and categorization.
-*   **Tabs:**
-    *   **Products:**
-        *   **Data Table:** Displays SKU, Name, Categories, Stock, Prices, and Margin.
-        *   **Actions:**
-            *   *History:* Audit log of stock moves and price changes.
-            *   *Receive:* Quick-add stock.
-            *   *Adjust:* Correct stock levels with a reason code.
-            *   *Edit/Delete:* Full CRUD capabilities.
-        *   **Bulk Actions:** Checkbox selection allows for Bulk Deletion or Category assignment.
-    *   **Categories:**
-        *   **Tree View:** Manage hierarchical product categories (e.g., Electronics > Laptops).
-    *   **Valuation (Admin):**
-        *   **Report:** Calculates total asset value (Cost vs Retail) and potential profit for all inventory.
+*   **Products:** CRUD operations, Variant support, Stock Adjustments, Receiving.
+*   **Categories:** Hierarchical category tree.
+*   **Valuation:** Real-time asset value and potential profit reports.
 
 ### 4. Procurement
-Supply chain management.
-*   **Tabs:**
-    *   **Purchase Orders (POs):**
-        *   **Create PO:** Builder interface. Select Supplier, add items manually, or use "Auto-Fill Low Stock".
-        *   **List View:** Track status (Pending, Partial, Received) and total cost.
-        *   **Receiving:** Interface to mark items as received, automatically increasing inventory.
-    *   **Suppliers:**
-        *   **Directory:** Manage supplier contact info (Email, Phone, Address).
+*   **Purchase Orders:** Create POs from suppliers, auto-fill low stock items.
+*   **Receiving:** One-click receive to update inventory.
+*   **Suppliers:** Manage vendor contact details.
 
 ### 5. Customers
-CRM (Customer Relationship Management).
-*   **Tabs:**
-    *   **Personal Data:** Basic contact info table.
-    *   **Valuation & Sales:**
-        *   **Metrics:** Lifetime Value (Total Spent), Total Profit, Order Count.
-        *   **Purchase History:** List of all receipts associated with the customer.
+*   **CRM:** Track purchase history, total spend, and contact info.
+*   **Metrics:** Lifetime Value and Profitability analysis per customer.
 
-### 6. Users & Shifts
-Security and auditing.
-*   **Tabs:**
-    *   **Users:**
-        *   **List:** Manage staff accounts.
-        *   **Permissions:** Configure granular access control for the "Cashier" role (e.g., "Can Process Returns", "Can View Reports").
-    *   **Shifts:**
-        *   **Audit Log:** Historical record of all opened/closed shifts, including cash variance and notes.
-
-### 7. Reports
-Historical data analysis.
-*   **Sections:**
-    *   **Transaction History:** Searchable list of all sales/returns.
-        *   *Receipt View:* Detailed modal with print and "Save as Image" options.
-    *   **Stock Levels:** Filterable report of In Stock, Low Stock, and Out of Stock items.
-
-### 8. Analysis
-Performance metrics.
-*   **Top Performers:** KPI Cards for "Most Revenue", "Highest Profit", and "Most Sold" products.
-*   **Data Table:** Sortable columns for Revenue, Profit, Profit Margin %, and Sell-Through Rate.
-
-### 9. Settings
-Application configuration.
-*   **Sections:**
-    *   **Profile:** Edit username/password.
-    *   **General:** Toggle Theme (Light/Dark/System) and Zoom/Scale. Set Timezone.
-    *   **Business Details:** Configure Store Name, Code, and Receipt Footer.
-    *   **Currency & Payment:** Manage Currency symbols, Tax Rates, and Auto-Discount rules.
-    *   **Sync Settings:** API Endpoint and Key configuration for remote backup/sync.
-    *   **View Settings:** Customize pagination limits per page.
-    *   **Data Management:** Import/Export (CSV), Full Backup (JSON), Encryption Recovery, and Danger Zone (Reset/Prune).
+### 6. Settings
+*   **General:** Theme (Dark/Light), Timezone, Zoom.
+*   **Business:** Store details for receipts.
+*   **Security:** Key Management, Permissions.
+*   **Data:** Import/Export (CSV), Backup/Restore (JSON), Danger Zone.
 
 ---
 
-## 🐞 Testing & Debugging
+## 💻 Installation & Setup
 
-### Testing Strategy
-Since this is a frontend-heavy application relying on complex state and IndexedDB interactions, testing is primarily **Manual and Scenario-based**:
-1.  **Unit Logic:** Critical calculations (Tax, Profit, Cart Totals) are verified against expected mathematical outcomes.
-2.  **Integration Flows:**
-    *   *Sale Flow:* Create Product -> Open Shift -> Add to Cart -> Pay -> Check Receipt -> Check Stock deduction -> Check Shift Cash update.
-    *   *Return Flow:* Find Receipt -> Select Item -> Process Return -> Check Stock increment.
-3.  **Cross-Browser:** Verified on Chrome, Firefox, and Safari (iOS/MacOS) to ensure IndexedDB compatibility.
+To run this application locally in a development environment:
 
-### Debugging
-*   **Console Logging:** Extensive logging is used in the `SyncService` and `AuthContext` to track data flow and encryption status.
-*   **DevTools:**
-    *   **Application Tab:** Used to inspect IndexedDB (`IMS_POS_DB`) tables directly.
-    *   **Network Tab:** Monitors Service Worker caching and Sync API calls.
+### Prerequisites
+*   Node.js (v16 or higher)
+*   npm or yarn
+
+### Steps
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/ims-pos-system.git
+    cd ims-pos-system
+    ```
+
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    # or
+    yarn install
+    ```
+
+3.  **Start the development server:**
+    ```bash
+    npm start
+    # or
+    yarn start
+    ```
+
+4.  **Open in Browser:**
+    The application will launch automatically at `http://localhost:3000`.
+
+### Building for Production
+To create an optimized build for deployment:
+```bash
+npm run build
+```
+The output will be in the `build/` folder, ready to be served by any static file server (Nginx, Apache, Vercel, Netlify).
 
 ---
 
@@ -293,15 +295,6 @@ Since this is a frontend-heavy application relying on complex state and IndexedD
 *   **Charts:** Recharts
 *   **PDF/Image Generation:** html2canvas
 *   **Icons:** Custom SVG Components
-
----
-
-## 📖 Quick Start
-
-1.  **Register Business:** Creates a new encrypted workspace. You will be given a **Store Code** and a **Recovery Key**. Save these immediately.
-2.  **Demo Mode:** Enters a temporary guest session with seeded data. Data is wiped upon logout.
-3.  **Start Shift:** Navigate to POS to open a shift.
-4.  **Sell:** Add items, process payment, print receipt.
 
 ---
 

@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useMemo } from 'react';
 import { Modal } from '../common/Modal';
 import { ExportIcon, ImportIcon, DangerIcon, ShieldCheckIcon, CheckCircleIcon, ClipboardIcon, EyeIcon } from '../Icons';
@@ -9,7 +10,7 @@ import { useSales } from '../context/SalesContext';
 import { useSettings } from '../context/SettingsContext';
 import { useUIState } from '../context/UIStateContext';
 import { db } from '../../utils/db'; // Direct DB access for full backup
-import { hashPassword } from '../../utils/crypto';
+import { hashPassword, deriveKeyFromPassword, unwrapKey } from '../../utils/crypto';
 
 const StatusCheckbox: React.FC<{
     label: string;
@@ -183,9 +184,27 @@ export const DataManagement: React.FC = () => {
         }
     };
 
+    const verifyPassword = async (password: string) => {
+        if (!currentUser) return false;
+        
+        // Always use SHA-256 Hashing for verification as requested
+        const inputHash = await hashPassword(password, currentUser.salt || '');
+        
+        // Check hash or fallback to plain comparison (legacy/guest)
+        if (currentUser.password === inputHash || currentUser.password === password) {
+            return true;
+        }
+        
+        return false;
+    };
+
     const handleRestoreBackup = async () => {
         if (!backupFile) { showToast('Please select a backup file.', 'error'); return; }
-        if (restorePassword !== currentUser.password) { showToast('Incorrect admin password.', 'error'); return; }
+        
+        if (!(await verifyPassword(restorePassword))) { 
+            showToast('Incorrect admin password.', 'error'); 
+            return; 
+        }
         
         try {
             const fileContent = await backupFile.text();
@@ -256,7 +275,7 @@ export const DataManagement: React.FC = () => {
         if (!securityPassword) { showToast('Password required to verify ownership.', 'error'); return; }
         
         // HASH the input password to compare with the stored HASHED password
-        const inputHash = await hashPassword(securityPassword);
+        const inputHash = await hashPassword(securityPassword, currentUser.salt || '');
         if (inputHash !== currentUser.password) { showToast('Incorrect password.', 'error'); return; }
 
         // Attempt to repair/re-wrap the key using the PLAIN TEXT password
@@ -300,10 +319,14 @@ export const DataManagement: React.FC = () => {
         setClearSaleStatuses([]);
     };
 
-    const handleDangerAction = () => {
+    const handleDangerAction = async () => {
         setDangerError('');
         if (confirmationText.toUpperCase() !== dangerDetails.confirmWord) { setDangerError('Confirmation text does not match.'); return; }
-        if (confirmationPassword !== currentUser.password) { setDangerError('Incorrect admin password.'); return; }
+        
+        if (!(await verifyPassword(confirmationPassword))) {
+            setDangerError('Incorrect admin password.'); 
+            return;
+        }
         
         if (dangerAction === 'clearSales') { 
             clearSales(allClearStatusesSelected ? undefined : { statuses: clearSaleStatuses });

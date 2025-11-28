@@ -20,7 +20,6 @@ export const UnifiedAuth: React.FC = () => {
     const [regPassword, setRegPassword] = useState('');
     
     // Recovery State
-    const [recStoreCode, setRecStoreCode] = useState('');
     const [recEmail, setRecEmail] = useState('');
     const [recKey, setRecKey] = useState('');
     const [recNewPassword, setRecNewPassword] = useState('');
@@ -77,7 +76,7 @@ export const UnifiedAuth: React.FC = () => {
                 setError("New Password must be at least 4 characters.");
                 return;
             }
-            const result = await resetPassword(recStoreCode, recEmail, recKey, recNewPassword);
+            const result = await resetPassword(recEmail, recKey, recNewPassword);
             if (result.success) {
                 setSuccessMessage("Password reset successfully! Redirecting to login...");
                 setTimeout(() => {
@@ -257,20 +256,15 @@ export const UnifiedAuth: React.FC = () => {
                         {mode === 'recovery' && (
                             <div className="space-y-4">
                                 <div className="text-sm text-gray-600 dark:text-gray-300 mb-4 bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded border border-yellow-200 dark:border-yellow-800">
-                                    <p className="font-semibold text-yellow-800 dark:text-yellow-200">Account Recovery</p>
-                                    <p>Enter your store code, email, and the <strong>Recovery Key</strong> you saved during registration.</p>
+                                    <p className="font-semibold text-yellow-800 dark:text-yellow-200">Admin Account Recovery</p>
+                                    <p>This feature is for <strong>Administrators</strong> only. Cashiers must contact their manager to reset passwords.</p>
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Store Code</label>
-                                    <input 
-                                        type="text" 
-                                        value={recStoreCode} 
-                                        onChange={e => setRecStoreCode(e.target.value)} 
-                                        required 
-                                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 uppercase"
-                                        placeholder="WS-XXXXXX"
-                                    />
+                                
+                                <div className="text-sm text-red-600 dark:text-red-400 mb-4 bg-red-50 dark:bg-red-900/20 p-3 rounded border border-red-200 dark:border-red-800">
+                                    <p className="font-bold">⚠️ Warning: Data Integrity</p>
+                                    <p>Using the wrong Recovery Key will result in <strong>garbled or encrypted data</strong> upon login.</p>
                                 </div>
+
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
                                     <input 
