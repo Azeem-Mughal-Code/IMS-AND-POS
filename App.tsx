@@ -34,14 +34,17 @@ const WorkspaceEffects: React.FC<{ children: React.ReactNode }> = ({ children })
 };
 
 const App: React.FC = () => {
-    const { currentUser, currentWorkspace, logout } = useAuth();
+    const { currentUser, currentWorkspace, logout, encryptionRevision } = useAuth();
 
     if (!currentUser || !currentWorkspace) {
         return <UnifiedAuth />;
     }
 
+    // Using encryptionRevision as part of the key forces the entire AppProvider tree to unmount and remount
+    // whenever the encryption key is repaired via "Emergency Key Repair". 
+    // This ensures all useLiveQuery hooks in child components re-subscribe and fetch fresh, decrypted data from Dexie.
     return (
-        <AppProvider workspace={currentWorkspace}>
+        <AppProvider workspace={currentWorkspace} key={`workspace-${currentWorkspace.id}-rev-${encryptionRevision || 0}`}>
             <WorkspaceEffects>
                 <MainLayout onSwitchWorkspace={logout} />
             </WorkspaceEffects>

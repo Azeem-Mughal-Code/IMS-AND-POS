@@ -27,6 +27,9 @@ interface AuthContextType {
     enterGuestMode: () => Promise<void>;
     updateStoreCode: (newCode: string) => Promise<{ success: boolean, message?: string }>; // Deprecated, use updateBusinessDetails
     updateBusinessDetails: (name: string, code: string) => Promise<{ success: boolean, message?: string }>;
+    
+    // Key revision to force app refresh on decryption repair
+    encryptionRevision: number;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -78,6 +81,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [users, setUsers] = useState<User[]>([]); // Local state of users for the current workspace
+    const [encryptionRevision, setEncryptionRevision] = useState(0);
 
     // Load session on mount
     useEffect(() => {
@@ -528,10 +532,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setUsers(newUsers);
             await setInDB(`ims-${currentWorkspace.id}-users`, newUsers);
             
-            // If recovering self, update session
+            // If recovering self, update session and encryption key in db instance
             if (currentUser?.id === user.id) {
                 db.setEncryptionKey(dek);
                 setCurrentUser(updatedUser);
+                setEncryptionRevision(prev => prev + 1); // Triggers app-wide re-render to fetch fresh decrypted data
             }
 
             return { success: true };
@@ -618,7 +623,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         users, currentUser, currentWorkspace,
         login, loginByEmail, registerBusiness, logout, enterGuestMode,
         addUser, updateUser, deleteUser, recoverAccount, resetPassword, getDecryptedKey,
-        updateStoreCode, updateBusinessDetails
+        updateStoreCode, updateBusinessDetails,
+        encryptionRevision
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
