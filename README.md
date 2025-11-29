@@ -228,7 +228,7 @@ graph TB
         LocalKey[Memory / Crypto Key]
     end
     
-    API[External Sync API (Optional)]
+    API["External Sync API (Optional)"]
 
     User --> UI
     UI --> Context
