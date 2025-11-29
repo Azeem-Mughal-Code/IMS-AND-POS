@@ -2,7 +2,7 @@
 import React, { createContext, useContext, ReactNode, useState, useCallback, useEffect } from 'react';
 import { User, UserRole, Workspace } from '../../types';
 import { db, getFromDB, setInDB } from '../../utils/db';
-import { generateSalt, deriveKeyFromPassword, generateDataKey, wrapKey, unwrapKey, exportKey, importKey, hashPassword } from '../../utils/crypto';
+import { generateSalt, deriveKeyFromPassword, generateDataKey, wrapKey, unwrapKey, exportKey, importKey, computeKeyCheckValue, validateKeyCheckValue } from '../../utils/crypto';
 import { generateUniqueNanoID, generateUUIDv7 } from '../../utils/idGenerator';
 import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, INITIAL_SUPPLIERS, DEFAULT_CATEGORIES } from '../../constants';
 
@@ -22,6 +22,7 @@ interface AuthContextType {
     recoverAccount: (username: string, recoveryKey: string, newPassword: string) => Promise<{ success: boolean; message?: string }>;
     resetPassword: (email: string, recoveryKey: string, newPass: string) => Promise<{ success: boolean, message?: string }>;
     getDecryptedKey: (password: string) => Promise<string | null>;
+    verifyUserPassword: (password: string) => Promise<boolean>;
     
     // Special Guest Mode
     enterGuestMode: () => Promise<void>;
@@ -149,36 +150,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const user = wsUsers.find(u => u.username.toLowerCase() === username.toLowerCase());
 
             if (!user) {
-                return { success: false, message: 'Invalid username or password.' };
+                return { success: false, message: 'Invalid username.' };
             }
 
-            // 3. Verify Password (SHA-256) - PRIMARY VERIFICATION
-            const inputHash = await hashPassword(pass, user.salt || '');
-            // Check hash match OR fallback to plain comparison for legacy/guest
-            const isMatch = (user.password === inputHash) || (user.password === pass);
-
-            if (!isMatch) {
-                return { success: false, message: 'Invalid username or password.' };
-            }
-
-            // 4. Setup Encryption Keys (Zero-Knowledge)
+            // 3. Cryptographic Challenge
+            // Instead of comparing passwords, we try to unlock the data key.
             try {
                 if (user.encryptedDEK && user.salt) {
                     const kek = await deriveKeyFromPassword(pass, user.salt);
+                    // If this succeeds, the password is correct
                     const dek = await unwrapKey(user.encryptedDEK, kek);
                     db.setEncryptionKey(dek);
                 } else {
-                    // Fallback for Guest Mode / Legacy Users (No Encryption)
+                    // Fallback for Guest Mode (No Encryption)
+                    if (user.id !== 'guest') {
+                        // If it's a real user but missing crypto info, we can't login safely in Zero-Knowledge mode without reset.
+                        console.warn("User record missing crypto data. Recovery required.");
+                        return { success: false, message: 'Account corrupted. Please use Recovery.' };
+                    }
                     db.setEncryptionKey(null);
                 }
             } catch (e) {
-                console.warn("Crypto setup failed despite valid password. Data might be unreadable until repaired.", e);
-                // We allow login because identity is verified via SHA-256. 
-                // The user can use "Emergency Key Repair" inside settings to fix the decryption key.
-                db.setEncryptionKey(null);
+                console.warn("Crypto challenge failed:", e);
+                return { success: false, message: 'Invalid password.' };
             }
 
-            // 5. Set Session
+            // 4. Set Session
             setUsers(wsUsers);
             setCurrentWorkspace(workspace);
             setCurrentUser(user);
@@ -213,29 +210,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 return { success: false, message: 'No account found with this email.' };
             }
 
-            // 2. Verify Password (SHA-256) - PRIMARY VERIFICATION
-            const inputHash = await hashPassword(pass, foundUser.salt || '');
-            const isMatch = (foundUser.password === inputHash) || (foundUser.password === pass);
-
-            if (!isMatch) {
-                return { success: false, message: 'Invalid password.' };
-            }
-
-            // 3. Setup Encryption Keys
+            // 2. Cryptographic Challenge
             try {
                 if (foundUser.encryptedDEK && foundUser.salt) {
                     const kek = await deriveKeyFromPassword(pass, foundUser.salt);
                     const dek = await unwrapKey(foundUser.encryptedDEK, kek);
                     db.setEncryptionKey(dek);
                 } else {
+                    // Fallback for Guest
+                    if (foundUser.id !== 'guest') {
+                         return { success: false, message: 'Account corrupted. Please use Recovery.' };
+                    }
                     db.setEncryptionKey(null);
                 }
             } catch (e) {
-                console.warn("Crypto setup failed despite valid password.", e);
-                db.setEncryptionKey(null);
+                console.warn("Crypto challenge failed:", e);
+                return { success: false, message: 'Invalid password.' };
             }
 
-            // 4. Set Session
+            // 3. Set Session
             setUsers(foundUsersArray);
             setCurrentWorkspace(foundWorkspace);
             setCurrentUser(foundUser);
@@ -272,18 +265,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const dek = await generateDataKey();
             const encryptedDEK = await wrapKey(dek, kek);
             const recoveryKey = await exportKey(dek);
-            // SALT THE PASSWORD HASH
-            const hashedPassword = await hashPassword(pass, salt);
+            
+            // COMPUTE KEY CHECK VALUE (SHA-256 hash of raw DEK)
+            const keyCheckValue = await computeKeyCheckValue(dek);
 
-            // 3. Create Admin User
+            // 3. Create Admin User (NO PASSWORD STORED)
             const newUser: User = {
                 id: `user_${generateUUIDv7()}`,
                 username,
                 email,
-                password: hashedPassword, // Store SALTED hashed password
                 role: UserRole.Admin,
                 salt,
                 encryptedDEK,
+                keyCheckValue, // Store Key Check Value
                 workspaceId
             };
 
@@ -352,14 +346,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const enterGuestMode = useCallback(async () => {
         const guestId = 'guest_workspace';
         const guestWs: Workspace = { id: guestId, name: 'Demo Store', alias: 'DEMO' };
-        // Guest user logic: We don't hash here to simplify, but login verification handles plain comparison fallback.
-        // Or we can hash it for consistency.
-        const guestUser: User = { id: 'guest', username: 'Guest Admin', password: '', role: UserRole.Admin, workspaceId: guestId };
+        
+        // Guest user logic: No password, no encryption needed really, but we can generate ephemeral keys.
+        // We do NOT store a password field.
+        const guestUser: User = { id: 'guest', username: 'Guest Admin', role: UserRole.Admin, workspaceId: guestId };
         
         // 1. Clean up any previous guest data to ensure fresh state and avoid key mismatch
         await cleanupGuestData();
 
-        // 2. Generate new ephemeral key for this guest session
+        // 2. Generate new ephemeral key for this guest session (Encryption still used for data protection simulation)
         const key = await generateDataKey();
         db.setEncryptionKey(key);
 
@@ -417,17 +412,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const salt = generateSalt();
             const kek = await deriveKeyFromPassword(pass, salt);
             const encryptedDEK = await wrapKey(currentDEK, kek);
-            // SALT THE PASSWORD HASH
-            const hashedPassword = await hashPassword(pass, salt);
+            
+            // COMPUTE KEY CHECK VALUE (Consistency for all users)
+            const keyCheckValue = await computeKeyCheckValue(currentDEK);
 
             const newUser: User = {
                 id: `user_${generateUUIDv7()}`,
                 username,
                 email,
-                password: hashedPassword,
                 role,
                 salt,
                 encryptedDEK,
+                keyCheckValue, // Add KCV to user record
                 workspaceId: currentWorkspace.id
             };
 
@@ -468,17 +464,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         let recoveryKey: string | undefined;
 
         if (newPassword) {
-             // SALT THE PASSWORD HASH using the existing salt or create a new one?
-             // Since we derive a new key, let's create a new salt for freshness.
+             // Derive new KEK from new password and RE-WRAP the current data key.
              const currentDEK = db.encryptionKey;
              if (currentDEK) {
                  try {
                      const salt = generateSalt();
                      const kek = await deriveKeyFromPassword(newPassword, salt);
                      const encryptedDEK = await wrapKey(currentDEK, kek);
-                     const inputHash = await hashPassword(newPassword, salt);
                      
-                     updatedUser.password = inputHash;
+                     // If we are changing the current user's password, update these fields
                      updatedUser.salt = salt;
                      updatedUser.encryptedDEK = encryptedDEK;
 
@@ -490,9 +484,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                      return { success: false, message: "Failed to update password." };
                  }
              } else {
-                 // Guest mode or unlocked?
-                 // Just hash unsalted for legacy/guest simplicity if no key is present.
-                 updatedUser.password = await hashPassword(newPassword, ''); 
+                 // Guest mode handling or error state. 
+                 // Guest mode doesn't really support password changes in this architecture unless we generate dummy keys.
+                 // We'll skip crypto update if no key is present (guest).
              }
         }
 
@@ -531,14 +525,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const user = users.find(u => u.username === username);
         if (!user) return { success: false, message: 'User not found.' };
 
+        // VALIDATE RECOVERY KEY CHECK VALUE
+        if (user.keyCheckValue) {
+            const isValid = await validateKeyCheckValue(recoveryKeyBase64, user.keyCheckValue);
+            if (!isValid) {
+                return { success: false, message: 'The Recovery Key provided does not match this account. Please check your backup.' };
+            }
+        }
+
         try {
             const dek = await importKey(recoveryKeyBase64);
             const salt = generateSalt();
             const kek = await deriveKeyFromPassword(newPassword, salt);
             const encryptedDEK = await wrapKey(dek, kek);
-            const hashedPassword = await hashPassword(newPassword, salt);
 
-            const updatedUser = { ...user, password: hashedPassword, salt, encryptedDEK };
+            const updatedUser = { ...user, salt, encryptedDEK };
             const newUsers = users.map(u => u.id === user.id ? updatedUser : u);
             
             setUsers(newUsers);
@@ -553,7 +554,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
             return { success: true };
         } catch (e) {
-            return { success: false, message: 'Invalid key.' };
+            return { success: false, message: 'Invalid key format.' };
         }
     }, [users, currentWorkspace, currentUser]);
 
@@ -587,9 +588,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         const user = foundUser;
+        
+        // 3. VALIDATE RECOVERY KEY CHECK VALUE
+        if (user.keyCheckValue) {
+            const isValid = await validateKeyCheckValue(recoveryKey, user.keyCheckValue);
+            if (!isValid) {
+                return { success: false, message: 'The Recovery Key provided does not match this account. Please check your backup.' };
+            }
+        }
+
         const usersKey = `ims-${foundWorkspace.id}-users`;
         
-        // 3. Crypto Magic: Unwrap/Rewrap using the recovery key (which IS the DEK in base64)
+        // 4. Crypto Magic: Unwrap/Rewrap using the recovery key (which IS the DEK in base64)
         try {
             // Import the raw DEK from recovery key string
             const dek = await importKey(recoveryKey);
@@ -598,9 +608,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const salt = generateSalt();
             const kek = await deriveKeyFromPassword(newPass, salt);
             const encryptedDEK = await wrapKey(dek, kek); // Re-wrap DEK with new KEK (derived from newPass)
-            const hashedPassword = await hashPassword(newPass, salt);
 
-            const updatedUser = { ...user, password: hashedPassword, salt, encryptedDEK };
+            const updatedUser = { ...user, salt, encryptedDEK };
             
             foundUsersArray[foundUserIndex] = updatedUser;
             await setInDB(usersKey, foundUsersArray);
@@ -620,6 +629,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return await exportKey(dek);
         } catch (e) {
             return null;
+        }
+    }, [currentUser]);
+
+    const verifyUserPassword = useCallback(async (password: string): Promise<boolean> => {
+        if (!currentUser) return false;
+        // Guest check
+        if (currentUser.id === 'guest') return true;
+
+        if (!currentUser.salt || !currentUser.encryptedDEK) return false;
+
+        try {
+            const kek = await deriveKeyFromPassword(password, currentUser.salt);
+            // Attempt to unwrap. If password is wrong, this fails.
+            await unwrapKey(currentUser.encryptedDEK, kek);
+            return true;
+        } catch (e) {
+            return false;
         }
     }, [currentUser]);
 
@@ -653,6 +679,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         users, currentUser, currentWorkspace,
         login, loginByEmail, registerBusiness, logout, enterGuestMode,
         addUser, updateUser, deleteUser, recoverAccount, resetPassword, getDecryptedKey,
+        verifyUserPassword,
         updateStoreCode, updateBusinessDetails,
         encryptionRevision
     };

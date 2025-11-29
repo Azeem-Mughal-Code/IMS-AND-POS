@@ -160,3 +160,29 @@ export const hashPassword = async (password: string, salt: string = ''): Promise
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
+
+/**
+ * Computes a check value (SHA-256 hash) of the raw key bytes.
+ * Used to verify if a provided recovery key is correct without encryption/decryption trial.
+ */
+export const computeKeyCheckValue = async (key: CryptoKey): Promise<string> => {
+  const raw = await window.crypto.subtle.exportKey('raw', key);
+  const hashBuffer = await window.crypto.subtle.digest('SHA-256', raw);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
+/**
+ * Validates a base64 encoded key against an expected checksum hash.
+ */
+export const validateKeyCheckValue = async (base64Key: string, expectedHash: string): Promise<boolean> => {
+  try {
+      const raw = Uint8Array.from(atob(base64Key), c => c.charCodeAt(0));
+      const hashBuffer = await window.crypto.subtle.digest('SHA-256', raw);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const computedHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      return computedHash === expectedHash;
+  } catch (e) {
+      return false;
+  }
+};

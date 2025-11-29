@@ -1,3 +1,4 @@
+
 # IMS & POS System
 
 A comprehensive, local-first **Inventory Management and Point of Sale (POS)** system built with React, TypeScript, and Dexie.js. This application is designed to be offline-capable, secure via client-side encryption, and fully responsive.
@@ -25,24 +26,25 @@ When you create a business, the system performs the following cryptographic oper
 3.  Derives a **Key Encryption Key (KEK)** from your password using **PBKDF2**.
 4.  Encrypts (wraps) the DEK using the KEK and stores the wrapped key.
 5.  Exports the raw DEK as a **Recovery Key**.
+6.  **NOTE:** We do NOT store your password or even a hash of it for authentication.
 
-**Important:** You MUST save your **Store Code** and **Recovery Key**. If you forget your password, the Recovery Key is the *only* way to restore access to your encrypted data.
-
-### 2. Login
+### 2. Login (Cryptographic Challenge)
 To log in, you need:
 *   **Store Code** (or Email, if unique)
 *   **Username**
 *   **Password**
 
-The system attempts to decrypt your Data Key using the password provided. If successful, the database unlocks.
+The system attempts to unlock (decrypt) your Data Key using the password provided.
+*   If the key unwraps successfully: The password is correct, and the database is unlocked.
+*   If the operation fails: The password is incorrect.
 
 ### 3. Forgot Password / Account Recovery
 Because we cannot see your password, we cannot send you a "reset link".
 1.  Go to the Login screen.
 2.  Click **"Forgot Password?"**.
 3.  Enter your Email and the **Recovery Key** you saved during registration.
-4.  Enter a new password.
-5.  The system uses the Recovery Key to decrypt the database and re-encrypts the master key with your *new* password.
+4.  The system validates the key against a stored fingerprint (KCV).
+5.  Enter a new password. The system uses the Recovery Key to re-encrypt the master key with your *new* password.
 
 ### 4. Demo Mode
 *   **Purpose:** To explore the application features without setting up an account.
@@ -58,13 +60,15 @@ We utilize the **Web Crypto API** to ensure military-grade security for your sen
 
 ### Encryption Standards
 *   **Algorithm:** AES-GCM (Advanced Encryption Standard - Galois/Counter Mode) with 256-bit keys.
-*   **Key Derivation:** PBKDF2 (Password-Based Key Derivation Function 2) with high iteration counts and random salts to prevent rainbow table attacks.
-*   **Encrypted Fields:**
-    *   **Products:** Cost Price (hides margins from cashiers).
-    *   **Sales:** Profit, COGS, Total, Subtotal, Tax, Discount.
-    *   **Customers:** Phone, Email, Address, Notes (PII protection).
-    *   **Suppliers:** Contact details.
-    *   **Shifts:** Cash counts and discrepancies.
+*   **Key Derivation:** PBKDF2 (Password-Based Key Derivation Function 2) with high iteration counts and random salts.
+*   **Zero Storage:** Passwords are never stored. Authentication is purely a cryptographic challenge.
+
+### Encrypted Fields
+*   **Products:** Cost Price (hides margins from cashiers).
+*   **Sales:** Profit, COGS, Total, Subtotal, Tax, Discount.
+*   **Customers:** Phone, Email, Address, Notes (PII protection).
+*   **Suppliers:** Contact details.
+*   **Shifts:** Cash counts and discrepancies.
 
 ### Durability & Safety
 *   **Data Isolation:** Each workspace has a unique ID (`workspaceId`) and unique encryption keys. Data from one business cannot be read by another, even if they share the same browser.
@@ -205,42 +209,6 @@ classDiagram
     Sale "0..*" -- "0..1" Customer
     Sale "0..*" -- "1" User
 ```
-
----
-
-## 📖 Application Walkthrough
-
-### 1. Dashboard
-The command center for business intelligence.
-*   **KPI Cards:** Total Sales, Total Profit (Configurable), COGS, Low Stock Items.
-*   **Visualizations:** Sales & Profit Chart (Line/Bar).
-*   **Time Filters:** Today, Weekly, Monthly, Yearly, All Time.
-
-### 2. Point of Sale (POS)
-The primary interface for cashiers.
-*   **Shift Control:** Start/End shift with float reconciliation.
-*   **Catalog & Returns:** Searchable product grid and receipt lookup for returns.
-*   **Cart Features:** Customer association, Discounts (Fixed/%), Tax toggles, Held Orders.
-
-### 3. Inventory Management
-*   **Products:** CRUD operations, Variant support, Stock Adjustments, Receiving.
-*   **Categories:** Hierarchical category tree.
-*   **Valuation:** Real-time asset value and potential profit reports.
-
-### 4. Procurement
-*   **Purchase Orders:** Create POs from suppliers, auto-fill low stock items.
-*   **Receiving:** One-click receive to update inventory.
-*   **Suppliers:** Manage vendor contact details.
-
-### 5. Customers
-*   **CRM:** Track purchase history, total spend, and contact info.
-*   **Metrics:** Lifetime Value and Profitability analysis per customer.
-
-### 6. Settings
-*   **General:** Theme (Dark/Light), Timezone, Zoom.
-*   **Business:** Store details for receipts.
-*   **Security:** Key Management, Permissions.
-*   **Data:** Import/Export (CSV), Backup/Restore (JSON), Danger Zone.
 
 ---
 

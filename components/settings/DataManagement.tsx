@@ -10,7 +10,6 @@ import { useSales } from '../context/SalesContext';
 import { useSettings } from '../context/SettingsContext';
 import { useUIState } from '../context/UIStateContext';
 import { db } from '../../utils/db'; // Direct DB access for full backup
-import { hashPassword, deriveKeyFromPassword, unwrapKey } from '../../utils/crypto';
 
 const StatusCheckbox: React.FC<{
     label: string;
@@ -29,7 +28,7 @@ const StatusCheckbox: React.FC<{
 );
 
 export const DataManagement: React.FC = () => {
-    const { currentUser, getDecryptedKey, recoverAccount } = useAuth();
+    const { currentUser, getDecryptedKey, recoverAccount, verifyUserPassword } = useAuth();
     const { products, importProducts, factoryReset: productReset } = useProducts();
     const { sales, clearSales, factoryReset: salesReset, pruneData: pruneSalesData } = useSales();
     const { 
@@ -82,7 +81,7 @@ export const DataManagement: React.FC = () => {
     const allClearStatusesSelected = clearSaleStatuses.length === saleStatuses.length;
 
     const factoryReset = () => {
-        productReset(currentUser);
+        productReset(currentUser!);
         salesReset();
         uiReset();
     };
@@ -184,24 +183,12 @@ export const DataManagement: React.FC = () => {
         }
     };
 
-    const verifyPassword = async (password: string) => {
-        if (!currentUser) return false;
-        
-        // Always use SHA-256 Hashing for verification as requested
-        const inputHash = await hashPassword(password, currentUser.salt || '');
-        
-        // Check hash or fallback to plain comparison (legacy/guest)
-        if (currentUser.password === inputHash || currentUser.password === password) {
-            return true;
-        }
-        
-        return false;
-    };
-
     const handleRestoreBackup = async () => {
         if (!backupFile) { showToast('Please select a backup file.', 'error'); return; }
         
-        if (!(await verifyPassword(restorePassword))) { 
+        // Use Challenge-based verification
+        const isValid = await verifyUserPassword(restorePassword);
+        if (!isValid) { 
             showToast('Incorrect admin password.', 'error'); 
             return; 
         }
@@ -274,12 +261,12 @@ export const DataManagement: React.FC = () => {
         if (!repairKeyInput) { showToast('Key required.', 'error'); return; }
         if (!securityPassword) { showToast('Password required to verify ownership.', 'error'); return; }
         
-        // HASH the input password to compare with the stored HASHED password
-        const inputHash = await hashPassword(securityPassword, currentUser.salt || '');
-        if (inputHash !== currentUser.password) { showToast('Incorrect password.', 'error'); return; }
+        // Verify identity using Challenge
+        const isValid = await verifyUserPassword(securityPassword);
+        if (!isValid) { showToast('Incorrect password.', 'error'); return; }
 
         // Attempt to repair/re-wrap the key using the PLAIN TEXT password
-        const result = await recoverAccount(currentUser.username, repairKeyInput, securityPassword);
+        const result = await recoverAccount(currentUser!.username, repairKeyInput, securityPassword);
         if (result.success) {
             showToast('Security key repaired successfully.', 'success');
             closeSecurityModal();
@@ -323,7 +310,9 @@ export const DataManagement: React.FC = () => {
         setDangerError('');
         if (confirmationText.toUpperCase() !== dangerDetails.confirmWord) { setDangerError('Confirmation text does not match.'); return; }
         
-        if (!(await verifyPassword(confirmationPassword))) {
+        // Use Challenge-based verification
+        const isValid = await verifyUserPassword(confirmationPassword);
+        if (!isValid) {
             setDangerError('Incorrect admin password.'); 
             return;
         }

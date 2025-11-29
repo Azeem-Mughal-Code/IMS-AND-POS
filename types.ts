@@ -20,10 +20,11 @@ export interface User extends BaseEntity {
   id: string;
   username: string;
   email?: string; // NEW: Allow login via email
-  password: string; // NOTE: In a real app, this should be hashed. Used as "something you know" to derive key.
+  // Password is NOT stored. Authentication is done via cryptographic challenge (unwrapping keys).
   role: UserRole;
   salt?: string; // Base64 salt for key derivation
   encryptedDEK?: string; // Base64 Encrypted Data Encryption Key
+  keyCheckValue?: string; // SHA-256 hash of the raw DEK for validation
   workspaceId: string; // Link to the workspace this user belongs to
 }
 

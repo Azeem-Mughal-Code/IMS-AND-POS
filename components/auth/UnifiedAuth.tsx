@@ -260,11 +260,6 @@ export const UnifiedAuth: React.FC = () => {
                                     <p>This feature is for <strong>Administrators</strong> only. Cashiers must contact their manager to reset passwords.</p>
                                 </div>
                                 
-                                <div className="text-sm text-red-600 dark:text-red-400 mb-4 bg-red-50 dark:bg-red-900/20 p-3 rounded border border-red-200 dark:border-red-800">
-                                    <p className="font-bold">⚠️ Warning: Data Integrity</p>
-                                    <p>Using the wrong Recovery Key will result in <strong>garbled or encrypted data</strong> upon login.</p>
-                                </div>
-
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
                                     <input 
