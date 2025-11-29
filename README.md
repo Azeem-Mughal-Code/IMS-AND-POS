@@ -1,4 +1,3 @@
-
 # IMS & POS System
 
 A comprehensive, local-first **Inventory Management and Point of Sale (POS)** system built with React, TypeScript, and Dexie.js. This application is designed to be offline-capable, secure via client-side encryption, and fully responsive.
@@ -207,20 +206,6 @@ Since this is a local-first application relying heavily on IndexedDB and client-
 
 ---
 
-## 🔄 Software Development Life Cycle (SDLC)
-
-This project follows an **Agile and Iterative** development model.
-
-### Methodologies Used
-1.  **Agile:** The project is designed to be flexible and adaptive. Features are decoupled (e.g., Procurement is separate from POS), allowing for independent updates and maintenance.
-2.  **Iterative Model:** The application was built in cycles:
-    *   **Iteration 1 (MVP):** Core POS functionality, basic product management, and local storage.
-    *   **Iteration 2 (Security):** Implementation of Web Crypto API for zero-knowledge encryption of sensitive fields (Cost Price, Customer Data).
-    *   **Iteration 3 (Features):** Addition of Reports, Analysis, and Procurement modules.
-    *   **Iteration 4 (Refinement):** UI/UX polish, Dark Mode, and performance optimizations (Virtualization/Pagination).
-
----
-
 ## 📐 Architecture & Diagrams (UML)
 
 The following diagrams illustrate the structure, behavior, and interactions within the system.
@@ -236,7 +221,7 @@ graph TB
         subgraph "React Application"
             UI[UI Components]
             Context[React Context Providers]
-            Services[Service Logic (Sync, Crypto)]
+            Services["Service Logic (Sync, Crypto)"]
         end
         
         DB[(IndexedDB / Dexie.js)]
@@ -273,27 +258,27 @@ graph TD
 Roles and their authorized interactions.
 
 ```mermaid
-usecaseDiagram
-    actor Admin
-    actor Cashier
+graph LR
+    Admin((Admin))
+    Cashier((Cashier))
 
-    package "POS Module" {
-        usecase "Process Sale" as UC1
-        usecase "Return Item" as UC2
-        usecase "Open/Close Shift" as UC3
-    }
+    subgraph "POS Module"
+        UC1(Process Sale)
+        UC2(Return Item)
+        UC3(Open/Close Shift)
+    end
 
-    package "Inventory Module" {
-        usecase "Manage Products" as UC4
-        usecase "Adjust Stock" as UC5
-        usecase "Create PO" as UC6
-    }
+    subgraph "Inventory Module"
+        UC4(Manage Products)
+        UC5(Adjust Stock)
+        UC6(Create PO)
+    end
 
-    package "Admin Module" {
-        usecase "View Profit Reports" as UC7
-        usecase "Manage Users" as UC8
-        usecase "Configure Settings" as UC9
-    }
+    subgraph "Admin Module"
+        UC7(View Profit Reports)
+        UC8(Manage Users)
+        UC9(Configure Settings)
+    end
 
     Cashier --> UC1
     Cashier --> UC2
@@ -409,19 +394,19 @@ Physical deployment architecture.
 
 ```mermaid
 graph TD
-    node "Client Device" {
-        component "Web Browser" {
-            component "React SPA"
-            database "IndexedDB"
-            component "Service Worker"
-        }
-    }
+    subgraph "Client Device"
+        subgraph "Web Browser"
+            SPA[React SPA]
+            IDB[(IndexedDB)]
+            SW[Service Worker]
+        end
+    end
     
-    node "Static File Server" {
-        artifact "Build Assets (JS/CSS)"
-    }
+    subgraph "Server Side"
+        Static[Static File Server]
+    end
 
-    "Web Browser" <-- HTTPS --> "Static File Server"
+    SPA <-->|HTTPS| Static
 ```
 
 ### 7. Entity-Relationship Diagram (ERD)
@@ -557,6 +542,20 @@ graph TD
     CryptoCheck -->|Fail| Err[Show Error]
     Err --> UserInput
 ```
+
+---
+
+## 🔄 Software Development Life Cycle (SDLC)
+
+This project follows an **Agile and Iterative** development model.
+
+### Methodologies Used
+1.  **Agile:** The project is designed to be flexible and adaptive. Features are decoupled (e.g., Procurement is separate from POS), allowing for independent updates and maintenance.
+2.  **Iterative Model:** The application was built in cycles:
+    *   **Iteration 1 (MVP):** Core POS functionality, basic product management, and local storage.
+    *   **Iteration 2 (Security):** Implementation of Web Crypto API for zero-knowledge encryption of sensitive fields (Cost Price, Customer Data).
+    *   **Iteration 3 (Features):** Addition of Reports, Analysis, and Procurement modules.
+    *   **Iteration 4 (Refinement):** UI/UX polish, Dark Mode, and performance optimizations (Virtualization/Pagination).
 
 ---
 
