@@ -114,7 +114,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     const user = wsUsers.find(u => u.id === session.userId);
 
                     if (user) {
-                        // Attempt to restore key from sessionStorage (survives reload)
+                        // Attempt to restore key from sessionStorage (cleared when tab closes)
                         const storedKey = sessionStorage.getItem('ims-key');
                         if (storedKey) {
                             try {
@@ -127,16 +127,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                                 return;
                             }
                         } else if (user.id === 'guest') {
-                             // Guest mode: We generate a key in enterGuestMode but if reload happens without session key,
-                             // we technically lose access to encrypted data if we don't save it.
-                             // However, usually guest data isn't critical. But for consistency, guest key should be saved too.
-                             // If not found, we might need to reset guest session or just proceed without key (dangerous for encrypted fields)
-                             // Ideally `enterGuestMode` saves the key too.
-                             // If key missing for guest, force logout to reset state cleanly.
+                             // Guest mode handling
                              await logout();
                              return;
                         } else {
-                             // Real user, no key in session storage -> Must login
+                             // Real user, no key in storage -> Must login
                              // Clear session to force login screen
                              await logout();
                              return;
