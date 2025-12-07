@@ -30,11 +30,55 @@
       }
     </script>
     <script>
+      // Helper to show a Tailwind-styled toast
+      function showOfflineToast(message, isUpdate = false) {
+        const toast = document.createElement('div');
+        toast.className = `fixed bottom-5 right-5 ${isUpdate ? 'bg-blue-600' : 'bg-gray-800'} text-white px-6 py-3 rounded-lg shadow-xl z-[9999] transition-all duration-500 opacity-0 translate-y-10 flex items-center gap-3`;
+        toast.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 ${isUpdate ? 'text-white' : 'text-green-400'}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg><span class="font-medium">${message}</span>`;
+        document.body.appendChild(toast);
+        
+        requestAnimationFrame(() => {
+            toast.classList.remove('opacity-0', 'translate-y-10');
+        });
+
+        setTimeout(() => {
+            toast.classList.add('opacity-0', 'translate-y-10');
+            setTimeout(() => document.body.removeChild(toast), 500);
+        }, 5000);
+      }
+
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(registration => console.log('SW registered: ', registration))
-            .catch(registrationError => console.log('SW registration failed: ', registrationError));
+          navigator.serviceWorker.register('/sw.js').then(registration => {
+            console.log('SW registered: ', registration);
+
+            // If we already have a controller, we are already offline capable
+            if (!navigator.serviceWorker.controller) {
+               // This is the first load
+            }
+
+            registration.onupdatefound = () => {
+              const installingWorker = registration.installing;
+              if (installingWorker == null) {
+                return;
+              }
+              installingWorker.onstatechange = () => {
+                if (installingWorker.state === 'installed') {
+                  if (navigator.serviceWorker.controller) {
+                    // New update available
+                    console.log('New content is available; please refresh.');
+                    showOfflineToast('New update available! Refresh to apply.', true);
+                  } else {
+                    // Content is cached for offline use.
+                    console.log('Content is cached for offline use.');
+                    showOfflineToast('Ready for offline use.');
+                  }
+                }
+              };
+            };
+          }).catch(registrationError => {
+            console.log('SW registration failed: ', registrationError);
+          });
         });
       }
     </script>

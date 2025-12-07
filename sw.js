@@ -1,14 +1,28 @@
-const CACHE_NAME = 'ims-pos-v1';
+const CACHE_NAME = 'ims-pos-v2';
 const URLS_TO_CACHE = [
   '/',
   '/index.html',
   '/index.tsx',
   'https://cdn.tailwindcss.com',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
+  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
+  // Importmap Exact Matches
+  'https://aistudiocdn.com/react@^19.2.0',
+  'https://aistudiocdn.com/recharts@^3.4.1',
+  'https://aistudiocdn.com/react-dom@^19.2.0',
+  // Commonly used subpaths resolved from importmap
+  'https://aistudiocdn.com/react-dom@^19.2.0/client', 
+  // Other libraries
+  'https://aistudiocdn.com/@google/genai@^1.29.1',
+  'https://unpkg.com/dexie@3.2.4/dist/dexie.mjs',
+  'https://unpkg.com/dexie-react-hooks@1.1.7/dist/dexie-react-hooks.mjs',
+  // External scripts
+  'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+  'https://cdn.jsdelivr.net/npm/marked/marked.min.js'
 ];
 
 // Install event - cache core assets
 self.addEventListener('install', (event) => {
+  self.skipWaiting(); // Force activation immediately
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       // We attempt to cache core files, but don't fail if one fails (optional)
@@ -66,6 +80,6 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
-    })
+    }).then(() => self.clients.claim())
   );
 });

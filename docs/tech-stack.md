@@ -1,5 +1,7 @@
 # Technology Stack
 
+For a non-technical, deep dive into how these technologies work together "Under the Hood", please read **[Technologies & Services Explained](technologies.md)**.
+
 *   **Frontend:** React 18, TypeScript, Tailwind CSS
 *   **State Management:** React Context API + Custom Hooks
 *   **Database:** Dexie.js (IndexedDB wrapper)

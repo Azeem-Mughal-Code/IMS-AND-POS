@@ -11,6 +11,9 @@ Detailed documentation for this project is organized into the following sections
 ### 🚀 [Features & Walkthrough](docs/features.md)
 Explore the key features including Local-First Architecture, Zero-Knowledge Auth, and a detailed walkthrough of modules like POS, Inventory, Procurement, and Reports.
 
+### 🧠 [Technologies Explained](docs/technologies.md)
+A simplified, deep-dive explanation of the "Under the Hood" technologies (React, Dexie, Web Crypto) and how they function together to create a secure, offline-first experience.
+
 ### 🔐 [Security & Authentication](docs/security.md)
 Learn about the Zero-Knowledge authentication model, Client-Side Encryption (AES-GCM), key derivation (PBKDF2), and how data privacy is maintained.
 
