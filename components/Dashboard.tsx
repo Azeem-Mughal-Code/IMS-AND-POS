@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { Card } from './common/Card';
 import { BellIcon } from './Icons';
@@ -57,6 +57,15 @@ export const Dashboard: React.FC = () => {
   const { formatCurrency, formatDateTime, includeTaxInProfit } = useSettings();
   const [timeRange, setTimeRange] = useState<TimeRange>('weekly');
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isChartReady, setIsChartReady] = useState(false);
+
+  // Ensure chart only renders after mount to prevent width(-1) error
+  useEffect(() => {
+      const timer = setTimeout(() => {
+          setIsChartReady(true);
+      }, 100); // Increased delay slightly to ensure layout paint
+      return () => clearTimeout(timer);
+  }, []);
 
   const unreadCount = useMemo(() => notifications.filter(n => !n.isRead).length, [notifications]);
 
@@ -275,23 +284,23 @@ export const Dashboard: React.FC = () => {
   const renderChart = () => {
       if (timeRange === 'today') {
           return (
-            <BarChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+            <BarChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#4A5568" vertical={false} opacity={0.3} />
                 <XAxis dataKey="name" {...commonAxisProps} />
                 <YAxis tickFormatter={yAxisTickFormatter} {...commonAxisProps} />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(100,116,139,0.1)' }} />
+                <Tooltip content={<CustomTooltip />} cursor={false} />
                 <Legend wrapperStyle={{ paddingTop: '10px', color: '#E2E8F0' }} />
-                <Bar dataKey="Sales" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Sales" maxBarSize={50} />
-                <Bar dataKey="Profit" fill="#10b981" radius={[4, 4, 0, 0]} name="Profit" maxBarSize={50} />
+                <Bar dataKey="Sales" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Sales" maxBarSize={50} isAnimationActive={false} activeBar={false} />
+                <Bar dataKey="Profit" fill="#10b981" radius={[4, 4, 0, 0]} name="Profit" maxBarSize={50} isAnimationActive={false} activeBar={false} />
             </BarChart>
           );
       }
       return (
-        <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+        <LineChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#4A5568" vertical={false} opacity={0.3} />
             <XAxis dataKey="name" {...commonAxisProps} />
             <YAxis tickFormatter={yAxisTickFormatter} {...commonAxisProps} />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<CustomTooltip />} cursor={false} />
             <Legend wrapperStyle={{ paddingTop: '10px', color: '#E2E8F0' }} />
             <Line 
                 type="monotone" 
@@ -299,8 +308,9 @@ export const Dashboard: React.FC = () => {
                 stroke="#3b82f6" 
                 strokeWidth={3} 
                 dot={{ r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff' }} 
-                activeDot={{ r: 6, strokeWidth: 0 }} 
+                activeDot={false} 
                 name="Sales" 
+                isAnimationActive={false}
             />
             <Line 
                 type="monotone" 
@@ -308,8 +318,9 @@ export const Dashboard: React.FC = () => {
                 stroke="#10b981" 
                 strokeWidth={3} 
                 dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }} 
-                activeDot={{ r: 6, strokeWidth: 0 }} 
+                activeDot={false} 
                 name="Profit" 
+                isAnimationActive={false}
             />
         </LineChart>
       );
@@ -353,10 +364,14 @@ export const Dashboard: React.FC = () => {
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
         <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-4">Sales & Profit Overview ({chartTitle})</h2>
-        <div className="w-full min-w-0 relative [&_*:focus]:outline-none" style={{ height: 300 }}>
-          <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
-            {renderChart()}
-          </ResponsiveContainer>
+        <div className="w-full h-[300px]" style={{ width: '100%', height: 300 }}>
+          {isChartReady ? (
+            <ResponsiveContainer width="99%" height="100%" minWidth={0}>
+              {renderChart()}
+            </ResponsiveContainer>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-gray-400">Loading Chart...</div>
+          )}
         </div>
       </div>
        <Modal isOpen={isNotificationsOpen} onClose={() => setIsNotificationsOpen(false)} title="Notifications" size="md">

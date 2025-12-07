@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -121,6 +120,17 @@
         .dark .printable-area * {
             color: black !important;
         }
+      }
+      
+      /* Global styles to remove focus outlines from charts and tap highlights */
+      .recharts-wrapper {
+        outline: none !important;
+      }
+      .recharts-surface {
+        outline: none !important;
+      }
+      * {
+        -webkit-tap-highlight-color: transparent;
       }
     </style>
   <script type="importmap">
