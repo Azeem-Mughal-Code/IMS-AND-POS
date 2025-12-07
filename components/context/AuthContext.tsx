@@ -84,6 +84,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [users, setUsers] = useState<User[]>([]); // Local state of users for the current workspace
     const [encryptionRevision, setEncryptionRevision] = useState(0);
 
+    const logout = useCallback(async () => {
+        const isGuest = currentWorkspace?.id === 'guest_workspace' || currentUser?.id === 'guest';
+
+        // Clear Guest Data immediately before state reset
+        if (isGuest) {
+            await cleanupGuestData();
+        }
+
+        db.setEncryptionKey(null);
+        setCurrentUser(null);
+        setCurrentWorkspace(null);
+        setUsers([]);
+        sessionStorage.removeItem('ims-key');
+        await db.keyval.delete('ims-session');
+    }, [currentWorkspace, currentUser]);
+
     // Load session on mount
     useEffect(() => {
         const restoreSession = async () => {
@@ -98,11 +114,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     const user = wsUsers.find(u => u.id === session.userId);
 
                     if (user) {
-                        // IMPORTANT: For this local-first architecture without password memory, 
-                        // we cannot auto-unlock the DB encryption key on refresh. 
-                        // The user must re-login to provide the password for key derivation.
-                        // Therefore, we invalidate the session if we can't ensure the key is present.
-                        await db.keyval.delete('ims-session');
+                        // Attempt to restore key from sessionStorage (survives reload)
+                        const storedKey = sessionStorage.getItem('ims-key');
+                        if (storedKey) {
+                            try {
+                                const key = await importKey(storedKey);
+                                db.setEncryptionKey(key);
+                            } catch (e) {
+                                console.error("Key restore failed", e);
+                                // Key invalid, force logout
+                                await logout();
+                                return;
+                            }
+                        } else if (user.id === 'guest') {
+                             // Guest mode: We generate a key in enterGuestMode but if reload happens without session key,
+                             // we technically lose access to encrypted data if we don't save it.
+                             // However, usually guest data isn't critical. But for consistency, guest key should be saved too.
+                             // If not found, we might need to reset guest session or just proceed without key (dangerous for encrypted fields)
+                             // Ideally `enterGuestMode` saves the key too.
+                             // If key missing for guest, force logout to reset state cleanly.
+                             await logout();
+                             return;
+                        } else {
+                             // Real user, no key in session storage -> Must login
+                             // Clear session to force login screen
+                             await logout();
+                             return;
+                        }
+
+                        setUsers(wsUsers);
+                        setCurrentWorkspace(ws);
+                        setCurrentUser(user);
                     }
                 }
             } catch (e) {
@@ -110,7 +152,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
         };
         restoreSession();
-    }, []);
+    }, [logout]);
+
+    const persistSession = async (user: User, workspace: Workspace, key: CryptoKey | null) => {
+        try {
+            await setInDB('ims-session', { workspaceId: workspace.id, userId: user.id });
+            if (key) {
+                const exported = await exportKey(key);
+                sessionStorage.setItem('ims-key', exported);
+            } else {
+                sessionStorage.removeItem('ims-key');
+            }
+        } catch (e) {
+            console.error("Failed to persist session", e);
+        }
+    };
 
     // Helper: Check if email is already used in any workspace
     const isEmailTakenGlobally = async (email: string, excludeUserId?: string): Promise<boolean> => {
@@ -155,11 +211,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
             // 3. Cryptographic Challenge
             // Instead of comparing passwords, we try to unlock the data key.
+            let dek: CryptoKey | null = null;
             try {
                 if (user.encryptedDEK && user.salt) {
                     const kek = await deriveKeyFromPassword(pass, user.salt);
                     // If this succeeds, the password is correct
-                    const dek = await unwrapKey(user.encryptedDEK, kek);
+                    dek = await unwrapKey(user.encryptedDEK, kek);
                     db.setEncryptionKey(dek);
                 } else {
                     // Fallback for Guest Mode (No Encryption)
@@ -174,6 +231,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 console.warn("Crypto challenge failed:", e);
                 return { success: false, message: 'Invalid password.' };
             }
+
+            await persistSession(user, workspace, dek);
 
             // 4. Set Session
             setUsers(wsUsers);
@@ -211,10 +270,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
 
             // 2. Cryptographic Challenge
+            let dek: CryptoKey | null = null;
             try {
                 if (foundUser.encryptedDEK && foundUser.salt) {
                     const kek = await deriveKeyFromPassword(pass, foundUser.salt);
-                    const dek = await unwrapKey(foundUser.encryptedDEK, kek);
+                    dek = await unwrapKey(foundUser.encryptedDEK, kek);
                     db.setEncryptionKey(dek);
                 } else {
                     // Fallback for Guest
@@ -227,6 +287,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 console.warn("Crypto challenge failed:", e);
                 return { success: false, message: 'Invalid password.' };
             }
+
+            await persistSession(foundUser, foundWorkspace, dek);
 
             // 3. Set Session
             setUsers(foundUsersArray);
@@ -334,7 +396,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }));
             await db.suppliers.bulkAdd(suppliers);
 
-            db.setEncryptionKey(null); // Lock DB after seeding
+            // Persist session immediately to allow auto-login behavior consistency
+            await persistSession(newUser, newWorkspace, dek);
+
+            db.setEncryptionKey(null); // Lock DB after seeding (login will unlock it properly)
 
             return { success: true, recoveryKey, storeCode: alias };
         } catch (e) {
@@ -358,6 +423,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const key = await generateDataKey();
         db.setEncryptionKey(key);
 
+        await persistSession(guestUser, guestWs, key);
+
         // 3. Initialize guest user in memory/keyval (keyval is not encrypted by middleware, so safe)
         const existingUsers = [guestUser];
         await setInDB(`ims-${guestId}-users`, existingUsers);
@@ -370,21 +437,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUsers(existingUsers);
         setCurrentUser(guestUser);
     }, []);
-
-    const logout = useCallback(async () => {
-        const isGuest = currentWorkspace?.id === 'guest_workspace' || currentUser?.id === 'guest';
-
-        // Clear Guest Data immediately before state reset
-        if (isGuest) {
-            await cleanupGuestData();
-        }
-
-        db.setEncryptionKey(null);
-        setCurrentUser(null);
-        setCurrentWorkspace(null);
-        setUsers([]);
-        await db.keyval.delete('ims-session');
-    }, [currentWorkspace, currentUser]);
 
     // User Management (Scoped to current workspace)
     const addUser = useCallback(async (username: string, pass: string, role: UserRole, email?: string): Promise<{ success: boolean, message?: string }> => {

@@ -10,7 +10,7 @@ import { Settings } from '../Settings';
 import { Analysis } from '../Analysis';
 import { Customers } from '../Customers';
 import { Users } from '../Users';
-import { DashboardIcon, POSIcon, InventoryIcon, ProcurementIcon, ReportsIcon, SettingsIcon, AnalysisIcon, UserIcon, ChevronDownIcon, LogoutIcon, UserGroupIcon, DangerIcon, UsersIcon, DownloadIcon } from '../Icons';
+import { DashboardIcon, POSIcon, InventoryIcon, ProcurementIcon, ReportsIcon, SettingsIcon, AnalysisIcon, UserIcon, ChevronDownIcon, LogoutIcon, UserGroupIcon, DangerIcon, UsersIcon, DownloadIcon, CloudCheckIcon } from '../Icons';
 import { ToastContainer } from '../common/ToastContainer';
 import { Modal } from '../common/Modal';
 import { useAuth } from '../context/AuthContext';
@@ -27,6 +27,13 @@ const OfflineIndicator = () => (
     </div>
 );
 
+const OfflineReadyIndicator = () => (
+    <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-green-100 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 text-xs font-bold" title="App ready for offline use">
+        <CloudCheckIcon className="h-4 w-4" />
+        <span className="hidden lg:inline">Offline Ready</span>
+    </div>
+);
+
 export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitchWorkspace }) => {
     const { currentUser } = useAuth();
     const { workspaceId, workspaceName, cashierPermissions } = useSettings();
@@ -37,6 +44,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     const [isAuthWarningModalOpen, setIsAuthWarningModalOpen] = useState(false);
     const [isShiftWarningOpen, setIsShiftWarningOpen] = useState(false);
     const [isOnline, setIsOnline] = useState(navigator.onLine);
+    const [isOfflineReady, setIsOfflineReady] = useState(false);
     // Initialize deferredPrompt from global window object if available
     const [deferredPrompt, setDeferredPrompt] = useState<any>((window as any).deferredPrompt || null);
 
@@ -49,6 +57,12 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
         const handleOffline = () => setIsOnline(false);
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
+        
+        // Check if service worker is controlling the page (means app is cached and ready)
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            setIsOfflineReady(true);
+        }
+
         return () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
@@ -182,9 +196,12 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     return (
         <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
         <aside className="w-64 bg-white dark:bg-gray-800 shadow-lg flex-col hidden md:flex">
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center gap-2">
                 <h1 className="text-xl font-bold text-blue-600 dark:text-blue-400 truncate flex-grow">{workspaceName}</h1>
-                {!isOnline && <OfflineIndicator />}
+                <div className="flex items-center gap-1">
+                    {isOnline && isOfflineReady && <OfflineReadyIndicator />}
+                    {!isOnline && <OfflineIndicator />}
+                </div>
             </div>
             <nav className="flex-grow p-4 space-y-2 overflow-y-auto">
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewDashboard) && <NavItem view="dashboard" icon={<DashboardIcon />} label="Dashboard" />}
@@ -244,8 +261,11 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
         <main ref={mainContentRef} className="flex-1 overflow-y-auto pb-16 md:pb-0">
             {/* Mobile Header */}
             <div className="md:hidden flex items-center justify-between p-4 bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-20">
-                <h1 className="text-lg font-bold text-blue-600 dark:text-blue-400 truncate">{workspaceName}</h1>
-                {!isOnline && <OfflineIndicator />}
+                <h1 className="text-lg font-bold text-blue-600 dark:text-blue-400 truncate flex-grow">{workspaceName}</h1>
+                <div className="flex items-center gap-1">
+                    {isOnline && isOfflineReady && <OfflineReadyIndicator />}
+                    {!isOnline && <OfflineIndicator />}
+                </div>
             </div>
             {renderView()}
         </main>
