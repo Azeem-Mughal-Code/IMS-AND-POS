@@ -43,11 +43,37 @@
         window.dispatchEvent(new Event('deferred-prompt-ready'));
       });
 
-      // Helper to show a Tailwind-styled toast
-      function showOfflineToast(message, isUpdate = false) {
+      // Helper to show a Tailwind-styled toast with dynamic icons/colors
+      function showOfflineToast(message, type = 'success') {
+        let bgClass, iconHtml;
+
+        switch (type) {
+            case 'loading':
+                bgClass = 'bg-blue-600';
+                // Spinner Icon
+                iconHtml = `<svg class="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+                break;
+            case 'error':
+                bgClass = 'bg-red-600';
+                // Exclamation/X Icon
+                iconHtml = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`;
+                break;
+            case 'update':
+                bgClass = 'bg-blue-600';
+                // Download/Refresh Icon
+                iconHtml = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>`;
+                break;
+            case 'success':
+            default:
+                bgClass = 'bg-gray-800';
+                // Check Icon
+                iconHtml = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>`;
+                break;
+        }
+
         const toast = document.createElement('div');
-        toast.className = `fixed bottom-5 right-5 ${isUpdate ? 'bg-blue-600' : 'bg-gray-800'} text-white px-6 py-3 rounded-lg shadow-xl z-[9999] transition-all duration-500 opacity-0 translate-y-10 flex items-center gap-3`;
-        toast.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 ${isUpdate ? 'text-white' : 'text-green-400'}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg><span class="font-medium">${message}</span>`;
+        toast.className = `fixed bottom-5 right-5 ${bgClass} text-white px-6 py-3 rounded-lg shadow-xl z-[9999] transition-all duration-500 opacity-0 translate-y-10 flex items-center gap-3`;
+        toast.innerHTML = `${iconHtml}<span class="font-medium">${message}</span>`;
         document.body.appendChild(toast);
         
         requestAnimationFrame(() => {
@@ -65,8 +91,8 @@
           navigator.serviceWorker.register('./sw.js').then(registration => {
             console.log('SW registered: ', registration);
 
-            if (registration.active) {
-                // SW is active
+            if (registration.installing) {
+                showOfflineToast('Downloading assets...', 'loading');
             }
 
             registration.onupdatefound = () => {
@@ -74,22 +100,30 @@
               if (installingWorker == null) {
                 return;
               }
+              
+              // Only show downloading toast if not already in installed state (prevents duplicate toasts on fast loads)
+              if(installingWorker.state !== 'installed') {
+                  showOfflineToast('Downloading updates...', 'loading');
+              }
+
               installingWorker.onstatechange = () => {
                 if (installingWorker.state === 'installed') {
                   if (navigator.serviceWorker.controller) {
                     // New update available
                     console.log('New content is available; please refresh.');
-                    showOfflineToast('New update available! Refresh to apply.', true);
+                    showOfflineToast('New update available! Refresh to apply.', 'update');
                   } else {
                     // Content is cached for offline use.
                     console.log('Content is cached for offline use.');
-                    showOfflineToast('Ready for offline use.');
+                    showOfflineToast('Ready for offline use.', 'success');
                   }
                 }
               };
             };
           }).catch(registrationError => {
-            console.error('SW registration failed: ', registrationError);
+            // Changed from console.error to console.log as requested
+            console.log('SW registration failed: ', registrationError);
+            showOfflineToast('Service Worker registration failed.', 'error');
           });
         });
       }
