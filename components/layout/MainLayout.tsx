@@ -37,7 +37,8 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     const [isAuthWarningModalOpen, setIsAuthWarningModalOpen] = useState(false);
     const [isShiftWarningOpen, setIsShiftWarningOpen] = useState(false);
     const [isOnline, setIsOnline] = useState(navigator.onLine);
-    const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+    // Initialize deferredPrompt from global window object if available
+    const [deferredPrompt, setDeferredPrompt] = useState<any>((window as any).deferredPrompt || null);
 
     const profileDropdownRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLElement>(null);
@@ -55,17 +56,21 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     }, []);
 
     useEffect(() => {
-        const handleBeforeInstallPrompt = (e: Event) => {
-            // Prevent the mini-infobar from appearing on mobile
-            e.preventDefault();
-            // Stash the event so it can be triggered later.
-            setDeferredPrompt(e);
+        // Listen for the custom event dispatched by index.html when beforeinstallprompt fires
+        const handleDeferredPromptReady = () => {
+            console.log("React: deferred-prompt-ready event received");
+            setDeferredPrompt((window as any).deferredPrompt);
         };
 
-        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        window.addEventListener('deferred-prompt-ready', handleDeferredPromptReady);
+
+        // Also check immediately in case it fired before we mounted
+        if ((window as any).deferredPrompt) {
+            setDeferredPrompt((window as any).deferredPrompt);
+        }
 
         return () => {
-            window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+            window.removeEventListener('deferred-prompt-ready', handleDeferredPromptReady);
         };
     }, []);
 
@@ -112,6 +117,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
         // We've used the prompt, and can't use it again, discard it
         if (outcome === 'accepted') {
             setDeferredPrompt(null);
+            (window as any).deferredPrompt = null;
         }
     };
 
@@ -190,9 +196,9 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewReports) && <NavItem view="reports" icon={<ReportsIcon />} label="Reports" />}
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewAnalysis) && <NavItem view="analysis" icon={<AnalysisIcon />} label="Analysis" />}
             {deferredPrompt && (
-                <button onClick={handleInstallClick} className="flex items-center space-x-3 p-3 rounded-lg w-full text-left transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700">
+                <button onClick={handleInstallClick} className="flex items-center space-x-3 p-3 rounded-lg w-full text-left transition-colors text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50">
                     <DownloadIcon />
-                    <span className="font-medium">Install App</span>
+                    <span className="font-bold">Install App</span>
                 </button>
             )}
             </nav>
@@ -255,9 +261,9 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewAnalysis) && <BottomNavItem view="analysis" icon={<AnalysisIcon />} label="Analysis" />}
             <BottomNavItem view="settings" icon={<SettingsIcon />} label="Set" />
             {deferredPrompt && (
-                <button onClick={handleInstallClick} className="flex flex-col items-center justify-center min-w-[4rem] flex-shrink-0 pt-2 pb-1 transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+                <button onClick={handleInstallClick} className="flex flex-col items-center justify-center min-w-[4rem] flex-shrink-0 pt-2 pb-1 transition-colors text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30">
                     <DownloadIcon className="h-6 w-6" />
-                    <span className="text-xs font-medium whitespace-nowrap">Install</span>
+                    <span className="text-xs font-bold whitespace-nowrap">Install</span>
                 </button>
             )}
         </nav>

@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -30,6 +31,19 @@
       }
     </script>
     <script>
+      // Global variable to hold the prompt event
+      window.deferredPrompt = null;
+
+      window.addEventListener('beforeinstallprompt', (e) => {
+        // Prevent the mini-infobar from appearing on mobile
+        e.preventDefault();
+        // Stash the event so it can be triggered later.
+        window.deferredPrompt = e;
+        console.log("beforeinstallprompt fired and captured.");
+        // Dispatch a custom event to notify React components
+        window.dispatchEvent(new Event('deferred-prompt-ready'));
+      });
+
       // Helper to show a Tailwind-styled toast
       function showOfflineToast(message, isUpdate = false) {
         const toast = document.createElement('div');
@@ -52,9 +66,8 @@
           navigator.serviceWorker.register('/sw.js').then(registration => {
             console.log('SW registered: ', registration);
 
-            // If we already have a controller, we are already offline capable
-            if (!navigator.serviceWorker.controller) {
-               // This is the first load
+            if (registration.active) {
+                // SW is active
             }
 
             registration.onupdatefound = () => {
