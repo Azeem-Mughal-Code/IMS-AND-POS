@@ -186,7 +186,17 @@ export const SuppliersView: React.FC = () => {
         if (suppliers.some((s: Supplier) => s.name.toLowerCase() === data.name.toLowerCase() && s.id !== editingSupplier.id)) {
             return { success: false, message: 'A supplier with this name already exists.' };
         }
-        await db.suppliers.update(editingSupplier.id, { ...data, sync_status: 'pending', updated_at: new Date().toISOString() });
+        
+        // Use db.put instead of db.update to ensure the full object is passed to encryption middleware.
+        // The middleware only intercepts 'put' and 'add' for encryption. 'update' bypasses it.
+        const updatedSupplier: Supplier = {
+            ...editingSupplier,
+            ...data,
+            sync_status: 'pending',
+            updated_at: new Date().toISOString()
+        };
+        await db.suppliers.put(updatedSupplier);
+        
         showToast('Supplier updated successfully.', 'success');
         setIsModalOpen(false);
         setEditingSupplier(null);

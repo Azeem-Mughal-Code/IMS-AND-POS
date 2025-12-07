@@ -18,7 +18,7 @@ const ENCRYPTED_FIELDS: Record<string, string[]> = {
 function isValidIDBKey(key: any): boolean {
     if (key === undefined || key === null) return false;
     const type = typeof key;
-    if (type === 'number') return !isNaN(key);
+    if (type === 'number') return Number.isFinite(key); // Must be finite number, not NaN or Infinity
     if (type === 'string') return true;
     if (key instanceof Date) return !isNaN(key.getTime());
     if (key instanceof ArrayBuffer) return true;
@@ -93,12 +93,19 @@ export class IMSDatabase extends Dexie {
                     const downlevelTable = downlevelDatabase.table(tableName);
                     const fieldsToEncrypt = ENCRYPTED_FIELDS[tableName];
 
-                    if (!fieldsToEncrypt) return downlevelTable;
-
                     return {
                         ...downlevelTable,
                         mutate: async (req: any) => {
-                            if (!this.encryptionKey || (req.type !== 'add' && req.type !== 'put')) {
+                            // Guard: Filter invalid keys from delete operations to prevent DataErrors
+                            if (req.type === 'delete' && Array.isArray(req.keys)) {
+                                const validKeys = req.keys.filter((k: any) => isValidIDBKey(k));
+                                if (validKeys.length !== req.keys.length) {
+                                    if (validKeys.length === 0) return { failures: [], lastResult: undefined, results: [] };
+                                    return downlevelTable.mutate({ ...req, keys: validKeys });
+                                }
+                            }
+
+                            if (!fieldsToEncrypt || !this.encryptionKey || (req.type !== 'add' && req.type !== 'put')) {
                                 return downlevelTable.mutate(req);
                             }
                             
@@ -142,7 +149,7 @@ export class IMSDatabase extends Dexie {
 
                             try {
                                 const res = await downlevelTable.get(req);
-                                if (!this.encryptionKey || !res) return res;
+                                if (!fieldsToEncrypt || !this.encryptionKey || !res) return res;
                                 return this.decryptItem(tableName, res);
                             } catch (error) {
                                 // Swallow invalid key errors that might slip through or other IDB read errors
@@ -154,7 +161,7 @@ export class IMSDatabase extends Dexie {
                             try {
                                 const res = await downlevelTable.query(req);
                                 const result = await res.result;
-                                if (!this.encryptionKey || !Array.isArray(result)) return res;
+                                if (!fieldsToEncrypt || !this.encryptionKey || !Array.isArray(result)) return res;
                                 
                                 const decryptedResult = await Promise.all(result.map(item => this.decryptItem(tableName, item)));
                                 

@@ -688,8 +688,8 @@ export const ProductsView: React.FC = () => {
     const allOnPageSelected = paginatedProducts.length > 0 && paginatedProducts.every(p => selectedProductIds.has(p.id));
     const someOnPageSelected = paginatedProducts.some(p => selectedProductIds.has(p.id)) && !allOnPageSelected;
 
-    const handleBulkDelete = () => {
-        const result = bulkDeleteProducts(Array.from(selectedProductIds));
+    const handleBulkDelete = async () => {
+        const result = await bulkDeleteProducts(Array.from(selectedProductIds));
         showToast(result.message, result.success && result.message.includes('skipped') ? 'error' : 'success');
         setIsBulkDeleteModalOpen(false);
         setSelectedProductIds(new Set());

@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Product, CartItem, PaymentType, Sale, Payment, ProductVariant, Customer, HeldOrder } from '../types';
-import { SearchIcon, PlusIcon, MinusIcon, TrashIcon, PhotoIcon, ChevronDownIcon, TagIcon, UserCircleIcon, CheckCircleIcon, ClipboardIcon, ArrowUturnLeftIcon, BanknotesIcon } from './Icons';
+import { SearchIcon, PlusIcon, MinusIcon, TrashIcon, PhotoIcon, ChevronDownIcon, TagIcon, UserCircleIcon, CheckCircleIcon, ClipboardIcon, ArrowUturnLeftIcon, BanknotesIcon, DangerIcon } from './Icons';
 import { Modal } from './common/Modal';
 import { PrintableReceipt } from './common/PrintableReceipt';
 import { Pagination } from './common/Pagination';
@@ -453,6 +454,61 @@ const RetrieveOrderModal: React.FC<{ onClose: () => void; onLoad: (order: HeldOr
     );
 };
 
+const MissingProductModal: React.FC<{ 
+    missingItems: CartItem[]; 
+    onRefundOnly: () => void; 
+    onRestoreAndRefund: () => void;
+    onCancel: () => void;
+}> = ({ missingItems, onRefundOnly, onRestoreAndRefund, onCancel }) => {
+    const { formatCurrency } = useSettings();
+    return (
+        <div className="space-y-6">
+            <div className="flex items-start gap-3 bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg border border-orange-200 dark:border-orange-800">
+                <DangerIcon className="w-6 h-6 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+                <div>
+                    <h3 className="font-bold text-orange-800 dark:text-orange-200">Missing Inventory Items</h3>
+                    <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
+                        The following items in this return are no longer in your inventory database.
+                        How would you like to handle the stock?
+                    </p>
+                </div>
+            </div>
+
+            <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 max-h-48 overflow-y-auto">
+                <ul className="space-y-2">
+                    {missingItems.map((item, idx) => (
+                        <li key={idx} className="flex justify-between text-sm">
+                            <span className="text-gray-900 dark:text-gray-100 font-medium">{item.name}</span>
+                            <span className="text-gray-500 dark:text-gray-400 font-mono">{item.sku}</span>
+                        </li>
+                    ))}
+                </ul>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row justify-end pt-4 border-t dark:border-gray-700">
+                <button 
+                    onClick={onCancel}
+                    className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md"
+                >
+                    Cancel
+                </button>
+                <button 
+                    onClick={onRefundOnly}
+                    className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-medium rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
+                >
+                    Refund Money Only
+                </button>
+                <button 
+                    onClick={onRestoreAndRefund}
+                    className="px-4 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700"
+                >
+                    Restore Items & Refund
+                </button>
+            </div>
+        </div>
+    );
+};
+
 interface POSProps {
 }
 
@@ -566,7 +622,7 @@ const PaymentModalContent: React.FC<{
             </div>
             
             <div className="flex justify-end gap-2 pt-4">
-                <button type="button" onClick={onClose} disabled={isProcessing} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 disabled:opacity-50">Cancel</button>
+                <button type="button" onClick={onClose} disabled={isProcessing} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-50 disabled:opacity-50">Cancel</button>
                 <button type="button" onClick={handleComplete} disabled={!canComplete || isProcessing} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
                     {isProcessing ? 'Processing...' : `Complete ${isRefund ? 'Refund' : 'Sale'}`}
                 </button>
@@ -577,7 +633,7 @@ const PaymentModalContent: React.FC<{
 
 
 export const POS: React.FC<POSProps> = () => {
-  const { products, categories } = useProducts();
+  const { products, categories, restoreDeletedProducts } = useProducts();
   const { sales, processSale, currentShift, openShift, closeShift, holdOrder, heldOrders, retrieveOrder, deleteHeldOrder } = useSales();
   const { currentUser } = useAuth();
   const { workspaceId, isTaxEnabled, taxRate, isDiscountEnabled, discountRate, discountThreshold, isIntegerCurrency, cashierPermissions, formatCurrency, formatDateTime, paginationConfig } = useSettings();
@@ -617,6 +673,11 @@ export const POS: React.FC<POSProps> = () => {
   const [isStartShiftModalOpen, setIsStartShiftModalOpen] = useState(false);
 
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+
+  // Missing Item Modal State
+  const [isMissingItemsModalOpen, setIsMissingItemsModalOpen] = useState(false);
+  const [missingReturnItems, setMissingReturnItems] = useState<CartItem[]>([]);
+  const [pendingSalePayments, setPendingSalePayments] = useState<Payment[] | null>(null);
 
   const canProcessReturns = currentUser.role === UserRole.Admin || cashierPermissions.canProcessReturns;
   
@@ -961,7 +1022,8 @@ export const POS: React.FC<POSProps> = () => {
     };
   }, [cart, isTaxEnabled, taxRate, isDiscountEnabled, discountThreshold, discountRate, isIntegerCurrency, cartDiscount, cartTax]);
 
-  const handleCompleteSale = async (payments: Payment[]) => {
+  // Actual transaction processing logic, extracted for re-use
+  const executeTransaction = async (payments: Payment[]) => {
     const safeNumber = (n: any) => {
         const num = Number(n);
         return isNaN(num) ? 0 : num;
@@ -977,8 +1039,12 @@ export const POS: React.FC<POSProps> = () => {
     const safeSubtotal = safeNumber(totals.subtotal);
     const safeDiscount = safeNumber(totals.discount);
     
-    // Profit = (Total - Tax) - COGS
-    // Revenue = Total - Tax
+    // Profit = (Total - Tax) - COGS if includeTaxInProfit is false
+    // Profit = Total - COGS if includeTaxInProfit is true (Handled in SalesContext, passing raw here)
+    
+    // Note: Profit calc logic is duplicated here for passing to `processSale`, but `processSale` recalculates it.
+    // We pass placeholder profit or calculate it consistent with SalesContext.
+    // Let's calculate purely for type satisfaction, SalesContext recalculates based on settings.
     const revenue = safeTotal - safeTax;
     const profit = revenue - cogs;
 
@@ -989,7 +1055,7 @@ export const POS: React.FC<POSProps> = () => {
       tax: safeTax,
       total: safeTotal,
       cogs: cogs,
-      profit: safeNumber(profit), // Ensure profit is a number and exclude tax from it
+      profit: safeNumber(profit), 
       payments,
       type: safeTotal >= 0 ? 'Sale' : 'Return',
       salespersonId: currentUser.id,
@@ -1016,6 +1082,52 @@ export const POS: React.FC<POSProps> = () => {
         showToast(errorMessage, 'error');
         setIsPaymentModalOpen(false);
     }
+  };
+
+  const handleCompleteSale = async (payments: Payment[]) => {
+    // If it's a return (total < 0), check for missing items in inventory
+    if (totals.total < 0) {
+        const missing = cart.filter(item => {
+            // Only check negative quantity items (returns)
+            if (item.quantity >= 0) return false;
+            // Check if product exists in current inventory context
+            return !products.find(p => p.id === item.productId);
+        });
+
+        if (missing.length > 0) {
+            setMissingReturnItems(missing);
+            setPendingSalePayments(payments);
+            setIsMissingItemsModalOpen(true);
+            setIsPaymentModalOpen(false); // Close payment modal to show warning
+            return;
+        }
+    }
+
+    await executeTransaction(payments);
+  };
+
+  const handleRefundOnly = async () => {
+      setIsMissingItemsModalOpen(false);
+      if (pendingSalePayments) {
+          await executeTransaction(pendingSalePayments);
+          setPendingSalePayments(null);
+          showToast("Return processed. Inventory was not updated for missing items.", 'success');
+      }
+  };
+
+  const handleRestoreAndRefund = async () => {
+      setIsMissingItemsModalOpen(false);
+      if (pendingSalePayments && missingReturnItems.length > 0) {
+          const result = await restoreDeletedProducts(missingReturnItems);
+          if (result.success) {
+              await executeTransaction(pendingSalePayments);
+              showToast(`Return processed. ${result.count} products restored to inventory.`, 'success');
+          } else {
+              showToast("Failed to restore products.", 'error');
+          }
+          setPendingSalePayments(null);
+          setMissingReturnItems([]);
+      }
   };
   
   const startNewSale = () => {
@@ -1619,6 +1731,18 @@ export const POS: React.FC<POSProps> = () => {
 
       <Modal isOpen={isRetrieveOrderModalOpen} onClose={() => setIsRetrieveOrderModalOpen(false)} title="Retrieve Held Order" size="md">
           <RetrieveOrderModal onClose={() => setIsRetrieveOrderModalOpen(false)} onLoad={handleLoadHeldOrder} onDelete={deleteHeldOrder} heldOrders={heldOrders} />
+      </Modal>
+
+      <Modal isOpen={isMissingItemsModalOpen} onClose={() => setIsMissingItemsModalOpen(false)} title="Missing Inventory Items" size="md">
+          <MissingProductModal 
+              missingItems={missingReturnItems} 
+              onRefundOnly={handleRefundOnly} 
+              onRestoreAndRefund={handleRestoreAndRefund} 
+              onCancel={() => {
+                  setIsMissingItemsModalOpen(false);
+                  setPendingSalePayments(null);
+              }}
+          />
       </Modal>
 
       {variantSelectionProduct && (

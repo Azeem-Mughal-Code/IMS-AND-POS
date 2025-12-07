@@ -1,7 +1,6 @@
-
 import React, { createContext, useContext, ReactNode, useCallback, useEffect } from 'react';
 import { useLiveQuery } from "dexie-react-hooks";
-import { Product, InventoryAdjustment, PriceHistoryEntry, User, Category, ProductVariant, NotificationType } from '../../types';
+import { Product, InventoryAdjustment, PriceHistoryEntry, User, Category, ProductVariant, NotificationType, CartItem } from '../../types';
 import { INITIAL_PRODUCTS, DEFAULT_CATEGORIES, INITIAL_SUPPLIERS } from '../../constants';
 import { useAuth } from './AuthContext';
 import { useUIState } from './UIStateContext';
@@ -24,8 +23,9 @@ interface ProductContextType {
     removeStockHistoryByReason: (reasonPrefix: string) => void;
     importProducts: (newProducts: Omit<Product, 'id' | 'workspaceId'>[]) => Promise<{ success: boolean; message: string }>;
     factoryReset: (adminUser: User) => void;
-    bulkDeleteProducts: (productIds: string[]) => { success: boolean; message: string };
+    bulkDeleteProducts: (productIds: string[]) => Promise<{ success: boolean; message: string }>;
     bulkUpdateProductCategories: (productIds: string[], categoryIds: string[], action: 'add' | 'replace' | 'remove') => { success: boolean; message: string };
+    restoreDeletedProducts: (items: CartItem[]) => Promise<{ success: boolean; count: number }>;
 }
 
 const ProductContext = createContext<ProductContextType | null>(null);
@@ -201,20 +201,16 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
     };
 
     const deleteProduct = async (productId: string, force: boolean = false): Promise<{ success: boolean; message?: string }> => {
-        if (!productId) return { success: false, message: 'Invalid Product ID.' };
+        if (!productId || typeof productId !== 'string') return { success: false, message: 'Invalid Product ID.' };
 
         const product = await db.products.get(productId);
         if (!product) return { success: false, message: 'Product not found.' };
         if (product.workspaceId !== workspaceId) return { success: false, message: 'Access denied.' };
         
         if (!force) {
-            // Rule: Cannot delete if variants exist
             if (product.variants && product.variants.length > 0) {
                 return { success: false, message: 'Cannot delete product because it has variants. Delete variants first or use Force Delete.' };
             }
-
-            // Rule: Prevent deletion if product has stock
-            // Note: If it has variants, we already returned above. If not, we check base stock.
             const totalStock = calculateTotalStock(product);
             if (totalStock > 0) {
                 return { success: false, message: 'Cannot delete product with active stock.' };
@@ -224,37 +220,76 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
         try {
             // Use transaction to ensure atomic deletion (notifications, adjustments, and product)
             await (db as any).transaction('rw', db.products, db.inventoryAdjustments, db.notifications, db.deletedRecords, async () => {
-                // 1. Delete Stock History (Adjustments table has productId for both base items and variants)
-                await db.inventoryAdjustments.where('productId').equals(productId).delete();
+                const deletions: { id: string; table: string; deletedAt: string; sync_status: string }[] = [];
+
+                // 1. Delete Stock History safely
+                const adjustmentsToDelete = await db.inventoryAdjustments.where('productId').equals(productId).toArray();
+                if (adjustmentsToDelete.length > 0) {
+                    const adjKeys = adjustmentsToDelete.map(adj => adj.id);
+                    await db.inventoryAdjustments.bulkDelete(adjKeys);
+                    
+                    // Record adjustment deletions.
+                    const adjDeletions = adjKeys
+                        .filter(k => k != null)
+                        .map(id => ({
+                            id: String(id), 
+                            table: 'inventoryAdjustments', 
+                            deletedAt: new Date().toISOString(), 
+                            sync_status: 'pending' as const
+                        }));
+                    deletions.push(...adjDeletions);
+                }
                 
-                // 2. Delete Notifications
+                // 2. Delete Notifications safely
                 const relatedIds = [productId];
                 if (product.variants && product.variants.length > 0) {
-                    relatedIds.push(...product.variants.map(v => v.id));
+                    relatedIds.push(...product.variants.map(v => v.id).filter(id => !!id));
                 }
-                await db.notifications.where('relatedId').anyOf(relatedIds).delete();
+                
+                const notifKeys = await db.notifications.where('relatedId').anyOf(relatedIds).primaryKeys();
+                if (notifKeys.length > 0) {
+                    await Promise.all(notifKeys.map((key: string) => db.notifications.delete(key)));
+                    
+                    const notifDeletions = notifKeys
+                        .filter(k => k != null)
+                        .map(id => ({
+                            id: String(id), 
+                            table: 'notifications', 
+                            deletedAt: new Date().toISOString(), 
+                            sync_status: 'pending' as const
+                        }));
+                    deletions.push(...notifDeletions);
+                }
                 
                 // 3. Delete Product
                 await db.products.delete(productId);
-
-                // 4. Record Deletion for Sync
-                await db.deletedRecords.add({
-                    id: productId,
+                
+                deletions.push({
+                    id: String(productId),
                     table: 'products',
                     deletedAt: new Date().toISOString(),
                     sync_status: 'pending'
                 });
+
+                // 4. Record Deletion for Sync
+                if (deletions.length > 0) {
+                    // Filter invalid entries just in case
+                    const validDeletions = deletions.filter(d => d.id && d.id !== 'undefined');
+                    if (validDeletions.length > 0) {
+                        await db.deletedRecords.bulkPut(validDeletions);
+                    }
+                }
             });
             
             return { success: true, message: 'Product and related records deleted successfully.' };
         } catch (error) {
             console.error("Failed to delete product:", error);
-            return { success: false, message: 'An error occurred while deleting the product.' };
+            return { success: false, message: `Failed to delete product: ${(error as any).message || error}` };
         }
     };
 
     const deleteVariant = async (productId: string, variantId: string, force: boolean = false): Promise<{ success: boolean; message: string }> => {
-        if (!productId || !variantId) return { success: false, message: 'Invalid ID.' };
+        if (!productId || !variantId || typeof productId !== 'string' || typeof variantId !== 'string') return { success: false, message: 'Invalid ID.' };
 
         const product = await db.products.get(productId);
         if (!product) return { success: false, message: 'Product not found.' };
@@ -271,12 +306,40 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
         }
         
         try {
-            await (db as any).transaction('rw', db.products, db.inventoryAdjustments, db.notifications, async () => {
-                // 1. Delete Stock History for this variant
-                await db.inventoryAdjustments.where('variantId').equals(variantId).delete();
+            await (db as any).transaction('rw', db.products, db.inventoryAdjustments, db.notifications, db.deletedRecords, async () => {
+                const deletions: { id: string; table: string; deletedAt: string; sync_status: string }[] = [];
 
-                // 2. Delete Notifications for this variant
-                await db.notifications.where('relatedId').equals(variantId).delete();
+                // 1. Delete Stock History for this variant safely
+                const adjustmentsToDelete = await db.inventoryAdjustments.where('variantId').equals(variantId).toArray();
+                if (adjustmentsToDelete.length > 0) {
+                    const adjKeys = adjustmentsToDelete.map(adj => adj.id);
+                    await db.inventoryAdjustments.bulkDelete(adjKeys);
+
+                    const adjDeletions = adjKeys
+                        .filter(k => k != null)
+                        .map(id => ({
+                            id: String(id), 
+                            table: 'inventoryAdjustments', 
+                            deletedAt: new Date().toISOString(), 
+                            sync_status: 'pending' as const
+                        }));
+                    deletions.push(...adjDeletions);
+                }
+
+                // 2. Delete Notifications for this variant safely
+                const notifKeys = await db.notifications.where('relatedId').equals(variantId).primaryKeys();
+                if (notifKeys.length > 0) {
+                    await Promise.all(notifKeys.map((key: string) => db.notifications.delete(key)));
+                    const notifDeletions = notifKeys
+                        .filter(k => k != null)
+                        .map(id => ({
+                            id: String(id), 
+                            table: 'notifications', 
+                            deletedAt: new Date().toISOString(), 
+                            sync_status: 'pending' as const
+                        }));
+                    deletions.push(...notifDeletions);
+                }
 
                 // 3. Remove variant from product
                 const newVariants = product.variants.filter(v => v.id !== variantId);
@@ -290,6 +353,13 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
                 updatedProduct.stock = updatedProduct.variants.reduce((sum, v) => sum + v.stock, 0);
                 
                 await db.products.put(updatedProduct);
+
+                if (deletions.length > 0) {
+                    const validDeletions = deletions.filter(d => d.id && d.id !== 'undefined');
+                    if (validDeletions.length > 0) {
+                        await db.deletedRecords.bulkPut(validDeletions);
+                    }
+                }
             });
 
             return { success: true, message: 'Variant and related records deleted successfully.' };
@@ -299,34 +369,62 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
         }
     };
 
-    const bulkDeleteProducts = (productIds: string[]) => {
+    const bulkDeleteProducts = async (productIds: string[]): Promise<{ success: boolean; message: string }> => {
         const productsToDelete = products.filter(p => productIds.includes(p.id));
         const deletable = productsToDelete.filter(p => p.stock <= 0);
         const failedCount = productsToDelete.length - deletable.length;
         
         if (deletable.length > 0) {
-            const ids = deletable.map(p => p.id);
-            const allRelatedIds = [...ids];
-            deletable.forEach(p => {
-                if (p.variants) {
-                    allRelatedIds.push(...p.variants.map(v => v.id));
-                }
-            });
+            try {
+                const ids = deletable.map(p => p.id);
+                const allRelatedIds = [...ids];
+                deletable.forEach(p => {
+                    if (p.variants) {
+                        allRelatedIds.push(...p.variants.map(v => v.id));
+                    }
+                });
 
-            (db as any).transaction('rw', db.products, db.inventoryAdjustments, db.notifications, db.deletedRecords, async () => {
-                await db.inventoryAdjustments.where('productId').anyOf(ids).delete();
-                await db.notifications.where('relatedId').anyOf(allRelatedIds).delete();
-                await db.products.bulkDelete(ids);
-                
-                // Record deletions
-                const records = ids.map(id => ({
-                    id,
-                    table: 'products',
-                    deletedAt: new Date().toISOString(),
-                    sync_status: 'pending'
-                }));
-                await db.deletedRecords.bulkAdd(records);
-            });
+                await (db as any).transaction('rw', db.products, db.inventoryAdjustments, db.notifications, db.deletedRecords, async () => {
+                    const deletions: { id: string; table: string; deletedAt: string; sync_status: string }[] = [];
+
+                    // Safe deletion for bulk operations too
+                    const adjKeys = await db.inventoryAdjustments.where('productId').anyOf(ids).primaryKeys();
+                    if (adjKeys.length > 0) {
+                        await Promise.all(adjKeys.map((k: string) => db.inventoryAdjustments.delete(k)));
+                        deletions.push(...adjKeys.filter(k => k != null).map(id => ({
+                            id: String(id), table: 'inventoryAdjustments', deletedAt: new Date().toISOString(), sync_status: 'pending'
+                        })));
+                    }
+
+                    const notifKeys = await db.notifications.where('relatedId').anyOf(allRelatedIds).primaryKeys();
+                    if (notifKeys.length > 0) {
+                        await Promise.all(notifKeys.map((k: string) => db.notifications.delete(k)));
+                        deletions.push(...notifKeys.filter(k => k != null).map(id => ({
+                            id: String(id), table: 'notifications', deletedAt: new Date().toISOString(), sync_status: 'pending'
+                        })));
+                    }
+
+                    await Promise.all(ids.map((id: string) => db.products.delete(id)));
+                    
+                    // Record deletions
+                    deletions.push(...ids.map(id => ({
+                        id: String(id),
+                        table: 'products',
+                        deletedAt: new Date().toISOString(),
+                        sync_status: 'pending'
+                    })));
+                    
+                    if (deletions.length > 0) {
+                        const validDeletions = deletions.filter(d => d.id && d.id !== 'undefined');
+                        if (validDeletions.length > 0) {
+                            await db.deletedRecords.bulkPut(validDeletions);
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error("Bulk delete failed:", error);
+                return { success: false, message: "Bulk deletion failed due to database error." };
+            }
         }
         
         return { 
@@ -402,8 +500,8 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
         db.categories.delete(categoryId);
         
         // Record deletion
-        db.deletedRecords.add({
-            id: categoryId,
+        db.deletedRecords.put({
+            id: String(categoryId),
             table: 'categories',
             deletedAt: new Date().toISOString(),
             sync_status: 'pending'
@@ -471,15 +569,16 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
         const ids = adjustments.map(a => a.id);
         
         await (db as any).transaction('rw', db.inventoryAdjustments, db.deletedRecords, async () => {
-            await db.inventoryAdjustments.bulkDelete(ids);
             if (ids.length > 0) {
+                await Promise.all(ids.map((id: string) => db.inventoryAdjustments.delete(id)));
                 const records = ids.map(id => ({
-                    id,
+                    id: String(id),
                     table: 'inventoryAdjustments',
                     deletedAt: new Date().toISOString(),
                     sync_status: 'pending'
                 }));
-                await db.deletedRecords.bulkAdd(records);
+                // Use bulkPut to avoid errors on duplicates
+                await db.deletedRecords.bulkPut(records);
             }
         });
     }, [workspaceId]);
@@ -526,6 +625,81 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
         return { success: true, message: message.trim() };
     };
 
+    const restoreDeletedProducts = async (items: CartItem[]): Promise<{ success: boolean; count: number }> => {
+        const restoredIds = new Set<string>();
+
+        // We wrap everything in a transaction to ensure category creation + cleanups + inserts happen atomically
+        await (db as any).transaction('rw', db.products, db.categories, db.inventoryAdjustments, db.notifications, db.deletedRecords, async () => {
+            
+            // 1. Find or Create 'Restored' Category
+            let restoredCategory = await db.categories.where('workspaceId').equals(workspaceId).filter(c => c.name === 'Restored').first();
+            if (!restoredCategory) {
+                 const catId = `cat_${generateUUIDv7()}`;
+                 restoredCategory = {
+                     id: catId,
+                     name: 'Restored',
+                     parentId: null,
+                     workspaceId,
+                     sync_status: 'pending'
+                 };
+                 await db.categories.add(restoredCategory);
+            }
+
+            for (const item of items) {
+                // Prevent attempting to restore duplicates within the same transaction batch
+                if (restoredIds.has(item.productId)) continue;
+                
+                // Check if product actually exists (perhaps restored by another process or query lag)
+                const exists = await db.products.get(item.productId);
+                if (exists) continue;
+
+                // --- DEFENSIVE CLEANUP START ---
+                // Ensure no orphan history records exist for this ID (fixes issue where restored products show old history)
+                // 1. Clean Inventory Adjustments
+                const adjKeys = await db.inventoryAdjustments.where('productId').equals(item.productId).primaryKeys();
+                if (adjKeys.length > 0) {
+                    await Promise.all(adjKeys.map((k: string) => db.inventoryAdjustments.delete(k)));
+                }
+                
+                // 2. Clean Notifications
+                const notifKeys = await db.notifications.where('relatedId').equals(item.productId).primaryKeys();
+                if (notifKeys.length > 0) {
+                    await Promise.all(notifKeys.map((k: string) => db.notifications.delete(k)));
+                }
+
+                // 3. Clean Deleted Records (Tombstones) if any
+                // If we are restoring, we should remove the pending deletion record if it exists to avoid sync conflict
+                const delKeys = await db.deletedRecords.where('id').equals(item.productId).primaryKeys();
+                if (delKeys.length > 0) {
+                    await Promise.all(delKeys.map((k: string) => db.deletedRecords.delete(k)));
+                }
+                // --- DEFENSIVE CLEANUP END ---
+
+                const newProduct: Product = {
+                    id: item.productId, // Reuse original ID to try and maintain link if possible
+                    sku: item.sku,
+                    name: item.name, // Use the name from the receipt (e.g. "Shirt (Red)")
+                    retailPrice: item.retailPrice,
+                    costPrice: item.costPrice,
+                    stock: 0, // Stock will be incremented by the return transaction immediately after this
+                    lowStockThreshold: 0,
+                    categoryIds: [restoredCategory.id],
+                    variationTypes: [], // Restore as simple product to ensure existence
+                    variants: [],
+                    priceHistory: [], // Explicitly empty price history
+                    workspaceId,
+                    sync_status: 'pending',
+                    updated_at: new Date().toISOString()
+                };
+                
+                await db.products.add(newProduct);
+                restoredIds.add(item.productId);
+            }
+        });
+        
+        return { success: true, count: restoredIds.size };
+    };
+
     const factoryReset = async (adminUser: User) => {
         // Clear all tables for this workspace
         await (db as any).transaction('rw', db.products, db.categories, db.inventoryAdjustments, db.notifications, db.deletedRecords, db.suppliers, async () => {
@@ -559,7 +733,8 @@ export const ProductProvider: React.FC<{ children: ReactNode; workspaceId: strin
         importProducts,
         factoryReset,
         bulkDeleteProducts,
-        bulkUpdateProductCategories
+        bulkUpdateProductCategories,
+        restoreDeletedProducts
     };
 
     return (

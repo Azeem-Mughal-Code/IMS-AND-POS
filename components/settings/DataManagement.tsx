@@ -86,9 +86,9 @@ export const DataManagement: React.FC = () => {
         uiReset();
     };
 
-    const pruneData = (target: PruneTarget, options: { days: number; statuses?: (Sale['status'])[] }): { success: boolean; message: string } => {
+    const pruneData = async (target: PruneTarget, options: { days: number; statuses?: (Sale['status'])[] }): Promise<{ success: boolean; message: string }> => {
         if(target === 'sales' || target === 'purchaseOrders') {
-            return pruneSalesData(target, options);
+            return await pruneSalesData(target, options);
         } else {
             return pruneUiData(target, options);
         }
@@ -327,7 +327,8 @@ export const DataManagement: React.FC = () => {
             setIsDangerZoneOpen(false); // Close main menu on full reset
         }
         if (dangerAction === 'pruneData') {
-            const result = pruneData(pruneTarget, { days: pruneDays, statuses: pruneTarget === 'sales' ? pruneStatuses : undefined });
+            // Await the async pruneData result
+            const result = await pruneData(pruneTarget, { days: pruneDays, statuses: pruneTarget === 'sales' ? pruneStatuses : undefined });
             showToast(result.message, result.success ? 'success' : 'error');
         }
 

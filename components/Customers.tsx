@@ -399,9 +399,9 @@ export const Customers: React.FC = () => {
         return metrics;
     }, [customers, sales]);
 
-    const handleFormSubmit = (data: Omit<Customer, 'id' | 'dateAdded'>) => {
+    const handleFormSubmit = async (data: Omit<Customer, 'id' | 'dateAdded'>) => {
         if (editingCustomer) {
-            const result = updateCustomer(editingCustomer.id, data);
+            const result = await updateCustomer(editingCustomer.id, data);
             if (result.success) {
                 showToast('Customer updated successfully.', 'success');
                 setIsModalOpen(false);
@@ -409,7 +409,7 @@ export const Customers: React.FC = () => {
                 showToast(result.message || 'Failed to update.', 'error');
             }
         } else {
-            const result = addCustomer(data);
+            const result = await addCustomer(data);
             if (result.success) {
                 showToast('Customer added successfully.', 'success');
                 setIsModalOpen(false);

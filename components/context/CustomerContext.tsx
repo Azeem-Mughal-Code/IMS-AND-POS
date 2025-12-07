@@ -8,8 +8,8 @@ import { db } from '../../utils/db';
 
 interface CustomerContextType {
     customers: Customer[];
-    addCustomer: (customerData: Omit<Customer, 'id' | 'dateAdded' | 'workspaceId'>) => { success: boolean; message?: string; customer?: Customer };
-    updateCustomer: (id: string, customerData: Partial<Omit<Customer, 'id' | 'dateAdded' | 'workspaceId'>>) => { success: boolean; message?: string };
+    addCustomer: (customerData: Omit<Customer, 'id' | 'dateAdded' | 'workspaceId'>) => Promise<{ success: boolean; message?: string; customer?: Customer }>;
+    updateCustomer: (id: string, customerData: Partial<Omit<Customer, 'id' | 'dateAdded' | 'workspaceId'>>) => Promise<{ success: boolean; message?: string }>;
     deleteCustomer: (id: string) => { success: boolean; message?: string };
     getCustomerById: (id: string) => Customer | undefined;
     factoryReset: () => void;
@@ -40,7 +40,7 @@ export const CustomerProvider: React.FC<{ children: ReactNode; workspaceId: stri
         seed();
     }, [workspaceId]);
 
-    const addCustomer = useCallback((customerData: Omit<Customer, 'id' | 'dateAdded' | 'workspaceId'>) => {
+    const addCustomer = useCallback(async (customerData: Omit<Customer, 'id' | 'dateAdded' | 'workspaceId'>) => {
         if (customers.some(c => c.name.toLowerCase() === customerData.name.toLowerCase() && c.phone === customerData.phone)) {
             return { success: false, message: 'A customer with this name and phone number already exists.' };
         }
@@ -56,13 +56,37 @@ export const CustomerProvider: React.FC<{ children: ReactNode; workspaceId: stri
             sync_status: 'pending',
             workspaceId
         };
-        db.customers.add(newCustomer);
-        return { success: true, customer: newCustomer };
+        
+        try {
+            await db.customers.add(newCustomer);
+            return { success: true, customer: newCustomer };
+        } catch (error) {
+            console.error("Add Customer Failed:", error);
+            return { success: false, message: "Failed to add customer." };
+        }
     }, [customers, workspaceId]);
 
-    const updateCustomer = useCallback((id: string, customerData: Partial<Omit<Customer, 'id' | 'dateAdded' | 'workspaceId'>>) => {
-        db.customers.update(id, { ...customerData, sync_status: 'pending', updated_at: new Date().toISOString() });
-        return { success: true };
+    const updateCustomer = useCallback(async (id: string, customerData: Partial<Omit<Customer, 'id' | 'dateAdded' | 'workspaceId'>>) => {
+        if (!id) return { success: false, message: "Invalid ID" };
+        
+        try {
+            const existing = await db.customers.get(id);
+            if (!existing) return { success: false, message: "Customer not found" };
+
+            const updatedCustomer: Customer = {
+                ...existing,
+                ...customerData,
+                sync_status: 'pending',
+                updated_at: new Date().toISOString()
+            };
+            
+            // Use put instead of update to ensure encryption middleware (which hooks into put/add) works correctly
+            await db.customers.put(updatedCustomer);
+            return { success: true };
+        } catch (error) {
+            console.error("Update Customer Failed:", error);
+            return { success: false, message: "Failed to update customer in database." };
+        }
     }, []);
 
     const deleteCustomer = useCallback((id: string) => {

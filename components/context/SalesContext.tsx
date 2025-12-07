@@ -17,7 +17,7 @@ interface SalesContextType {
     processSale: (saleData: Omit<Sale, 'id' | 'date' | 'workspaceId'>) => Promise<Sale>;
     deleteSale: (saleId: string) => Promise<{ success: boolean; message?: string }>;
     clearSales: (options?: { statuses?: (Sale['status'])[] }) => void;
-    pruneData: (target: 'sales' | 'purchaseOrders', options: { days: number; statuses?: Sale['status'][] }) => { success: boolean; message: string };
+    pruneData: (target: 'sales' | 'purchaseOrders', options: { days: number; statuses?: Sale['status'][] }) => Promise<{ success: boolean; message: string }>;
     addPurchaseOrder: (poData: Omit<PurchaseOrder, 'id' | 'workspaceId'>) => PurchaseOrder;
     receivePOItems: (poId: string, items: { productId: string; variantId?: string; quantity: number }[]) => void;
     deletePurchaseOrder: (poId: string) => Promise<{ success: boolean; message?: string }>;
@@ -59,7 +59,7 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
 
     const heldOrders = useLiveQuery(() => db.heldOrders.where('workspaceId').equals(workspaceId).toArray(), [workspaceId]) || [];
     
-    const { products, adjustStock, removeStockHistoryByReason } = useProducts();
+    const { products, adjustStock } = useProducts();
     const { addNotification, notifications } = useUIState();
 
     // Check for overdue Purchase Orders
@@ -91,6 +91,19 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
     }, [purchaseOrders, addNotification, notifications]);
 
     const currentShift = useMemo(() => shifts.find(s => s.status === 'Open') || null, [shifts]);
+
+    // Helper to find adjustment IDs related to sales
+    const findRelatedAdjustmentIds = async (workspaceId: string, salePublicIds: string[]) => {
+        // Fetch all adjustments for workspace (filtered by workspaceId index)
+        const allAdjustments = await db.inventoryAdjustments.where('workspaceId').equals(workspaceId).toArray();
+        
+        // Filter in memory for reasons matching the sales
+        // This is necessary because 'reason' is not indexed and might be encrypted
+        return allAdjustments.filter(adj => {
+            if (!adj.reason) return false;
+            return salePublicIds.some(pubId => adj.reason.includes(`Sale #${pubId}`));
+        }).map(adj => adj.id);
+    };
 
     const processSale = async (saleData: Omit<Sale, 'id' | 'date' | 'workspaceId'>): Promise<Sale> => {
         let finalType: 'Sale' | 'Return' = saleData.total >= 0 ? 'Sale' : 'Return';
@@ -131,16 +144,25 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
 
         // Process each item for stock adjustment
         for (const item of newSale.items) {
-            const product = products.find(p => p.id === item.productId);
+            let product = products.find(p => p.id === item.productId);
+            // Fallback: If not found in live list (e.g. recently restored), fetch from DB
+            if (!product) {
+                product = await db.products.get(item.productId);
+            }
+
             if (product) {
-                const currentStock = item.variantId 
-                    ? product.variants.find(v => v.id === item.variantId)?.stock 
+                // If variant ID exists, check if it is still valid on the product.
+                // If product was restored as Simple (no variants), variantExists will be false.
+                const variantExists = item.variantId && product.variants?.some(v => v.id === item.variantId);
+                const targetVariantId = variantExists ? item.variantId : undefined;
+                
+                const currentStock = targetVariantId 
+                    ? product.variants.find(v => v.id === targetVariantId)?.stock 
                     : product.stock;
                 
                 if (typeof currentStock !== 'undefined') {
-                    // await adjustStock? adjustStock is synchronous wrapper in ProductContext but async internally.
-                    // Fire and forget is usually okay for stock if it's atomic in DB, but here we invoke it.
-                    adjustStock(item.productId, currentStock - item.quantity, `Sale #${newSale.publicId}`, item.variantId);
+                    // Adjust Stock. Note: If it's a return, item.quantity is negative, so current - (-qty) = current + qty.
+                    adjustStock(item.productId, currentStock - item.quantity, `Sale #${newSale.publicId}`, targetVariantId);
                 }
             }
         }
@@ -228,42 +250,63 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
     };
 
     const deleteSale = async (saleId: string) => {
-        if (!saleId) return { success: false, message: "Invalid Sale ID." };
+        if (!saleId || typeof saleId !== 'string') return { success: false, message: "Invalid Sale ID." };
         
         const saleToDelete = await db.sales.get(saleId);
         if(!saleToDelete) return { success: false, message: "Sale not found." };
         if (saleToDelete.workspaceId !== workspaceId) return { success: false, message: "Access denied." };
         
+        // Find associated returns
         const associatedReturns = await db.sales.where('originalSaleId').equals(saleId).toArray();
-        const associatedReturnIds = associatedReturns.map(r => r.id);
         
-        await (db as any).transaction('rw', db.sales, db.deletedRecords, db.inventoryAdjustments, async () => {
-            await db.sales.delete(saleId);
-            if (associatedReturnIds.length > 0) {
-                await db.sales.bulkDelete(associatedReturnIds);
-            }
+        // Collect all IDs and Public IDs involved
+        const allSales = [saleToDelete, ...associatedReturns];
+        const allSaleIds = allSales.map(s => s.id);
+        const allPublicIds = allSales.map(s => s.publicId || s.id);
 
-            const deletions = [saleId, ...associatedReturnIds].map(id => ({
-                id, 
-                table: 'sales', 
-                deletedAt: new Date().toISOString(), 
-                sync_status: 'pending'
-            }));
-            await db.deletedRecords.bulkAdd(deletions);
-        });
-
-        const refId = saleToDelete.publicId || saleToDelete.id;
-        removeStockHistoryByReason(`Sale #${refId}`); 
-
-        associatedReturns.forEach(ret => {
-            const retRefId = ret.publicId || ret.id;
-            removeStockHistoryByReason(`Sale #${retRefId}`);
-        });
+        // Find related Inventory Adjustments (Stock History)
+        const adjIdsToDelete = await findRelatedAdjustmentIds(workspaceId, allPublicIds);
         
-        return { success: true, message: `Sale ${refId} and associated records deleted.` };
+        try {
+            await (db as any).transaction('rw', db.sales, db.deletedRecords, db.inventoryAdjustments, async () => {
+                const deletions: { id: string; table: string; deletedAt: string; sync_status: string }[] = [];
+
+                // 1. Delete Sales
+                await Promise.all(allSaleIds.map((id: string) => db.sales.delete(id)));
+                deletions.push(...allSaleIds.map(id => ({
+                    id: String(id), 
+                    table: 'sales', 
+                    deletedAt: new Date().toISOString(), 
+                    sync_status: 'pending'
+                })));
+                
+                // 2. Delete Stock History (Adjustments)
+                if (adjIdsToDelete.length > 0) {
+                    await Promise.all(adjIdsToDelete.map(id => db.inventoryAdjustments.delete(id)));
+                    // Record adjustment deletions too so they are removed from server
+                    const adjDeletions = adjIdsToDelete.map(id => ({
+                        id: String(id),
+                        table: 'inventoryAdjustments',
+                        deletedAt: new Date().toISOString(),
+                        sync_status: 'pending'
+                    }));
+                    deletions.push(...adjDeletions);
+                }
+
+                if (deletions.length > 0) {
+                    // Use bulkPut to ensure no duplicate key errors if tombstone already exists
+                    await db.deletedRecords.bulkPut(deletions);
+                }
+            });
+
+            return { success: true, message: `Sale ${saleToDelete.publicId || saleToDelete.id} and associated records deleted.` };
+        } catch (error) {
+            console.error("Delete sale failed:", error);
+            return { success: false, message: "Failed to delete sale." };
+        }
     };
 
-    const clearSales = (options?: { statuses?: (Sale['status'])[] }) => {
+    const clearSales = async (options?: { statuses?: (Sale['status'])[] }) => {
         let salesToClear = sales;
         
         if (!options?.statuses) {
@@ -276,32 +319,40 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
         if (salesToClear.length === 0) return;
 
         const salesToClearIds = salesToClear.map(s => s.id);
-
-        salesToClear.forEach(s => {
-            const refId = s.publicId || s.id;
-            removeStockHistoryByReason(`Sale #${refId}`);
-        });
-
-        const returnsToClear = sales.filter(s => s.type === 'Return' && s.originalSaleId && salesToClearIds.includes(s.originalSaleId));
-        const returnsToClearIds = returnsToClear.map(s => s.id);
-
-        returnsToClear.forEach(s => {
-            const refId = s.publicId || s.id;
-            removeStockHistoryByReason(`Sale #${refId}`);
-        });
-
-        const allIds = [...salesToClearIds, ...returnsToClearIds];
+        const relatedReturns = sales.filter(s => s.type === 'Return' && s.originalSaleId && salesToClearIds.includes(s.originalSaleId));
         
-        (db as any).transaction('rw', db.sales, db.deletedRecords, async () => {
-            await db.sales.bulkDelete(allIds);
+        const allSales = [...salesToClear, ...relatedReturns];
+        const allIds = allSales.map(s => s.id);
+        const allPublicIds = allSales.map(s => s.publicId || s.id);
+
+        const adjIdsToDelete = await findRelatedAdjustmentIds(workspaceId, allPublicIds);
+        
+        await (db as any).transaction('rw', db.sales, db.deletedRecords, db.inventoryAdjustments, async () => {
+            await Promise.all(allIds.map(id => db.sales.delete(id)));
             
-            const deletions = allIds.map(id => ({
-                id, 
+            if (adjIdsToDelete.length > 0) {
+                await Promise.all(adjIdsToDelete.map(id => db.inventoryAdjustments.delete(id)));
+            }
+
+            const deletions: { id: string; table: string; deletedAt: string; sync_status: string }[] = [];
+            
+            deletions.push(...allIds.map(id => ({
+                id: String(id), 
                 table: 'sales', 
                 deletedAt: new Date().toISOString(), 
                 sync_status: 'pending'
-            }));
-            await db.deletedRecords.bulkAdd(deletions);
+            })));
+
+            if (adjIdsToDelete.length > 0) {
+                deletions.push(...adjIdsToDelete.map(id => ({
+                    id: String(id), 
+                    table: 'inventoryAdjustments', 
+                    deletedAt: new Date().toISOString(), 
+                    sync_status: 'pending'
+                })));
+            }
+
+            await db.deletedRecords.bulkPut(deletions);
         });
     };
     
@@ -353,12 +404,17 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
             addNotification(`PO #${po.publicId || po.id} is now ${newStatus}.`, NotificationType.PO, poId);
         }
         
-        db.purchaseOrders.update(poId, { 
-            items: updatedItems, 
-            status: newStatus, 
-            sync_status: 'pending', 
-            updated_at: new Date().toISOString() 
-        });
+        // Use db.put to update the full object. This ensures that the encryption middleware
+        // sees a 'put' operation and correctly re-encrypts any sensitive fields in the 'items' array.
+        // 'db.update' would bypass encryption for nested arrays like 'items'.
+        const updatedPO = {
+            ...po,
+            items: updatedItems,
+            status: newStatus,
+            sync_status: 'pending' as const,
+            updated_at: new Date().toISOString()
+        };
+        db.purchaseOrders.put(updatedPO);
     };
     
     const deletePurchaseOrder = async (poId: string) => {
@@ -370,8 +426,9 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
             await db.notifications.where('relatedId').equals(poId).delete();
             await db.purchaseOrders.delete(poId);
             
-            await db.deletedRecords.add({
-                id: poId,
+            // Use put to ensure robust upsert for sync records
+            await db.deletedRecords.put({
+                id: String(poId),
                 table: 'purchaseOrders',
                 deletedAt: new Date().toISOString(),
                 sync_status: 'pending'
@@ -381,7 +438,7 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
         return { success: true, message: 'Purchase Order deleted.'};
     };
     
-    const pruneData = (target: 'sales' | 'purchaseOrders', options: { days: number; statuses?: Sale['status'][] }): { success: boolean; message: string } => {
+    const pruneData = async (target: 'sales' | 'purchaseOrders', options: { days: number; statuses?: Sale['status'][] }): Promise<{ success: boolean; message: string }> => {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - options.days);
         
@@ -401,54 +458,70 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
                 return { success: true, message: 'No sales records matched the criteria for pruning.' };
             }
 
-            salesToClear.forEach(s => {
-                const ref = s.publicId || s.id;
-                removeStockHistoryByReason(`Sale #${ref}`);
-            });
+            const relatedReturns = sales.filter(s => s.type === 'Return' && s.originalSaleId && salesToClearIds.includes(s.originalSaleId));
             
-            const returnsToRemove = sales.filter(s => s.type === 'Return' && s.originalSaleId && salesToClearIds.includes(s.originalSaleId));
-            const returnsToRemoveIds = returnsToRemove.map(s => s.id);
-            
-            returnsToRemove.forEach(s => {
-                const ref = s.publicId || s.id;
-                removeStockHistoryByReason(`Sale #${ref}`);
-            });
+            const allSales = [...salesToClear, ...relatedReturns];
+            const allIds = allSales.map(s => s.id);
+            const allPublicIds = allSales.map(s => s.publicId || s.id);
 
-            const allIds = [...salesToClearIds, ...returnsToRemoveIds];
+            const adjIdsToDelete = await findRelatedAdjustmentIds(workspaceId, allPublicIds);
             
-            (db as any).transaction('rw', db.sales, db.deletedRecords, async () => {
-                await db.sales.bulkDelete(allIds);
-                const deletions = allIds.map(id => ({
-                    id, 
-                    table: 'sales', 
-                    deletedAt: new Date().toISOString(), 
-                    sync_status: 'pending'
-                }));
-                await db.deletedRecords.bulkAdd(deletions);
-            });
+            try {
+                await (db as any).transaction('rw', db.sales, db.deletedRecords, db.inventoryAdjustments, async () => {
+                    const deletions: { id: string; table: string; deletedAt: string; sync_status: string }[] = [];
 
-            return { success: true, message: `Pruned ${allIds.length} records.`};
+                    await Promise.all(allIds.map(id => db.sales.delete(id)));
+                    deletions.push(...allIds.map(id => ({
+                        id: String(id), 
+                        table: 'sales', 
+                        deletedAt: new Date().toISOString(), 
+                        sync_status: 'pending'
+                    })));
+                    
+                    if (adjIdsToDelete.length > 0) {
+                        await Promise.all(adjIdsToDelete.map(id => db.inventoryAdjustments.delete(id)));
+                        deletions.push(...adjIdsToDelete.map(id => ({
+                            id: String(id), 
+                            table: 'inventoryAdjustments', 
+                            deletedAt: new Date().toISOString(), 
+                            sync_status: 'pending'
+                        })));
+                    }
+
+                    if (deletions.length > 0) {
+                        await db.deletedRecords.bulkPut(deletions);
+                    }
+                });
+                return { success: true, message: `Pruned ${allIds.length} records.`};
+            } catch (error) {
+                console.error("Prune sales failed:", error);
+                return { success: false, message: "Pruning sales failed." };
+            }
         }
 
         if (target === 'purchaseOrders') {
             const toDeleteIds = purchaseOrders.filter(po => new Date(po.dateCreated) < cutoffDate).map(po => po.id);
             
-            (db as any).transaction('rw', db.purchaseOrders, db.notifications, db.deletedRecords, async () => {
-                for(const id of toDeleteIds) {
-                    await db.notifications.where('relatedId').equals(id).delete();
-                }
-                await db.purchaseOrders.bulkDelete(toDeleteIds);
-                
-                const deletions = toDeleteIds.map(id => ({
-                    id, 
-                    table: 'purchaseOrders', 
-                    deletedAt: new Date().toISOString(), 
-                    sync_status: 'pending'
-                }));
-                await db.deletedRecords.bulkAdd(deletions);
-            });
-
-            return { success: true, message: `Pruned ${toDeleteIds.length} purchase orders.`};
+            try {
+                await (db as any).transaction('rw', db.purchaseOrders, db.notifications, db.deletedRecords, async () => {
+                    for(const id of toDeleteIds) {
+                        await db.notifications.where('relatedId').equals(id).delete();
+                    }
+                    await Promise.all(toDeleteIds.map((id: string) => db.purchaseOrders.delete(id)));
+                    
+                    const deletions = toDeleteIds.map(id => ({
+                        id: String(id), 
+                        table: 'purchaseOrders', 
+                        deletedAt: new Date().toISOString(), 
+                        sync_status: 'pending'
+                    }));
+                    await db.deletedRecords.bulkPut(deletions);
+                });
+                return { success: true, message: `Pruned ${toDeleteIds.length} purchase orders.`};
+            } catch (error) {
+                console.error("Prune POs failed:", error);
+                return { success: false, message: "Pruning purchase orders failed." };
+            }
         }
         
         return { success: false, message: 'Invalid data target for pruning.' };
@@ -543,8 +616,8 @@ export const SalesProvider: React.FC<{ children: ReactNode; workspaceId: string 
 
     const deleteHeldOrder = (orderId: string) => {
         db.heldOrders.delete(orderId);
-        db.deletedRecords.add({
-            id: orderId,
+        db.deletedRecords.put({
+            id: String(orderId),
             table: 'heldOrders',
             deletedAt: new Date().toISOString(),
             sync_status: 'pending'
