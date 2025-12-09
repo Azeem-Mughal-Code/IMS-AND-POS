@@ -1,45 +1,8 @@
-# Security & Authentication
+# Security Model
 
 This system uses a **Zero-Knowledge** authentication model. Unlike traditional web apps, we do not store your password on a server to unlock your data. Your password *is* the key to your data.
 
-## 🔐 Access & Authentication
-
-### 1. Business Registration
-When you create a business, the system performs the following cryptographic operations locally in your browser:
-1.  Generates a unique **Store Code** (e.g., `WS-A1B2C3`).
-2.  Generates a random **Data Encryption Key (DEK)** (AES-GCM 256-bit).
-3.  Derives a **Key Encryption Key (KEK)** from your password using **PBKDF2**.
-4.  Encrypts (wraps) the DEK using the KEK and stores the wrapped key.
-5.  Exports the raw DEK as a **Recovery Key**.
-6.  **NOTE:** We do NOT store your password or even a hash of it for authentication.
-
-### 2. Login (Cryptographic Challenge)
-To log in, you need:
-*   **Store Code** (or Email, if unique)
-*   **Username**
-*   **Password**
-
-The system attempts to unlock (decrypt) your Data Key using the password provided.
-*   If the key unwraps successfully: The password is correct, and the database is unlocked.
-*   If the operation fails: The password is incorrect.
-
-### 3. Forgot Password / Account Recovery
-Because we cannot see your password, we cannot send you a "reset link".
-1.  Go to the Login screen.
-2.  Click **"Forgot Password?"**.
-3.  Enter your Email and the **Recovery Key** you saved during registration.
-4.  The system validates the key against a stored fingerprint (KCV).
-5.  Enter a new password. The system uses the Recovery Key to re-encrypt the master key with your *new* password.
-
-### 4. Demo Mode
-*   **Purpose:** To explore the application features without setting up an account.
-*   **Data:** Pre-seeded with sample products, suppliers, and customers.
-*   **Persistence:** Data is stored in a temporary "Guest Workspace" in your browser. **All data is permanently wiped upon logout.**
-*   **Security:** Encryption is disabled or uses ephemeral keys in Demo Mode.
-
----
-
-## 🛡️ Security Architecture & Model
+## 🛡️ Security Architecture
 
 ### 1. Zero-Knowledge Architecture
 The fundamental security promise of this application is that **the developer and the server (if synchronization is enabled) never possess the keys required to decrypt sensitive business data.**
@@ -69,15 +32,7 @@ The **DEK** is encrypted (wrapped) by the **KEK**. The database stores only the 
 *   **Success:** If successful, the raw DEK is loaded into memory to decrypt business data.
 *   **Password Change:** The system decrypts the DEK using the *old* password, then re-encrypts (re-wraps) the DEK using a KEK derived from the *new* password. The database data remains untouched; only the lock on the key changes.
 
-### 4. Authentication Mechanism
-There is no "backend" to verify passwords. Authentication is performed via a **Cryptographic Challenge**:
-
-1.  The user enters a password.
-2.  The system attempts to unwrap the stored Data Encryption Key (DEK).
-3.  If the unwrapping algorithm throws an error or produces invalid output, the password is considered incorrect.
-4.  If the unwrapping succeeds, the user is authenticated, and the application state unlocks.
-
-### 5. Granular Field-Level Encryption
+### 4. Granular Field-Level Encryption
 To balance security with performance (indexing and searching), the application uses **Selective Field-Level Encryption**.
 
 *   **Plaintext Fields:** Structural data required for database indexing, relationships, and sorting (e.g., `id`, `date`, `sku`, `categoryIds`, `workspaceId`) remains in plaintext.
@@ -90,14 +45,48 @@ To balance security with performance (indexing and searching), the application u
 *   **Suppliers:** `contactPerson`, `email`, `phone`, `address`.
 *   **Purchase Orders:** `totalCost`.
 
-### 6. Data Isolation
+### 5. Data Isolation
 The application supports multi-tenancy within the same browser instance via **Workspace Isolation**.
 *   Every record in the database is tagged with a `workspaceId`.
 *   Queries are strictly filtered by this ID.
 *   Each workspace (and user) has unique encryption keys. Even if data leaks from one workspace to another logically, it cannot be decrypted without the specific workspace credentials.
 
-### 7. Account Recovery Model
+---
+
+## 🔐 Access & Authentication Flows
+
+### 1. Business Registration
+When you create a business, the system performs the following cryptographic operations locally in your browser:
+1.  Generates a unique **Store Code** (e.g., `WS-A1B2C3`).
+2.  Generates a random **Data Encryption Key (DEK)** (AES-GCM 256-bit).
+3.  Derives a **Key Encryption Key (KEK)** from your password using **PBKDF2**.
+4.  Encrypts (wraps) the DEK using the KEK and stores the wrapped key.
+5.  Exports the raw DEK as a **Recovery Key**.
+6.  **NOTE:** We do NOT store your password or even a hash of it for authentication.
+
+### 2. Login (Cryptographic Challenge)
+To log in, you need:
+*   **Store Code** (or Email, if unique)
+*   **Username**
+*   **Password**
+
+The system uses a **Cryptographic Challenge** to verify credentials:
+1.  The system attempts to unlock (decrypt) the stored Data Key using the password provided.
+2.  If the key unwraps successfully: The password is correct, the database is unlocked, and the DEK is held in memory.
+3.  If the operation fails: The password is incorrect.
+
+### 3. Account Recovery
 Because there is no server with a "master key," **there is no traditional "Reset Password via Email" functionality.**
 
-*   **Recovery Key:** Upon registration, the raw Base64 string of the Data Encryption Key (DEK) is provided to the Admin user.
-*   **Emergency Access:** If a password is lost, this Recovery Key is the *only* way to restore access. It allows the system to bypass the password derivation step and directly load the encryption key, allowing the user to set a new password.
+*   **The Recovery Key:** Upon registration, the raw Base64 string of the Data Encryption Key (DEK) is provided to the Admin user.
+*   **Recovery Process:**
+    1.  Go to the Login screen and click **"Forgot Password?"**.
+    2.  Enter your Email and the **Recovery Key**.
+    3.  The system validates the key against a stored fingerprint (Key Check Value/KCV).
+    4.  Enter a new password. The system uses the Recovery Key to re-encrypt (re-wrap) the master key with your *new* password.
+
+### 4. Demo Mode
+*   **Purpose:** To explore the application features without setting up an account.
+*   **Data:** Pre-seeded with sample products, suppliers, and customers.
+*   **Persistence:** Data is stored in a temporary "Guest Workspace" in your browser. **All data is permanently wiped upon logout.**
+*   **Security:** Encryption is disabled or uses ephemeral keys in Demo Mode.
