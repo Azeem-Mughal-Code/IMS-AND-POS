@@ -39,22 +39,65 @@ Because we cannot see your password, we cannot send you a "reset link".
 
 ---
 
-## 🛡️ Encryption & Security
+## 🛡️ Security Architecture & Model
 
-We utilize the **Web Crypto API** to ensure military-grade security for your sensitive business data directly in the browser.
+### 1. Zero-Knowledge Architecture
+The fundamental security promise of this application is that **the developer and the server (if synchronization is enabled) never possess the keys required to decrypt sensitive business data.**
 
-### Encryption Standards
-*   **Algorithm:** AES-GCM (Advanced Encryption Standard - Galois/Counter Mode) with 256-bit keys.
-*   **Key Derivation:** PBKDF2 (Password-Based Key Derivation Function 2) with high iteration counts and random salts.
-*   **Zero Storage:** Passwords are never stored. Authentication is purely a cryptographic challenge.
+*   **Client-Side Operations:** All encryption and decryption operations occur exclusively within the user's browser memory using the [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API).
+*   **No Plaintext Transmission:** Sensitive fields (such as profit margins and customer PII) are encrypted *before* they are saved to the local IndexedDB or sent to any remote server.
 
-### Encrypted Fields
-*   **Products:** Cost Price (hides margins from cashiers).
-*   **Sales:** Profit, COGS, Total, Subtotal, Tax, Discount.
-*   **Customers:** Phone, Email, Address, Notes (PII protection).
-*   **Suppliers:** Contact details.
-*   **Shifts:** Cash counts and discrepancies.
+### 2. Cryptographic Standards
+We utilize industry-standard, military-grade algorithms to ensure data security. Custom "home-rolled" cryptography is strictly avoided.
 
-### Durability & Safety
-*   **Data Isolation:** Each workspace has a unique ID (`workspaceId`) and unique encryption keys. Data from one business cannot be read by another, even if they share the same browser.
-*   **Zero-Knowledge:** Since the encryption key is derived from your password client-side, even if the database file were stolen, the sensitive fields would remain unreadable ciphertext without the password or recovery key.
+| Component | Standard / Algorithm | Configuration Details |
+| :--- | :--- | :--- |
+| **Data Encryption** | **AES-GCM** | 256-bit keys. Authenticated encryption ensures data confidentiality and integrity (tamper detection). A unique 12-byte Initialization Vector (IV) is generated for every write operation. |
+| **Key Derivation** | **PBKDF2** | Uses **SHA-256** hashing with **100,000 iterations**. A unique 16-byte random salt is generated per user. |
+| **Randomness** | **CSPRNG** | `window.crypto.getRandomValues` is used for all Salts, IVs, and Key generation. |
+
+### 3. Key Management: Envelope Encryption
+The system employs an **Envelope Encryption** strategy to manage keys securely and allow for password changes without re-encrypting the entire database.
+
+#### The Keys
+1.  **Data Encryption Key (DEK):** A random 256-bit AES-GCM key generated when a workspace is created. This key encrypts the actual database records. It is never stored in plaintext.
+2.  **Key Encryption Key (KEK):** A key derived dynamically from the user's password using PBKDF2. This key exists only in memory while the user is logging in.
+
+#### The "Wrapping" Process
+The **DEK** is encrypted (wrapped) by the **KEK**. The database stores only the *Encrypted DEK*.
+*   **Login:** The system takes the input password $\rightarrow$ derives KEK $\rightarrow$ attempts to decrypt the Encrypted DEK.
+*   **Success:** If successful, the raw DEK is loaded into memory to decrypt business data.
+*   **Password Change:** The system decrypts the DEK using the *old* password, then re-encrypts (re-wraps) the DEK using a KEK derived from the *new* password. The database data remains untouched; only the lock on the key changes.
+
+### 4. Authentication Mechanism
+There is no "backend" to verify passwords. Authentication is performed via a **Cryptographic Challenge**:
+
+1.  The user enters a password.
+2.  The system attempts to unwrap the stored Data Encryption Key (DEK).
+3.  If the unwrapping algorithm throws an error or produces invalid output, the password is considered incorrect.
+4.  If the unwrapping succeeds, the user is authenticated, and the application state unlocks.
+
+### 5. Granular Field-Level Encryption
+To balance security with performance (indexing and searching), the application uses **Selective Field-Level Encryption**.
+
+*   **Plaintext Fields:** Structural data required for database indexing, relationships, and sorting (e.g., `id`, `date`, `sku`, `categoryIds`, `workspaceId`) remains in plaintext.
+*   **Encrypted Fields:** Sensitive business logic and Personal Identifiable Information (PII) are encrypted.
+
+**Specific Encrypted Fields:**
+*   **Products:** `costPrice` (Protecting margin data from staff).
+*   **Sales:** `cogs`, `profit`, `total`, `subtotal`, `tax`, `discount`.
+*   **Customers:** `email`, `phone`, `address`, `notes`.
+*   **Suppliers:** `contactPerson`, `email`, `phone`, `address`.
+*   **Purchase Orders:** `totalCost`.
+
+### 6. Data Isolation
+The application supports multi-tenancy within the same browser instance via **Workspace Isolation**.
+*   Every record in the database is tagged with a `workspaceId`.
+*   Queries are strictly filtered by this ID.
+*   Each workspace (and user) has unique encryption keys. Even if data leaks from one workspace to another logically, it cannot be decrypted without the specific workspace credentials.
+
+### 7. Account Recovery Model
+Because there is no server with a "master key," **there is no traditional "Reset Password via Email" functionality.**
+
+*   **Recovery Key:** Upon registration, the raw Base64 string of the Data Encryption Key (DEK) is provided to the Admin user.
+*   **Emergency Access:** If a password is lost, this Recovery Key is the *only* way to restore access. It allows the system to bypass the password derivation step and directly load the encryption key, allowing the user to set a new password.
