@@ -72,14 +72,23 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             }
         }
 
-        // Check if already installed
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
-        setIsInstallable(!isStandalone);
-
         // Check iOS
         const userAgent = window.navigator.userAgent.toLowerCase();
         const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
         setIsIOS(isIosDevice);
+
+        // Check if already installed
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+        
+        if (isStandalone) {
+            setIsInstallable(false);
+        } else if (isIosDevice) {
+            // iOS doesn't trigger beforeinstallprompt, so we can show install instructions immediately if not installed
+            setIsInstallable(true);
+        } else {
+            // For other devices, start as false and wait for beforeinstallprompt event (handled in the other useEffect)
+            setIsInstallable(false);
+        }
 
         return () => {
             window.removeEventListener('online', handleOnline);

@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -38,6 +39,7 @@
         e.preventDefault();
         // Stash the event so it can be triggered later.
         window.deferredPrompt = e;
+        console.log('beforeinstallprompt fired');
         // Dispatch a custom event to notify React components
         window.dispatchEvent(new Event('deferred-prompt-ready'));
       });
@@ -61,7 +63,7 @@
               };
             };
           }).catch(error => {
-            console.error('SW registration failed:', error);
+            console.log('SW registration failed:', error);
           });
         });
       }
