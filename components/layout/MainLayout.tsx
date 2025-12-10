@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { UserRole, View } from '../../types';
 import { Dashboard } from '../Dashboard';
@@ -46,7 +47,7 @@ const logToScreen = (msg: string) => {
 export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitchWorkspace }) => {
     const { currentUser } = useAuth();
     const { workspaceId, workspaceName, cashierPermissions } = useSettings();
-    const { activeView, setActiveView, toasts, dismissToast } = useUIState();
+    const { activeView, setActiveView, toasts, dismissToast, showToast } = useUIState();
     const { currentShift } = useSales();
     
     const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
@@ -56,6 +57,9 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     const [isOfflineReady, setIsOfflineReady] = useState(false);
     // Initialize deferredPrompt from global window object if available
     const [deferredPrompt, setDeferredPrompt] = useState<any>((window as any).deferredPrompt || null);
+    const [isInstallable, setIsInstallable] = useState(false);
+    const [isIOS, setIsIOS] = useState(false);
+    const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
 
     const profileDropdownRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLElement>(null);
@@ -86,6 +90,19 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
              logToScreen("Service Worker not supported in this browser.");
         }
 
+        // Check if already installed
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+        setIsInstallable(!isStandalone);
+
+        // Check iOS
+        const userAgent = window.navigator.userAgent.toLowerCase();
+        const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
+        setIsIOS(isIosDevice);
+
+        if (isIosDevice) {
+            logToScreen("Device identified as iOS. Native prompt unavailable.");
+        }
+
         return () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
@@ -97,6 +114,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
         const handleDeferredPromptReady = () => {
             logToScreen("Received 'deferred-prompt-ready' event.");
             setDeferredPrompt((window as any).deferredPrompt);
+            setIsInstallable(true);
         };
 
         window.addEventListener('deferred-prompt-ready', handleDeferredPromptReady);
@@ -105,6 +123,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
         if ((window as any).deferredPrompt) {
             logToScreen("Found existing deferredPrompt in window.");
             setDeferredPrompt((window as any).deferredPrompt);
+            setIsInstallable(true);
         }
 
         return () => {
@@ -147,16 +166,19 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     };
 
     const handleInstallClick = async () => {
-        if (!deferredPrompt) return;
-        // Show the install prompt
-        deferredPrompt.prompt();
-        // Wait for the user to respond to the prompt
-        const { outcome } = await deferredPrompt.userChoice;
-        logToScreen(`User installation choice: ${outcome}`);
-        // We've used the prompt, and can't use it again, discard it
-        if (outcome === 'accepted') {
-            setDeferredPrompt(null);
-            (window as any).deferredPrompt = null;
+        if (deferredPrompt) {
+            // Android / Desktop Chrome logic
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            logToScreen(`User installation choice: ${outcome}`);
+            if (outcome === 'accepted') {
+                setDeferredPrompt(null);
+                (window as any).deferredPrompt = null;
+                setIsInstallable(false);
+            }
+        } else {
+            // iOS or Fallback logic
+            setIsInstallModalOpen(true);
         }
     };
 
@@ -235,7 +257,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center gap-2">
                 <h1 className="text-xl font-bold text-blue-600 dark:text-blue-400 truncate flex-grow">{workspaceName}</h1>
                 <div className="flex items-center gap-1">
-                    {deferredPrompt && <InstallButton />}
+                    {isInstallable && <InstallButton />}
                     {isOnline && isOfflineReady && <OfflineReadyIndicator />}
                     {!isOnline && <OfflineIndicator />}
                 </div>
@@ -294,7 +316,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             <div className="md:hidden flex items-center justify-between p-4 bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-20">
                 <h1 className="text-lg font-bold text-blue-600 dark:text-blue-400 truncate flex-grow">{workspaceName}</h1>
                 <div className="flex items-center gap-1">
-                    {deferredPrompt && <InstallButton />}
+                    {isInstallable && <InstallButton />}
                     {isOnline && isOfflineReady && <OfflineReadyIndicator />}
                     {!isOnline && <OfflineIndicator />}
                 </div>
@@ -342,6 +364,29 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
                         OK
                     </button>
                 </div>
+            </div>
+        </Modal>
+
+        <Modal isOpen={isInstallModalOpen} onClose={() => setIsInstallModalOpen(false)} title="Install App">
+            <div className="space-y-6 text-center">
+                {isIOS ? (
+                    <>
+                        <p className="text-gray-600 dark:text-gray-300">To install on iOS:</p>
+                        <ol className="list-decimal text-left pl-6 space-y-2 text-sm text-gray-700 dark:text-gray-200">
+                            <li>Tap the <strong>Share</strong> button (square with arrow) at the bottom or top of your browser.</li>
+                            <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+                            <li>Confirm by tapping <strong>Add</strong>.</li>
+                        </ol>
+                    </>
+                ) : (
+                    <>
+                        <p className="text-gray-600 dark:text-gray-300">To install this app:</p>
+                        <p className="text-sm text-gray-700 dark:text-gray-200">
+                            Please check your browser menu (usually three dots) for an <strong>"Install App"</strong> or <strong>"Add to Home Screen"</strong> option.
+                        </p>
+                    </>
+                )}
+                <button onClick={() => setIsInstallModalOpen(false)} className="w-full py-2 bg-blue-600 text-white rounded-md">Close</button>
             </div>
         </Modal>
         </div>
