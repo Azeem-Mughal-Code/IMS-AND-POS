@@ -17,6 +17,47 @@ import { TimezoneSelector } from './settings/TimezoneSelector';
 import { useUIState } from './context/UIStateContext';
 import { syncService } from '../services/SyncService';
 
+// Component to view internal PWA logs
+const DebugLogModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
+    const [logs, setLogs] = useState<string[]>([]);
+    
+    useEffect(() => {
+        if (isOpen) {
+            const updateLogs = () => {
+                const captured = (window as any).__PWA_LOGS__ || [];
+                setLogs([...captured]);
+            };
+            updateLogs();
+            // Simple polling to keep logs updated while open
+            const interval = setInterval(updateLogs, 1000);
+            return () => clearInterval(interval);
+        }
+    }, [isOpen]);
+
+    const copyLogs = () => {
+        const text = logs.join('\n');
+        navigator.clipboard.writeText(text);
+        alert("Logs copied to clipboard");
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title="Debug Logs" size="lg">
+            <div className="flex flex-col h-[60vh]">
+                <div className="flex-grow bg-black text-green-400 p-4 rounded-md font-mono text-xs overflow-y-auto mb-4 whitespace-pre-wrap shadow-inner">
+                    {logs.length === 0 ? "No logs captured yet." : logs.join('\n')}
+                </div>
+                <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-500">Polls every 1s</span>
+                    <div className="flex gap-2">
+                        <button onClick={copyLogs} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white rounded text-sm hover:bg-gray-300 dark:hover:bg-gray-600">Copy All</button>
+                        <button onClick={onClose} className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">Close</button>
+                    </div>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitchWorkspace }) => {
     const { currentUser, updateUser, currentWorkspace, updateBusinessDetails, logout } = useAuth();
     const { 
@@ -55,6 +96,9 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
     // Guest Exit State
     const [isGuestExitModalOpen, setIsGuestExitModalOpen] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
+    
+    // Debug Modal State
+    const [isDebugOpen, setIsDebugOpen] = useState(false);
 
     const workspace = currentWorkspace;
 
@@ -330,6 +374,14 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
                     <div>
                         <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Timezone</h3>
                         <TimezoneSelector />
+                    </div>
+                    <div className="pt-2 border-t dark:border-gray-700">
+                        <button 
+                            onClick={() => setIsDebugOpen(true)}
+                            className="w-full flex items-center justify-center px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md text-sm font-medium transition-colors"
+                        >
+                            View Debug Logs (Mobile)
+                        </button>
                     </div>
                 </div>
             </AccordionSection>
@@ -659,6 +711,8 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
                     </div>
                 </div>
             </Modal>
+
+            <DebugLogModal isOpen={isDebugOpen} onClose={() => setIsDebugOpen(false)} />
         </div>
     );
 };

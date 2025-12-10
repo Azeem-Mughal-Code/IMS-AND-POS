@@ -33,6 +33,16 @@ const OfflineReadyIndicator = () => (
     </div>
 );
 
+// Helper to log to the global buffer from React
+const logToScreen = (msg: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const logLine = `[${timestamp}] [React] ${msg}`;
+    console.log(logLine);
+    if ((window as any).__PWA_LOGS__) {
+        (window as any).__PWA_LOGS__.push(logLine);
+    }
+};
+
 export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitchWorkspace }) => {
     const { currentUser } = useAuth();
     const { workspaceId, workspaceName, cashierPermissions } = useSettings();
@@ -52,13 +62,13 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     const isGuest = workspaceId === 'guest_workspace';
     
     useEffect(() => {
-        console.log("[MainLayout Debug] Component mounted.");
+        logToScreen("MainLayout mounted. Checking Online Status...");
         const handleOnline = () => {
-            console.log("[MainLayout Debug] App is ONLINE.");
+            logToScreen("Event: Online");
             setIsOnline(true);
         };
         const handleOffline = () => {
-            console.log("[MainLayout Debug] App is OFFLINE.");
+            logToScreen("Event: Offline");
             setIsOnline(false);
         };
         window.addEventListener('online', handleOnline);
@@ -67,13 +77,13 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
         // Check if service worker is controlling the page (means app is cached and ready)
         if ('serviceWorker' in navigator) {
             if (navigator.serviceWorker.controller) {
-                console.log("[MainLayout Debug] navigator.serviceWorker.controller found. Setting isOfflineReady = true.");
+                logToScreen("navigator.serviceWorker.controller is active. isOfflineReady = true.");
                 setIsOfflineReady(true);
             } else {
-                console.log("[MainLayout Debug] navigator.serviceWorker.controller is NULL. App not yet offline ready (or hard refresh used).");
+                logToScreen("navigator.serviceWorker.controller is NULL. Page not controlled by SW yet.");
             }
         } else {
-             console.log("[MainLayout Debug] navigator.serviceWorker not supported.");
+             logToScreen("Service Worker not supported in this browser.");
         }
 
         return () => {
@@ -85,7 +95,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     useEffect(() => {
         // Listen for the custom event dispatched by index.html when beforeinstallprompt fires
         const handleDeferredPromptReady = () => {
-            console.log("[MainLayout Debug] Received 'deferred-prompt-ready' event from window.");
+            logToScreen("Received 'deferred-prompt-ready' event.");
             setDeferredPrompt((window as any).deferredPrompt);
         };
 
@@ -93,10 +103,8 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
 
         // Also check immediately in case it fired before we mounted
         if ((window as any).deferredPrompt) {
-            console.log("[MainLayout Debug] Found existing deferredPrompt on window mount.");
+            logToScreen("Found existing deferredPrompt in window.");
             setDeferredPrompt((window as any).deferredPrompt);
-        } else {
-            console.log("[MainLayout Debug] No deferredPrompt found on mount.");
         }
 
         return () => {
@@ -144,7 +152,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
         deferredPrompt.prompt();
         // Wait for the user to respond to the prompt
         const { outcome } = await deferredPrompt.userChoice;
-        console.log(`[PWA Debug] User choice: ${outcome}`);
+        logToScreen(`User installation choice: ${outcome}`);
         // We've used the prompt, and can't use it again, discard it
         if (outcome === 'accepted') {
             setDeferredPrompt(null);

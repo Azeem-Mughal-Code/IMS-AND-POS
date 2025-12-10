@@ -30,42 +30,52 @@
       }
     </script>
     <script>
-      console.log("[PWA Debug] Initializing PWA checks...");
+      // Initialize global log buffer for mobile debugging
+      window.__PWA_LOGS__ = [];
+      
+      function pwaDebug(msg) {
+        const timestamp = new Date().toLocaleTimeString();
+        const logLine = `[${timestamp}] [PWA] ${msg}`;
+        console.log(logLine);
+        window.__PWA_LOGS__.push(logLine);
+      }
+
+      pwaDebug("Initializing PWA checks...");
 
       // Global variable to hold the prompt event
       window.deferredPrompt = null;
 
       window.addEventListener('beforeinstallprompt', (e) => {
-        console.log("[PWA Debug] 'beforeinstallprompt' event FIRED. Browser allowing install.");
+        pwaDebug("'beforeinstallprompt' event FIRED. Browser allowing install.");
         // Prevent the mini-infobar from appearing on mobile
         e.preventDefault();
         // Stash the event so it can be triggered later.
         window.deferredPrompt = e;
-        console.log("[PWA Debug] Event stashed in window.deferredPrompt.");
+        pwaDebug("Event stashed in window.deferredPrompt.");
         // Dispatch a custom event to notify React components
         window.dispatchEvent(new Event('deferred-prompt-ready'));
       });
 
       if ('serviceWorker' in navigator) {
-        console.log("[PWA Debug] Service Worker is supported.");
+        pwaDebug("Service Worker is supported.");
         
         // Check if controller is already active
         if (navigator.serviceWorker.controller) {
-           console.log("[PWA Debug] Service Worker is currently CONTROLLING the page. (Offline Ready should be true)");
+           pwaDebug("Service Worker is currently CONTROLLING the page. (Offline Ready should be true)");
         } else {
-           console.log("[PWA Debug] Service Worker is NOT controlling the page yet. (Offline Ready might be false until reload)");
+           pwaDebug("Service Worker is NOT controlling the page yet. (Offline Ready might be false until reload)");
         }
 
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('./sw.js').then(registration => {
-            console.log('[PWA Debug] SW registered successfully with scope: ', registration.scope);
+            pwaDebug('SW registered successfully with scope: ' + registration.scope);
 
             if (registration.installing) {
-                 console.log('[PWA Debug] SW is installing...');
+                 pwaDebug('SW is installing...');
             } else if (registration.waiting) {
-                 console.log('[PWA Debug] SW is waiting/installed.');
+                 pwaDebug('SW is waiting/installed.');
             } else if (registration.active) {
-                 console.log('[PWA Debug] SW is active.');
+                 pwaDebug('SW is active.');
             }
 
             registration.onupdatefound = () => {
@@ -73,27 +83,27 @@
               if (installingWorker == null) {
                 return;
               }
-              console.log('[PWA Debug] SW update found, installing new worker...');
+              pwaDebug('SW update found, installing new worker...');
 
               installingWorker.onstatechange = () => {
-                console.log('[PWA Debug] SW state change:', installingWorker.state);
+                pwaDebug('SW state change: ' + installingWorker.state);
                 if (installingWorker.state === 'installed') {
                   if (navigator.serviceWorker.controller) {
                     // New update available
-                    console.log('[PWA Debug] New content is available; please refresh.');
+                    pwaDebug('New content is available; please refresh.');
                   } else {
                     // Content is cached for offline use.
-                    console.log('[PWA Debug] Content is cached for offline use. (Ready for Offline)');
+                    pwaDebug('Content is cached for offline use. (Ready for Offline)');
                   }
                 }
               };
             };
           }).catch(registrationError => {
-            console.log('[PWA Debug] SW registration failed: ', registrationError);
+            pwaDebug('SW registration failed: ' + registrationError);
           });
         });
       } else {
-          console.log("[PWA Debug] Service Worker is NOT supported in this browser.");
+          pwaDebug("Service Worker is NOT supported in this browser.");
       }
     </script>
     <style>
