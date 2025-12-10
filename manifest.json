@@ -1,15 +1,16 @@
+
 {
   "short_name": "IMS POS",
   "name": "IMS & POS System",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/1541/1541437.png",
+      "src": "https://ui-avatars.com/api/?name=IMS&background=3b82f6&color=fff&size=192&length=3&font-size=0.33",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any maskable"
     },
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/1541/1541437.png",
+      "src": "https://ui-avatars.com/api/?name=IMS&background=3b82f6&color=fff&size=512&length=3&font-size=0.33",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any maskable"

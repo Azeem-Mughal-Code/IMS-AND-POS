@@ -166,10 +166,13 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     };
 
     const handleInstallClick = async () => {
-        if (deferredPrompt) {
+        // Check window directly to avoid state staleness
+        const promptEvent = (window as any).deferredPrompt;
+        
+        if (promptEvent) {
             // Android / Desktop Chrome logic
-            deferredPrompt.prompt();
-            const { outcome } = await deferredPrompt.userChoice;
+            promptEvent.prompt();
+            const { outcome } = await promptEvent.userChoice;
             logToScreen(`User installation choice: ${outcome}`);
             if (outcome === 'accepted') {
                 setDeferredPrompt(null);
@@ -177,7 +180,8 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
                 setIsInstallable(false);
             }
         } else {
-            // iOS or Fallback logic
+            // iOS or Fallback logic if prompt didn't fire
+            logToScreen("Install clicked but no deferredPrompt available.");
             setIsInstallModalOpen(true);
         }
     };
@@ -380,10 +384,17 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
                     </>
                 ) : (
                     <>
-                        <p className="text-gray-600 dark:text-gray-300">To install this app:</p>
-                        <p className="text-sm text-gray-700 dark:text-gray-200">
-                            Please check your browser menu (usually three dots) for an <strong>"Install App"</strong> or <strong>"Add to Home Screen"</strong> option.
+                        <p className="text-gray-600 dark:text-gray-300">
+                            The browser has blocked the automatic prompt or it is not available.
                         </p>
+                        <div className="text-left bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+                            <p className="font-semibold text-gray-800 dark:text-white mb-2">How to install manually:</p>
+                            <ul className="list-disc pl-5 space-y-2 text-sm text-gray-700 dark:text-gray-200">
+                                <li>Tap the <strong>three dots</strong> menu (usually top-right).</li>
+                                <li>Look for <strong>"Install App"</strong> or <strong>"Add to Home Screen"</strong>.</li>
+                                <li>Tap it to install.</li>
+                            </ul>
+                        </div>
                     </>
                 )}
                 <button onClick={() => setIsInstallModalOpen(false)} className="w-full py-2 bg-blue-600 text-white rounded-md">Close</button>
