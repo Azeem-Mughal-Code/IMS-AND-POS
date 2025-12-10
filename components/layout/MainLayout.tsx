@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { UserRole, View } from '../../types';
 import { Dashboard } from '../Dashboard';
@@ -53,14 +52,28 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     const isGuest = workspaceId === 'guest_workspace';
     
     useEffect(() => {
-        const handleOnline = () => setIsOnline(true);
-        const handleOffline = () => setIsOnline(false);
+        console.log("[MainLayout Debug] Component mounted.");
+        const handleOnline = () => {
+            console.log("[MainLayout Debug] App is ONLINE.");
+            setIsOnline(true);
+        };
+        const handleOffline = () => {
+            console.log("[MainLayout Debug] App is OFFLINE.");
+            setIsOnline(false);
+        };
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
         
         // Check if service worker is controlling the page (means app is cached and ready)
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-            setIsOfflineReady(true);
+        if ('serviceWorker' in navigator) {
+            if (navigator.serviceWorker.controller) {
+                console.log("[MainLayout Debug] navigator.serviceWorker.controller found. Setting isOfflineReady = true.");
+                setIsOfflineReady(true);
+            } else {
+                console.log("[MainLayout Debug] navigator.serviceWorker.controller is NULL. App not yet offline ready (or hard refresh used).");
+            }
+        } else {
+             console.log("[MainLayout Debug] navigator.serviceWorker not supported.");
         }
 
         return () => {
@@ -72,7 +85,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     useEffect(() => {
         // Listen for the custom event dispatched by index.html when beforeinstallprompt fires
         const handleDeferredPromptReady = () => {
-            console.log("React: deferred-prompt-ready event received");
+            console.log("[MainLayout Debug] Received 'deferred-prompt-ready' event from window.");
             setDeferredPrompt((window as any).deferredPrompt);
         };
 
@@ -80,7 +93,10 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
 
         // Also check immediately in case it fired before we mounted
         if ((window as any).deferredPrompt) {
+            console.log("[MainLayout Debug] Found existing deferredPrompt on window mount.");
             setDeferredPrompt((window as any).deferredPrompt);
+        } else {
+            console.log("[MainLayout Debug] No deferredPrompt found on mount.");
         }
 
         return () => {
@@ -128,6 +144,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
         deferredPrompt.prompt();
         // Wait for the user to respond to the prompt
         const { outcome } = await deferredPrompt.userChoice;
+        console.log(`[PWA Debug] User choice: ${outcome}`);
         // We've used the prompt, and can't use it again, discard it
         if (outcome === 'accepted') {
             setDeferredPrompt(null);
