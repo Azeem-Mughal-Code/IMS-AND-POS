@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'ims-pos-v7';
+const CACHE_NAME = 'ims-pos-v8';
 const URLS_TO_CACHE = [
   '/',
   '/index.html',

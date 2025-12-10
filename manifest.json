@@ -1,42 +1,56 @@
+
 {
   "short_name": "IMS POS",
   "name": "IMS & POS System",
+  "id": "/",
   "icons": [
     {
       "src": "https://img.icons8.com/fluency/48/point-of-sale-terminal.png",
       "type": "image/png",
       "sizes": "48x48",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "https://img.icons8.com/fluency/72/point-of-sale-terminal.png",
       "type": "image/png",
       "sizes": "72x72",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "https://img.icons8.com/fluency/96/point-of-sale-terminal.png",
       "type": "image/png",
       "sizes": "96x96",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "https://img.icons8.com/fluency/144/point-of-sale-terminal.png",
       "type": "image/png",
       "sizes": "144x144",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "https://img.icons8.com/fluency/192/point-of-sale-terminal.png",
       "type": "image/png",
       "sizes": "192x192",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "https://img.icons8.com/fluency/192/point-of-sale-terminal.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "maskable"
     },
     {
       "src": "https://img.icons8.com/fluency/512/point-of-sale-terminal.png",
       "type": "image/png",
       "sizes": "512x512",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "https://img.icons8.com/fluency/512/point-of-sale-terminal.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
     }
   ],
   "start_url": "/",
