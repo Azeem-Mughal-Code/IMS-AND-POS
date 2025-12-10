@@ -1,9 +1,9 @@
 
-const CACHE_NAME = 'ims-pos-v6';
+const CACHE_NAME = 'ims-pos-v7';
 const URLS_TO_CACHE = [
-  './',
-  './index.html',
-  './manifest.json',
+  '/',
+  '/index.html',
+  '/manifest.json',
   'https://cdn.tailwindcss.com',
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
   'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
@@ -64,7 +64,7 @@ self.addEventListener('fetch', (event) => {
 
         // CRITICAL: If navigation request (e.g. reload /pos), return index.html
         if (event.request.mode === 'navigate') {
-            return caches.match('./index.html');
+            return caches.match('/index.html');
         }
         
         return null;

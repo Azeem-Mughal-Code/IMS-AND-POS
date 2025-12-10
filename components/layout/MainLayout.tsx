@@ -34,16 +34,6 @@ const OfflineReadyIndicator = () => (
     </div>
 );
 
-// Helper to log to the global buffer from React
-const logToScreen = (msg: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    const logLine = `[${timestamp}] [React] ${msg}`;
-    console.log(logLine);
-    if ((window as any).__PWA_LOGS__) {
-        (window as any).__PWA_LOGS__.push(logLine);
-    }
-};
-
 export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitchWorkspace }) => {
     const { currentUser } = useAuth();
     const { workspaceId, workspaceName, cashierPermissions } = useSettings();
@@ -66,13 +56,10 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     const isGuest = workspaceId === 'guest_workspace';
     
     useEffect(() => {
-        logToScreen("MainLayout mounted. Checking Online Status...");
         const handleOnline = () => {
-            logToScreen("Event: Online");
             setIsOnline(true);
         };
         const handleOffline = () => {
-            logToScreen("Event: Offline");
             setIsOnline(false);
         };
         window.addEventListener('online', handleOnline);
@@ -81,13 +68,8 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
         // Check if service worker is controlling the page (means app is cached and ready)
         if ('serviceWorker' in navigator) {
             if (navigator.serviceWorker.controller) {
-                logToScreen("navigator.serviceWorker.controller is active. isOfflineReady = true.");
                 setIsOfflineReady(true);
-            } else {
-                logToScreen("navigator.serviceWorker.controller is NULL. Page not controlled by SW yet.");
             }
-        } else {
-             logToScreen("Service Worker not supported in this browser.");
         }
 
         // Check if already installed
@@ -99,10 +81,6 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
         const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
         setIsIOS(isIosDevice);
 
-        if (isIosDevice) {
-            logToScreen("Device identified as iOS. Native prompt unavailable.");
-        }
-
         return () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
@@ -112,7 +90,6 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     useEffect(() => {
         // Listen for the custom event dispatched by index.html when beforeinstallprompt fires
         const handleDeferredPromptReady = () => {
-            logToScreen("Received 'deferred-prompt-ready' event.");
             setDeferredPrompt((window as any).deferredPrompt);
             setIsInstallable(true);
         };
@@ -121,7 +98,6 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
 
         // Also check immediately in case it fired before we mounted
         if ((window as any).deferredPrompt) {
-            logToScreen("Found existing deferredPrompt in window.");
             setDeferredPrompt((window as any).deferredPrompt);
             setIsInstallable(true);
         }
@@ -173,7 +149,6 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             // Android / Desktop Chrome logic
             promptEvent.prompt();
             const { outcome } = await promptEvent.userChoice;
-            logToScreen(`User installation choice: ${outcome}`);
             if (outcome === 'accepted') {
                 setDeferredPrompt(null);
                 (window as any).deferredPrompt = null;
@@ -181,7 +156,6 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             }
         } else {
             // iOS or Fallback logic if prompt didn't fire
-            logToScreen("Install clicked but no deferredPrompt available.");
             setIsInstallModalOpen(true);
         }
     };

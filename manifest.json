@@ -1,22 +1,21 @@
-
 {
   "short_name": "IMS POS",
   "name": "IMS & POS System",
   "icons": [
     {
-      "src": "https://ui-avatars.com/api/?name=IMS&background=3b82f6&color=fff&size=192&length=3&font-size=0.33",
+      "src": "https://img.icons8.com/fluency/192/point-of-sale-terminal.png",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any maskable"
     },
     {
-      "src": "https://ui-avatars.com/api/?name=IMS&background=3b82f6&color=fff&size=512&length=3&font-size=0.33",
+      "src": "https://img.icons8.com/fluency/512/point-of-sale-terminal.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any maskable"
     }
   ],
-  "start_url": ".",
+  "start_url": "/",
   "display": "standalone",
   "theme_color": "#3b82f6",
   "background_color": "#ffffff"
