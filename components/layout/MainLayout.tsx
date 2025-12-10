@@ -80,14 +80,16 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
         // Check if already installed
         const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
         
+        // Always show install button if not in standalone mode (browser), regardless of event
         if (isStandalone) {
             setIsInstallable(false);
-        } else if (isIosDevice) {
-            // iOS doesn't trigger beforeinstallprompt, so we can show install instructions immediately if not installed
-            setIsInstallable(true);
         } else {
-            // For other devices, start as false and wait for beforeinstallprompt event (handled in the other useEffect)
-            setIsInstallable(false);
+            setIsInstallable(true);
+        }
+
+        // Capture initial state if event fired before mount
+        if ((window as any).deferredPrompt) {
+            setDeferredPrompt((window as any).deferredPrompt);
         }
 
         return () => {
@@ -99,17 +101,15 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     useEffect(() => {
         // Listen for the custom event dispatched by index.html when beforeinstallprompt fires
         const handleDeferredPromptReady = () => {
+            console.log("MainLayout: deferred-prompt-ready event received");
             setDeferredPrompt((window as any).deferredPrompt);
-            setIsInstallable(true);
         };
 
         window.addEventListener('deferred-prompt-ready', handleDeferredPromptReady);
-
-        // Also check immediately in case it fired before we mounted
-        if ((window as any).deferredPrompt) {
-            setDeferredPrompt((window as any).deferredPrompt);
-            setIsInstallable(true);
-        }
+        window.addEventListener('appinstalled', () => {
+             setIsInstallable(false);
+             setDeferredPrompt(null);
+        });
 
         return () => {
             window.removeEventListener('deferred-prompt-ready', handleDeferredPromptReady);
@@ -151,20 +151,26 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     };
 
     const handleInstallClick = async () => {
-        // Check window directly to avoid state staleness
+        if (isIOS) {
+            setIsInstallModalOpen(true);
+            return;
+        }
+
+        // Check window directly to avoid state staleness or race conditions
         const promptEvent = (window as any).deferredPrompt;
         
         if (promptEvent) {
             // Android / Desktop Chrome logic
             promptEvent.prompt();
             const { outcome } = await promptEvent.userChoice;
+            console.log(`User response to install prompt: ${outcome}`);
             if (outcome === 'accepted') {
                 setDeferredPrompt(null);
                 (window as any).deferredPrompt = null;
-                setIsInstallable(false);
+                // setIsInstallable(false) handled by appinstalled event usually, but we can optimistically hide
             }
         } else {
-            // iOS or Fallback logic if prompt didn't fire
+            // If the button is visible but prompt is missing (e.g. browser blocked it or not ready), show modal
             setIsInstallModalOpen(true);
         }
     };
