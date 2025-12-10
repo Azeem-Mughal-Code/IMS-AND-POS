@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { UserRole, View } from '../../types';
 import { Dashboard } from '../Dashboard';
@@ -45,9 +44,8 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     const [isShiftWarningOpen, setIsShiftWarningOpen] = useState(false);
     const [isOnline, setIsOnline] = useState(navigator.onLine);
     const [isOfflineReady, setIsOfflineReady] = useState(false);
-    // Initialize deferredPrompt from global window object if available
-    const [deferredPrompt, setDeferredPrompt] = useState<any>((window as any).deferredPrompt || null);
-    const [isInstallable, setIsInstallable] = useState(false);
+    const [deferredPrompt, setDeferredPrompt] = useState<any | null>(null);
+    const [isStandalone, setIsStandalone] = useState(false);
     const [isIOS, setIsIOS] = useState(false);
     const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
 
@@ -56,63 +54,47 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     const isGuest = workspaceId === 'guest_workspace';
     
     useEffect(() => {
-        const handleOnline = () => {
-            setIsOnline(true);
-        };
-        const handleOffline = () => {
-            setIsOnline(false);
-        };
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
         
-        // Check if service worker is controlling the page (means app is cached and ready)
-        if ('serviceWorker' in navigator) {
-            if (navigator.serviceWorker.controller) {
-                setIsOfflineReady(true);
-            }
+        if (navigator.serviceWorker?.controller) {
+            setIsOfflineReady(true);
         }
 
-        // Check iOS
+        const standalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+        setIsStandalone(standalone);
+
         const userAgent = window.navigator.userAgent.toLowerCase();
-        const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
-        setIsIOS(isIosDevice);
+        const ios = /iphone|ipad|ipod/.test(userAgent);
+        setIsIOS(ios);
 
-        // Check if already installed
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+        if (standalone) return;
+
+        const handleDeferredPromptReady = () => {
+            const prompt = (window as any).deferredPrompt;
+            console.log("MainLayout: deferred-prompt-ready event received, prompt is:", prompt);
+            setDeferredPrompt(prompt);
+        };
+
+        const handleAppInstalled = () => {
+            console.log("MainLayout: appinstalled event received");
+            setDeferredPrompt(null);
+        };
         
-        // Always show install button if not in standalone mode (browser), regardless of event
-        if (isStandalone) {
-            setIsInstallable(false);
-        } else {
-            setIsInstallable(true);
+        if ((window as any).deferredPrompt) {
+            handleDeferredPromptReady();
         }
 
-        // Capture initial state if event fired before mount
-        if ((window as any).deferredPrompt) {
-            setDeferredPrompt((window as any).deferredPrompt);
-        }
+        window.addEventListener('deferred-prompt-ready', handleDeferredPromptReady);
+        window.addEventListener('appinstalled', handleAppInstalled);
 
         return () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
-        };
-    }, []);
-
-    useEffect(() => {
-        // Listen for the custom event dispatched by index.html when beforeinstallprompt fires
-        const handleDeferredPromptReady = () => {
-            console.log("MainLayout: deferred-prompt-ready event received");
-            setDeferredPrompt((window as any).deferredPrompt);
-        };
-
-        window.addEventListener('deferred-prompt-ready', handleDeferredPromptReady);
-        window.addEventListener('appinstalled', () => {
-             setIsInstallable(false);
-             setDeferredPrompt(null);
-        });
-
-        return () => {
             window.removeEventListener('deferred-prompt-ready', handleDeferredPromptReady);
+            window.removeEventListener('appinstalled', handleAppInstalled);
         };
     }, []);
 
@@ -156,24 +138,20 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             return;
         }
 
-        // Check window directly to avoid state staleness or race conditions
-        const promptEvent = (window as any).deferredPrompt;
-        
-        if (promptEvent) {
-            // Android / Desktop Chrome logic
-            promptEvent.prompt();
-            const { outcome } = await promptEvent.userChoice;
-            console.log(`User response to install prompt: ${outcome}`);
-            if (outcome === 'accepted') {
-                setDeferredPrompt(null);
-                (window as any).deferredPrompt = null;
-                // setIsInstallable(false) handled by appinstalled event usually, but we can optimistically hide
-            }
-        } else {
-            // If the button is visible but prompt is missing (e.g. browser blocked it or not ready), show modal
+        if (!deferredPrompt) {
             setIsInstallModalOpen(true);
+            return;
+        }
+        
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`User response to install prompt: ${outcome}`);
+        if (outcome === 'accepted') {
+            setDeferredPrompt(null);
         }
     };
+
+    const isInstallable = !isStandalone && (!!deferredPrompt || isIOS);
 
     const availableViews = useMemo(() => {
         if (currentUser?.role === UserRole.Admin) {
