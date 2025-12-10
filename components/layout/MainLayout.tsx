@@ -193,12 +193,24 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
         return null; // Render nothing on this cycle, useEffect will fix it
     }
 
+    const InstallButton = () => (
+        <button
+            onClick={handleInstallClick}
+            className="flex items-center gap-1 px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 text-xs font-bold hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+            title="Install App"
+        >
+            <DownloadIcon className="h-4 w-4" />
+            <span className="hidden lg:inline">Install</span>
+        </button>
+    );
+
     return (
         <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
         <aside className="w-64 bg-white dark:bg-gray-800 shadow-lg flex-col hidden md:flex">
             <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center gap-2">
                 <h1 className="text-xl font-bold text-blue-600 dark:text-blue-400 truncate flex-grow">{workspaceName}</h1>
                 <div className="flex items-center gap-1">
+                    {deferredPrompt && <InstallButton />}
                     {isOnline && isOfflineReady && <OfflineReadyIndicator />}
                     {!isOnline && <OfflineIndicator />}
                 </div>
@@ -212,12 +224,6 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             {currentUser.role === UserRole.Admin && <NavItem view="users" icon={<UsersIcon />} label="Users" />}
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewReports) && <NavItem view="reports" icon={<ReportsIcon />} label="Reports" />}
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewAnalysis) && <NavItem view="analysis" icon={<AnalysisIcon />} label="Analysis" />}
-            {deferredPrompt && (
-                <button onClick={handleInstallClick} className="flex items-center space-x-3 p-3 rounded-lg w-full text-left transition-colors text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50">
-                    <DownloadIcon />
-                    <span className="font-bold">Install App</span>
-                </button>
-            )}
             </nav>
             <div className="p-4 border-t border-gray-200 dark:border-gray-700" ref={profileDropdownRef}>
                {isGuest ? (
@@ -263,6 +269,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             <div className="md:hidden flex items-center justify-between p-4 bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-20">
                 <h1 className="text-lg font-bold text-blue-600 dark:text-blue-400 truncate flex-grow">{workspaceName}</h1>
                 <div className="flex items-center gap-1">
+                    {deferredPrompt && <InstallButton />}
                     {isOnline && isOfflineReady && <OfflineReadyIndicator />}
                     {!isOnline && <OfflineIndicator />}
                 </div>
@@ -280,12 +287,6 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewReports) && <BottomNavItem view="reports" icon={<ReportsIcon />} label="Rpts" />}
             {(currentUser.role === UserRole.Admin || cashierPermissions.canViewAnalysis) && <BottomNavItem view="analysis" icon={<AnalysisIcon />} label="Analysis" />}
             <BottomNavItem view="settings" icon={<SettingsIcon />} label="Set" />
-            {deferredPrompt && (
-                <button onClick={handleInstallClick} className="flex flex-col items-center justify-center min-w-[4rem] flex-shrink-0 pt-2 pb-1 transition-colors text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30">
-                    <DownloadIcon className="h-6 w-6" />
-                    <span className="text-xs font-bold whitespace-nowrap">Install</span>
-                </button>
-            )}
         </nav>
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
         
