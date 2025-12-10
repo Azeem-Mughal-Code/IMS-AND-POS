@@ -1,6 +1,7 @@
 {
   "short_name": "IMS POS",
   "name": "IMS & POS System",
+  "description": "A comprehensive Inventory Management and Point of Sale system built with React, TypeScript, and Tailwind CSS. It features real-time stock tracking, sales processing, product management, and reporting dashboards, all within a sleek, modern interface.",
   "icons": [
     {
       "src": "https://img.icons8.com/fluency/48/point-of-sale-terminal.png",
@@ -39,7 +40,7 @@
       "purpose": "any maskable"
     }
   ],
-  "start_url": ".",
+  "start_url": "/index.html",
   "scope": "/",
   "display": "standalone",
   "theme_color": "#3b82f6",
