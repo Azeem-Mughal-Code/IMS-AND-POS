@@ -374,7 +374,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
                 ) : (
                     <>
                         <p className="text-gray-600 dark:text-gray-300">
-                            The browser has blocked the automatic prompt or it is not available.
+                            The automatic install prompt is not currently available.
                         </p>
                         <div className="text-left bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
                             <p className="font-semibold text-gray-800 dark:text-white mb-2">How to install manually:</p>
@@ -384,6 +384,9 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
                                 <li>Tap it to install.</li>
                             </ul>
                         </div>
+                        <p className="text-xs text-gray-500 mt-2">
+                            Check <strong>Settings &gt; Debug & Diagnostics</strong> to verify PWA readiness status.
+                        </p>
                     </>
                 )}
                 <button onClick={() => setIsInstallModalOpen(false)} className="w-full py-2 bg-blue-600 text-white rounded-md">Close</button>

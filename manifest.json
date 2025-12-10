@@ -3,6 +3,30 @@
   "name": "IMS & POS System",
   "icons": [
     {
+      "src": "https://img.icons8.com/fluency/48/point-of-sale-terminal.png",
+      "type": "image/png",
+      "sizes": "48x48",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://img.icons8.com/fluency/72/point-of-sale-terminal.png",
+      "type": "image/png",
+      "sizes": "72x72",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://img.icons8.com/fluency/96/point-of-sale-terminal.png",
+      "type": "image/png",
+      "sizes": "96x96",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://img.icons8.com/fluency/144/point-of-sale-terminal.png",
+      "type": "image/png",
+      "sizes": "144x144",
+      "purpose": "any maskable"
+    },
+    {
       "src": "https://img.icons8.com/fluency/192/point-of-sale-terminal.png",
       "type": "image/png",
       "sizes": "192x192",
@@ -18,5 +42,6 @@
   "start_url": "/",
   "display": "standalone",
   "theme_color": "#3b82f6",
-  "background_color": "#ffffff"
+  "background_color": "#ffffff",
+  "orientation": "any"
 }

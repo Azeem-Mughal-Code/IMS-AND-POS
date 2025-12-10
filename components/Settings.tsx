@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { UserRole, PaginationTarget } from '../types';
 import { Modal } from './common/Modal';
-import { LogoutIcon, TagIcon, UserCircleIcon, PencilIcon, CheckCircleIcon, XMarkIcon, ClipboardIcon, BuildingStoreIcon, ReceiveIcon, DangerIcon } from './Icons';
+import { LogoutIcon, TagIcon, UserCircleIcon, PencilIcon, CheckCircleIcon, XMarkIcon, ClipboardIcon, BuildingStoreIcon, ReceiveIcon, DangerIcon, BugIcon, TrashIcon } from './Icons';
 import { AccordionSection } from './common/AccordionSection';
 import { ToggleSwitch } from './common/ToggleSwitch';
 import { Dropdown } from './common/Dropdown';
@@ -16,6 +16,141 @@ import { useSettings } from './context/SettingsContext';
 import { TimezoneSelector } from './settings/TimezoneSelector';
 import { useUIState } from './context/UIStateContext';
 import { syncService } from '../services/SyncService';
+
+// Component for displaying mobile console logs
+const DebugConsole: React.FC = () => {
+    const [logs, setLogs] = useState<any[]>([]);
+    const [pwaStatus, setPwaStatus] = useState({
+        isInstallable: false,
+        swController: false,
+        displayMode: 'browser',
+        isOnline: navigator.onLine,
+        deferredPromptType: 'null'
+    });
+    const logContainerRef = useRef<HTMLDivElement>(null);
+
+    const checkStatus = () => {
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+        const prompt = (window as any).deferredPrompt;
+        setPwaStatus({
+            isInstallable: !!prompt,
+            swController: !!navigator.serviceWorker?.controller,
+            displayMode: isStandalone ? 'standalone' : 'browser',
+            isOnline: navigator.onLine,
+            deferredPromptType: prompt ? typeof prompt : 'null'
+        });
+        setLogs([...((window as any).__CONSOLE_LOGS__ || [])]);
+    };
+
+    useEffect(() => {
+        checkStatus();
+        const interval = setInterval(checkStatus, 2000);
+        
+        window.addEventListener('online', checkStatus);
+        window.addEventListener('offline', checkStatus);
+        
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('online', checkStatus);
+            window.removeEventListener('offline', checkStatus);
+        };
+    }, []);
+
+    // Auto-scroll to bottom
+    useEffect(() => {
+        if (logContainerRef.current) {
+            logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+        }
+    }, [logs]);
+
+    const handleClearLogs = () => {
+        (window as any).__CONSOLE_LOGS__ = [];
+        setLogs([]);
+    };
+
+    const handleCopyLogs = () => {
+        const text = logs.map(l => `[${l.timestamp}] [${l.level.toUpperCase()}] ${l.message}`).join('\n');
+        navigator.clipboard.writeText(text);
+        alert('Logs copied to clipboard');
+    };
+
+    return (
+        <div className="space-y-4">
+            <div className="flex justify-between items-center">
+                <h4 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">PWA Status</h4>
+                <button onClick={checkStatus} className="text-xs text-blue-600 dark:text-blue-400 underline">Refresh</button>
+            </div>
+            
+            <div className="bg-gray-100 dark:bg-gray-700/50 p-3 rounded-lg text-xs font-mono space-y-1 text-gray-700 dark:text-gray-300">
+                <div className="flex justify-between">
+                    <span>Prompt Event:</span>
+                    <span className={pwaStatus.isInstallable ? 'text-green-600 font-bold' : 'text-red-500 font-bold'}>
+                        {pwaStatus.isInstallable ? 'CAPTURED (Ready)' : 'MISSING / BLOCKED'}
+                    </span>
+                </div>
+                <div className="flex justify-between">
+                    <span>Service Worker:</span>
+                    <span className={pwaStatus.swController ? 'text-green-600 font-bold' : 'text-yellow-600 font-bold'}>
+                        {pwaStatus.swController ? 'ACTIVE' : 'INACTIVE'}
+                    </span>
+                </div>
+                <div className="flex justify-between">
+                    <span>Display Mode:</span>
+                    <span>{pwaStatus.displayMode.toUpperCase()}</span>
+                </div>
+                <div className="flex justify-between">
+                    <span>Network:</span>
+                    <span className={pwaStatus.isOnline ? 'text-green-600' : 'text-red-500'}>
+                        {pwaStatus.isOnline ? 'ONLINE' : 'OFFLINE'}
+                    </span>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-2 mt-4">
+                <BugIcon className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                <h4 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Console Logs</h4>
+            </div>
+
+            <div className="relative">
+                <div 
+                    ref={logContainerRef}
+                    className="h-64 overflow-y-auto bg-black text-gray-300 p-2 rounded-md font-mono text-[10px] sm:text-xs border border-gray-700 shadow-inner leading-tight"
+                >
+                    {logs.length === 0 ? (
+                        <div className="text-gray-500 text-center mt-10">No logs captured yet.</div>
+                    ) : (
+                        logs.map((log, i) => (
+                            <div key={i} className="mb-1 break-all border-b border-gray-800 pb-1 last:border-0">
+                                <span className="text-gray-500 select-none">[{log.timestamp}]</span>{' '}
+                                <span className={
+                                    log.level === 'error' ? 'text-red-400 font-bold' : 
+                                    log.level === 'warn' ? 'text-yellow-400' : 'text-blue-300'
+                                }>
+                                    {log.level.toUpperCase()}
+                                </span>:{' '}
+                                <span className="text-white whitespace-pre-wrap">{log.message}</span>
+                            </div>
+                        ))
+                    )}
+                </div>
+                <div className="flex justify-end gap-2 mt-2">
+                    <button 
+                        onClick={handleCopyLogs} 
+                        className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs rounded hover:bg-gray-300 dark:hover:bg-gray-600"
+                    >
+                        Copy Logs
+                    </button>
+                    <button 
+                        onClick={handleClearLogs} 
+                        className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs rounded hover:bg-gray-300 dark:hover:bg-gray-600"
+                    >
+                        Clear
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitchWorkspace }) => {
     const { currentUser, updateUser, currentWorkspace, updateBusinessDetails, logout } = useAuth();
@@ -577,6 +712,17 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
                     <DataManagement />
                 </AccordionSection>
             )}
+
+            {/* Debug & Diagnostics Section */}
+            <AccordionSection
+                title="Debug & Diagnostics"
+                subtitle="View logs and system status."
+                sectionId="debug"
+                expandedSection={expandedSection}
+                setExpandedSection={setExpandedSection}
+            >
+                <DebugConsole />
+            </AccordionSection>
 
             {/* Profile Edit Modal */}
             <Modal isOpen={isEditProfileModalOpen} onClose={() => setIsEditProfileModalOpen(false)} title="Edit Profile" size="sm">
