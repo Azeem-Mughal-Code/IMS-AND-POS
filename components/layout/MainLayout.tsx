@@ -16,6 +16,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUIState } from '../context/UIStateContext';
 import { useSettings } from '../context/SettingsContext';
 import { useSales } from '../context/SalesContext';
+import { usePWAInstall } from '../../hooks/usePWAInstall';
 
 const OfflineIndicator = () => (
     <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs font-bold animate-pulse">
@@ -44,10 +45,14 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
     const [isShiftWarningOpen, setIsShiftWarningOpen] = useState(false);
     const [isOnline, setIsOnline] = useState(navigator.onLine);
     const [isOfflineReady, setIsOfflineReady] = useState(false);
-    const [deferredPrompt, setDeferredPrompt] = useState<any | null>(null);
-    const [isStandalone, setIsStandalone] = useState(false);
-    const [isIOS, setIsIOS] = useState(false);
-    const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+    
+    const { 
+        isInstallable, 
+        isInstallModalOpen,
+        isIOS,
+        handleInstallClick,
+        closeInstallModal
+    } = usePWAInstall();
 
     const profileDropdownRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLElement>(null);
@@ -63,38 +68,9 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             setIsOfflineReady(true);
         }
 
-        const standalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
-        setIsStandalone(standalone);
-
-        const userAgent = window.navigator.userAgent.toLowerCase();
-        const ios = /iphone|ipad|ipod/.test(userAgent);
-        setIsIOS(ios);
-
-        if (standalone) return;
-
-        const handleDeferredPromptReady = () => {
-            const prompt = (window as any).deferredPrompt;
-            console.log("MainLayout: deferred-prompt-ready event received, prompt is:", prompt);
-            setDeferredPrompt(prompt);
-        };
-
-        const handleAppInstalled = () => {
-            console.log("MainLayout: appinstalled event received");
-            setDeferredPrompt(null);
-        };
-        
-        if ((window as any).deferredPrompt) {
-            handleDeferredPromptReady();
-        }
-
-        window.addEventListener('deferred-prompt-ready', handleDeferredPromptReady);
-        window.addEventListener('appinstalled', handleAppInstalled);
-
         return () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
-            window.removeEventListener('deferred-prompt-ready', handleDeferredPromptReady);
-            window.removeEventListener('appinstalled', handleAppInstalled);
         };
     }, []);
 
@@ -131,27 +107,6 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
         setIsAuthWarningModalOpen(false);
         onSwitchWorkspace();
     };
-
-    const handleInstallClick = async () => {
-        if (isIOS) {
-            setIsInstallModalOpen(true);
-            return;
-        }
-
-        if (!deferredPrompt) {
-            setIsInstallModalOpen(true);
-            return;
-        }
-        
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        console.log(`User response to install prompt: ${outcome}`);
-        if (outcome === 'accepted') {
-            setDeferredPrompt(null);
-        }
-    };
-
-    const isInstallable = !isStandalone && (!!deferredPrompt || isIOS);
 
     const availableViews = useMemo(() => {
         if (currentUser?.role === UserRole.Admin) {
@@ -338,7 +293,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
             </div>
         </Modal>
 
-        <Modal isOpen={isInstallModalOpen} onClose={() => setIsInstallModalOpen(false)} title="Install App">
+        <Modal isOpen={isInstallModalOpen} onClose={closeInstallModal} title="Install App">
             <div className="space-y-6 text-center">
                 {isIOS ? (
                     <>
@@ -367,7 +322,7 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
                         </p>
                     </>
                 )}
-                <button onClick={() => setIsInstallModalOpen(false)} className="w-full py-2 bg-blue-600 text-white rounded-md">Close</button>
+                <button onClick={closeInstallModal} className="w-full py-2 bg-blue-600 text-white rounded-md">Close</button>
             </div>
         </Modal>
         </div>
