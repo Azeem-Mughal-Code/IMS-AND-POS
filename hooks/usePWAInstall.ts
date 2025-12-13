@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 
 /**
@@ -12,6 +13,7 @@ export const usePWAInstall = () => {
     const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
 
     useEffect(() => {
+        // Check standalone status
         const standalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
         setIsStandalone(standalone);
 
@@ -19,26 +21,32 @@ export const usePWAInstall = () => {
         const ios = /iphone|ipad|ipod/.test(userAgent);
         setIsIOS(ios);
 
-        // If app is already installed (standalone), don't show the prompt.
         if (standalone) return;
 
+        // Handler to update state
         const handleDeferredPromptReady = () => {
-            console.log("usePWAInstall: deferred-prompt-ready event received.");
+            console.log("usePWAInstall: deferred-prompt-ready detected.");
             setDeferredPrompt((window as any).deferredPrompt);
         };
 
         const handleAppInstalled = () => {
-            console.log("usePWAInstall: appinstalled event received.");
+            console.log("usePWAInstall: appinstalled detected.");
             setDeferredPrompt(null);
         };
 
-        // Check if the prompt event is already available on mount
+        // 1. Check if event already happened before this component mounted
         if ((window as any).deferredPrompt) {
             handleDeferredPromptReady();
         }
 
+        // 2. Listen for future events
         window.addEventListener('deferred-prompt-ready', handleDeferredPromptReady);
         window.addEventListener('appinstalled', handleAppInstalled);
+
+        // Debug log for secure context issues
+        if (!window.isSecureContext && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+            console.warn("PWA install requires a secure context (HTTPS). Current context is insecure.");
+        }
 
         return () => {
             window.removeEventListener('deferred-prompt-ready', handleDeferredPromptReady);
@@ -47,24 +55,30 @@ export const usePWAInstall = () => {
     }, []);
 
     const handleInstallClick = async () => {
-        // For iOS, or if prompt isn't ready, show manual instructions modal.
+        // If on iOS, or if the prompt isn't ready (which might happen if browser hasn't fired it yet),
+        // show the manual instructions.
         if (isIOS || !deferredPrompt) {
             setIsInstallModalOpen(true);
             return;
         }
         
-        // Show the browser's install prompt.
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        console.log(`User response to install prompt: ${outcome}`);
-        
-        // Hide the button if the user accepts. The 'appinstalled' event will also handle this.
-        if (outcome === 'accepted') {
-            setDeferredPrompt(null);
+        try {
+            // Show the browser's install prompt.
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log(`User response to install prompt: ${outcome}`);
+            
+            if (outcome === 'accepted') {
+                setDeferredPrompt(null);
+            }
+        } catch (e) {
+            console.error("Install prompt failed:", e);
+            // Fallback to manual instructions if prompt() throws (e.g., user interaction required)
+            setIsInstallModalOpen(true);
         }
     };
 
-    const isInstallable = !isStandalone && (!!deferredPrompt || isIOS);
+    const isInstallable = !isStandalone;
 
     return {
         isInstallable,
