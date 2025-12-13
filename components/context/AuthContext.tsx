@@ -35,8 +35,6 @@ interface AuthContextType {
     // Session Settings
     sessionPersistence: 'session' | 'local';
     setSessionPersistence: (mode: 'session' | 'local') => void;
-    inactivityTimeoutMinutes: number;
-    setInactivityTimeoutMinutes: (minutes: number) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -94,10 +92,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [sessionPersistence, setSessionPersistenceState] = useState<'session' | 'local'>(() => {
         return (localStorage.getItem('ims-session-persistence') as 'session' | 'local') || 'session';
     });
-    const [inactivityTimeoutMinutes, setInactivityTimeoutMinutesState] = useState<number>(() => {
-        const stored = localStorage.getItem('ims-inactivity-timeout');
-        return stored ? parseInt(stored, 10) : 0;
-    });
 
     const logout = useCallback(async () => {
         const isGuest = currentWorkspace?.id === 'guest_workspace' || currentUser?.id === 'guest';
@@ -137,47 +131,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             });
         }
     };
-
-    const setInactivityTimeoutMinutes = (minutes: number) => {
-        setInactivityTimeoutMinutesState(minutes);
-        localStorage.setItem('ims-inactivity-timeout', minutes.toString());
-    };
-
-    // Inactivity Timer
-    const inactivityTimerRef = useRef<any>(null);
-    const lastActivityRef = useRef<number>(Date.now());
-
-    const resetInactivityTimer = useCallback(() => {
-        lastActivityRef.current = Date.now();
-    }, []);
-
-    useEffect(() => {
-        if (!currentUser || inactivityTimeoutMinutes <= 0) {
-            if (inactivityTimerRef.current) clearInterval(inactivityTimerRef.current);
-            return;
-        }
-
-        const checkInactivity = () => {
-            const now = Date.now();
-            const elapsedMinutes = (now - lastActivityRef.current) / 60000;
-            if (elapsedMinutes >= inactivityTimeoutMinutes) {
-                console.log("Inactivity timeout reached. Logging out.");
-                logout();
-            }
-        };
-
-        const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
-        events.forEach(event => window.addEventListener(event, resetInactivityTimer));
-        
-        // Check every minute
-        inactivityTimerRef.current = setInterval(checkInactivity, 60000); 
-
-        return () => {
-            events.forEach(event => window.removeEventListener(event, resetInactivityTimer));
-            if (inactivityTimerRef.current) clearInterval(inactivityTimerRef.current);
-        };
-    }, [currentUser, inactivityTimeoutMinutes, logout, resetInactivityTimer]);
-
 
     // Load session on mount
     useEffect(() => {
@@ -819,8 +772,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         verifyUserPassword,
         updateStoreCode, updateBusinessDetails,
         encryptionRevision,
-        sessionPersistence, setSessionPersistence,
-        inactivityTimeoutMinutes, setInactivityTimeoutMinutes
+        sessionPersistence, setSessionPersistence
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

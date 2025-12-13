@@ -18,7 +18,7 @@ import { useUIState } from './context/UIStateContext';
 import { syncService } from '../services/SyncService';
 
 export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitchWorkspace }) => {
-    const { currentUser, updateUser, currentWorkspace, updateBusinessDetails, logout, sessionPersistence, setSessionPersistence, inactivityTimeoutMinutes, setInactivityTimeoutMinutes } = useAuth();
+    const { currentUser, updateUser, currentWorkspace, updateBusinessDetails, logout, sessionPersistence, setSessionPersistence } = useAuth();
     const { 
         workspaceId, workspaceName,
         isIntegerCurrency, setIsIntegerCurrency, isTaxEnabled, setIsTaxEnabled, taxRate, setTaxRate,
@@ -318,7 +318,7 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
 
             <AccordionSection
                 title="General"
-                subtitle="Theme, Zoom, and Timezone settings."
+                subtitle="Theme, Zoom, Session, and Timezone."
                 sectionId="general"
                 expandedSection={expandedSection}
                 setExpandedSection={setExpandedSection}
@@ -336,19 +336,8 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
                         <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Timezone</h3>
                         <TimezoneSelector />
                     </div>
-                </div>
-            </AccordionSection>
-
-            <AccordionSection 
-                title="Security & Session" 
-                subtitle="Configure logout behavior and security."
-                sectionId="security"
-                expandedSection={expandedSection}
-                setExpandedSection={setExpandedSection}
-            >
-                <div className="space-y-6">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Session Behavior</label>
+                        <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Session Persistence</h3>
                         <Dropdown 
                             value={sessionPersistence}
                             onChange={(val) => setSessionPersistence(val as 'session' | 'local')}
@@ -359,17 +348,6 @@ export const Settings: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwitc
                                 ? "Your session will persist even if you close the browser. Use only on private devices."
                                 : "Your session will be cleared when you close the browser tab or window."}
                         </p>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Inactivity Auto-Logout (Minutes)</label>
-                        <input
-                            type="number"
-                            min="0"
-                            value={inactivityTimeoutMinutes}
-                            onChange={(e) => setInactivityTimeoutMinutes(parseInt(e.target.value) || 0)}
-                            className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
-                        />
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Set to 0 to disable automatic logout.</p>
                     </div>
                 </div>
             </AccordionSection>
