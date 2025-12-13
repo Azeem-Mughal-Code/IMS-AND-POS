@@ -1,20 +1,14 @@
 
-const CACHE_NAME = 'ims-pos-v9';
+const CACHE_NAME = 'ims-pos-v10';
 const URLS_TO_CACHE = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/icon.svg',
   'https://cdn.tailwindcss.com',
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
   'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
-  'https://cdn.jsdelivr.net/npm/marked/marked.min.js',
-  // Critical: Cache icons for PWA install criteria
-  'https://img.icons8.com/fluency/48/point-of-sale-terminal.png',
-  'https://img.icons8.com/fluency/72/point-of-sale-terminal.png',
-  'https://img.icons8.com/fluency/96/point-of-sale-terminal.png',
-  'https://img.icons8.com/fluency/144/point-of-sale-terminal.png',
-  'https://img.icons8.com/fluency/192/point-of-sale-terminal.png',
-  'https://img.icons8.com/fluency/512/point-of-sale-terminal.png'
+  'https://cdn.jsdelivr.net/npm/marked/marked.min.js'
 ];
 
 // Install event - cache core assets immediately
@@ -22,9 +16,8 @@ self.addEventListener('install', (event) => {
   self.skipWaiting(); // Force activation immediately
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // Use Promise.allSettled or individual catches to prevent one failed icon from breaking the whole install
-      // However, for PWA strictness, we usually want them all. 
-      // We will attempt to add all, logging errors if external CDNs fail.
+      // We use map to add items individually so one failure doesn't break the rest,
+      // but for PWA install, we really want them all.
       return Promise.all(
         URLS_TO_CACHE.map(url => {
           return cache.add(url).catch(err => {
@@ -62,10 +55,16 @@ self.addEventListener('fetch', (event) => {
     fetch(event.request)
       .then((networkResponse) => {
         // Cache valid responses (basic) and opaque responses (CDNs/CORS)
+        // Note: Opaque responses (type 'opaque') cannot be verified for success (status 0),
+        // but we cache them anyway for fonts/scripts.
         if (networkResponse && (networkResponse.type === 'basic' || networkResponse.type === 'cors' || networkResponse.type === 'opaque')) {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {
-                cache.put(event.request, responseToCache);
+                try {
+                    cache.put(event.request, responseToCache);
+                } catch (e) {
+                    console.warn('SW: Cache put failed', e);
+                }
             });
         }
         return networkResponse;
