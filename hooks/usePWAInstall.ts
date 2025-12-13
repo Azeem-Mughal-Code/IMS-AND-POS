@@ -78,7 +78,9 @@ export const usePWAInstall = () => {
         }
     };
 
-    const isInstallable = !isStandalone;
+    // Only show install button if not standalone AND (we have the prompt event OR we are on iOS).
+    // If the app is installed, browsers usually won't fire the prompt event, so deferredPrompt stays null.
+    const isInstallable = !isStandalone && (isIOS || !!deferredPrompt);
 
     return {
         isInstallable,

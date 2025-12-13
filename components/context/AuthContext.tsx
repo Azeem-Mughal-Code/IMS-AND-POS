@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, ReactNode, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, ReactNode, useState, useCallback, useEffect, useRef } from 'react';
 import { User, UserRole, Workspace } from '../../types';
 import { db, getFromDB, setInDB } from '../../utils/db';
 import { generateSalt, deriveKeyFromPassword, generateDataKey, wrapKey, unwrapKey, exportKey, importKey, computeKeyCheckValue, validateKeyCheckValue } from '../../utils/crypto';
@@ -31,6 +31,12 @@ interface AuthContextType {
     
     // Key revision to force app refresh on decryption repair
     encryptionRevision: number;
+
+    // Session Settings
+    sessionPersistence: 'session' | 'local';
+    setSessionPersistence: (mode: 'session' | 'local') => void;
+    inactivityTimeoutMinutes: number;
+    setInactivityTimeoutMinutes: (minutes: number) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -84,6 +90,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [users, setUsers] = useState<User[]>([]); // Local state of users for the current workspace
     const [encryptionRevision, setEncryptionRevision] = useState(0);
 
+    // Session Settings State
+    const [sessionPersistence, setSessionPersistenceState] = useState<'session' | 'local'>(() => {
+        return (localStorage.getItem('ims-session-persistence') as 'session' | 'local') || 'session';
+    });
+    const [inactivityTimeoutMinutes, setInactivityTimeoutMinutesState] = useState<number>(() => {
+        const stored = localStorage.getItem('ims-inactivity-timeout');
+        return stored ? parseInt(stored, 10) : 0;
+    });
+
     const logout = useCallback(async () => {
         const isGuest = currentWorkspace?.id === 'guest_workspace' || currentUser?.id === 'guest';
 
@@ -96,9 +111,73 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setCurrentUser(null);
         setCurrentWorkspace(null);
         setUsers([]);
+        
+        // Clear key from BOTH storages to be safe
         sessionStorage.removeItem('ims-key');
+        localStorage.removeItem('ims-key');
+        
         await db.keyval.delete('ims-session');
     }, [currentWorkspace, currentUser]);
+
+    // Handle Session Persistence Mode Switch
+    const setSessionPersistence = (mode: 'session' | 'local') => {
+        setSessionPersistenceState(mode);
+        localStorage.setItem('ims-session-persistence', mode);
+
+        // Move Key if currently logged in
+        if (db.encryptionKey) {
+            exportKey(db.encryptionKey).then(exported => {
+                if (mode === 'local') {
+                    localStorage.setItem('ims-key', exported);
+                    sessionStorage.removeItem('ims-key');
+                } else {
+                    sessionStorage.setItem('ims-key', exported);
+                    localStorage.removeItem('ims-key');
+                }
+            });
+        }
+    };
+
+    const setInactivityTimeoutMinutes = (minutes: number) => {
+        setInactivityTimeoutMinutesState(minutes);
+        localStorage.setItem('ims-inactivity-timeout', minutes.toString());
+    };
+
+    // Inactivity Timer
+    const inactivityTimerRef = useRef<any>(null);
+    const lastActivityRef = useRef<number>(Date.now());
+
+    const resetInactivityTimer = useCallback(() => {
+        lastActivityRef.current = Date.now();
+    }, []);
+
+    useEffect(() => {
+        if (!currentUser || inactivityTimeoutMinutes <= 0) {
+            if (inactivityTimerRef.current) clearInterval(inactivityTimerRef.current);
+            return;
+        }
+
+        const checkInactivity = () => {
+            const now = Date.now();
+            const elapsedMinutes = (now - lastActivityRef.current) / 60000;
+            if (elapsedMinutes >= inactivityTimeoutMinutes) {
+                console.log("Inactivity timeout reached. Logging out.");
+                logout();
+            }
+        };
+
+        const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+        events.forEach(event => window.addEventListener(event, resetInactivityTimer));
+        
+        // Check every minute
+        inactivityTimerRef.current = setInterval(checkInactivity, 60000); 
+
+        return () => {
+            events.forEach(event => window.removeEventListener(event, resetInactivityTimer));
+            if (inactivityTimerRef.current) clearInterval(inactivityTimerRef.current);
+        };
+    }, [currentUser, inactivityTimeoutMinutes, logout, resetInactivityTimer]);
+
 
     // Load session on mount
     useEffect(() => {
@@ -114,8 +193,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     const user = wsUsers.find(u => u.id === session.userId);
 
                     if (user) {
-                        // Attempt to restore key from sessionStorage (cleared when tab closes)
-                        const storedKey = sessionStorage.getItem('ims-key');
+                        // Attempt to restore key. Check sessionStorage first, then localStorage.
+                        let storedKey = sessionStorage.getItem('ims-key');
+                        if (!storedKey) {
+                            storedKey = localStorage.getItem('ims-key');
+                        }
+
                         if (storedKey) {
                             try {
                                 const key = await importKey(storedKey);
@@ -154,9 +237,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             await setInDB('ims-session', { workspaceId: workspace.id, userId: user.id });
             if (key) {
                 const exported = await exportKey(key);
-                sessionStorage.setItem('ims-key', exported);
+                if (sessionPersistence === 'local') {
+                    localStorage.setItem('ims-key', exported);
+                    sessionStorage.removeItem('ims-key'); // Clean up potential session key
+                } else {
+                    sessionStorage.setItem('ims-key', exported);
+                    localStorage.removeItem('ims-key'); // Clean up potential local key
+                }
             } else {
                 sessionStorage.removeItem('ims-key');
+                localStorage.removeItem('ims-key');
             }
         } catch (e) {
             console.error("Failed to persist session", e);
@@ -239,7 +329,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             console.error(e);
             return { success: false, message: 'Login failed due to an error.' };
         }
-    }, []);
+    }, [sessionPersistence]); // Depend on sessionPersistence setting
 
     const loginByEmail = useCallback(async (email: string, pass: string): Promise<{ success: boolean, message?: string }> => {
         try {
@@ -296,7 +386,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             console.error(e);
             return { success: false, message: 'Login failed due to an error.' };
         }
-    }, []);
+    }, [sessionPersistence]);
 
     const registerBusiness = useCallback(async (businessName: string, username: string, email: string, pass: string): Promise<{ success: boolean, message?: string, recoveryKey?: string, storeCode?: string }> => {
         try {
@@ -401,7 +491,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             console.error(e);
             return { success: false, message: 'Registration failed.' };
         }
-    }, []);
+    }, [sessionPersistence]);
 
     const enterGuestMode = useCallback(async () => {
         const guestId = 'guest_workspace';
@@ -431,7 +521,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setCurrentWorkspace(guestWs);
         setUsers(existingUsers);
         setCurrentUser(guestUser);
-    }, []);
+    }, [sessionPersistence]);
 
     // User Management (Scoped to current workspace)
     const addUser = useCallback(async (username: string, pass: string, role: UserRole, email?: string): Promise<{ success: boolean, message?: string }> => {
@@ -728,7 +818,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         addUser, updateUser, deleteUser, recoverAccount, resetPassword, getDecryptedKey,
         verifyUserPassword,
         updateStoreCode, updateBusinessDetails,
-        encryptionRevision
+        encryptionRevision,
+        sessionPersistence, setSessionPersistence,
+        inactivityTimeoutMinutes, setInactivityTimeoutMinutes
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

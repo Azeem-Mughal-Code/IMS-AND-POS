@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { UserRole, View } from '../../types';
 import { Dashboard } from '../Dashboard';
@@ -317,9 +318,6 @@ export const MainLayout: React.FC<{ onSwitchWorkspace: () => void; }> = ({ onSwi
                                 <li>Tap it to install.</li>
                             </ul>
                         </div>
-                        <p className="text-xs text-gray-500 mt-2">
-                            Check <strong>Settings &gt; Debug & Diagnostics</strong> to verify PWA readiness status.
-                        </p>
                     </>
                 )}
                 <button onClick={closeInstallModal} className="w-full py-2 bg-blue-600 text-white rounded-md">Close</button>
